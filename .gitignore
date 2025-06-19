@@ -13,3 +13,12 @@ tiles/*
 # (Optional) Ignore other temp or cache files
 *.log
 *.tmp
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+
+# MBTiles
+*.mbtiles

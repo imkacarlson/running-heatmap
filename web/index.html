@@ -4,10 +4,7 @@
   <meta charset="utf-8" />
   <title>Run Heatmap</title>
   <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
-  <link
-    href="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.css"
-    rel="stylesheet"
-  />
+  <link href="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.css" rel="stylesheet" />
   <style>
     body { margin: 0; padding: 0; }
     #map { position: absolute; top: 0; bottom: 0; width: 100%; }
@@ -17,20 +14,25 @@
   <div id="map"></div>
   <script src="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.js"></script>
   <script>
-    // Initialize map
+    // Initialize the map
     const map = new maplibregl.Map({
-      container: 'map',  // container id
+      container: 'map',
       style: {
         version: 8,
         sources: {
           runs: {
             type: 'vector',
-            tiles: ['http://localhost:8080/data/runs/{z}/{x}/{y}.pbf'],
+            tiles: ['http://localhost:8081/tiles/{z}/{x}/{y}.pbf'],
             minzoom: 0,
             maxzoom: 14
           }
         },
         layers: [
+          {
+            id: 'background',
+            type: 'background',
+            paint: { 'background-color': '#f2f2f2' }
+          },
           {
             id: 'runs-layer',
             type: 'line',
@@ -52,7 +54,28 @@
       zoom: 10
     });
 
+    // Log any errors
     map.on('error', (e) => console.error('Map error:', e.error));
+
+    // On load, fetch the GeoJSON and fit the map to its bounds
+    map.on('load', () => {
+      fetch('/data/processed/all_runs.geojson')
+        .then(response => {
+          if (!response.ok) throw new Error(`GeoJSON fetch failed: ${response.status}`);
+          return response.json();
+        })
+        .then(geojson => {
+          const coords = geojson.features.flatMap(f => f.geometry.coordinates);
+          const lons = coords.map(c => c[0]);
+          const lats = coords.map(c => c[1]);
+          const bounds = [
+            [Math.min(...lons), Math.min(...lats)],
+            [Math.max(...lons), Math.max(...lats)]
+          ];
+          map.fitBounds(bounds, { padding: 20 });
+        })
+        .catch(err => console.error(err));
+    });
   </script>
 </body>
 </html>

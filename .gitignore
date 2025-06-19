@@ -1,0 +1,15 @@
+# Ignore raw GPS input data
+data/raw/*
+!data/raw/.gitkeep
+
+# Ignore intermediate processed data
+data/processed/*
+!data/processed/.gitkeep
+
+# Ignore tiles output
+tiles/*
+!tiles/.gitkeep
+
+# (Optional) Ignore other temp or cache files
+*.log
+*.tmp

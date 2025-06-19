@@ -9,12 +9,11 @@ INPUT="../data/processed/all_runs.geojson"
 # Output MBTiles
 OUTPUT="../tiles/runs.mbtiles"
 
-# Generate multi-zoom line-layer tiles with Tippecanoe
+# Generate multi-zoom vector tiles with Tippecanoe
 # Aggressive simplification at low zoom, full fidelity when zoomed in
 
 tippecanoe \
-  --layer=runs \
-  --layer-type=line \
+  --named-layer=runs \
   --output="$OUTPUT" \
   --coalesce-densest-as-needed \
   --drop-densest-as-needed \

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Run Heatmap</n>
+  <title>Run Heatmap</title>
   <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
   <link
     href="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.css"
@@ -51,6 +51,8 @@
       center: [-77.0369, 38.9072],
       zoom: 10
     });
+
+    map.on('error', (e) => console.error('Map error:', e.error));
   </script>
 </body>
 </html>

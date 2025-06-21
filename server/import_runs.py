@@ -45,7 +45,7 @@ def parse_fit(path):
 
 
 def main():
-    runs = []
+    runs = {}
     rid = 0
 
     files = [f for f in os.listdir(RAW_DIR)
@@ -88,11 +88,14 @@ def main():
         if coords:
             rid += 1
             ls = LineString(coords)
-            runs.append({
-                'id': rid,
-                'coords': coords,
-                'bbox': ls.bounds
-            })
+            runs[rid] = {
+                'bbox': ls.bounds,
+                'geoms': {
+                    'full': ls,
+                    'mid': ls.simplify(0.0001, preserve_topology=False),
+                    'coarse': ls.simplify(0.0005, preserve_topology=False)
+                }
+            }
 
     with open(OUTPUT_PKL, 'wb') as f:
         pickle.dump(runs, f)
@@ -102,4 +105,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
 

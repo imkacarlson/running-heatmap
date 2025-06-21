@@ -1,4 +1,4 @@
-mport pickle
+import pickle
 from flask import Flask, request, jsonify, send_from_directory
 from shapely.geometry import box, mapping
 from tqdm import tqdm

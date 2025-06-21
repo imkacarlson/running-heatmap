@@ -56,12 +56,15 @@ def main():
             inner_ext = lower[:-3].split('.')[-1]  # 'fit' or 'gpx'
             with gzip.open(path, 'rb') as f_in:
                 tf = tempfile.NamedTemporaryFile(suffix='.' + inner_ext, delete=False)
-                tf.write(f_in.read())
-                tf.close()
-            if inner_ext == 'fit':
-                coords = parse_fit(tf.name)
-            else:
-                coords = parse_gpx(tf.name)
+                try:
+                    tf.write(f_in.read())
+                    tf.close()
+                    if inner_ext == 'fit':
+                        coords = parse_fit(tf.name)
+                    else:
+                        coords = parse_gpx(tf.name)
+                finally:
+                    os.unlink(tf.name)
 
         # uncompressed .fit
         elif lower.endswith('.fit'):

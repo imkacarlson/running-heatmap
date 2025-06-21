@@ -1,6 +1,6 @@
 import pickle
 from flask import Flask, request, jsonify, send_from_directory
-from shapely.geometry import LineString, box, mapping
+from shapely.geometry import box, mapping
 
 # Load runs and build spatial index
 with open('runs.pkl', 'rb') as f:
@@ -8,8 +8,8 @@ with open('runs.pkl', 'rb') as f:
 
 from rtree import index
 idx = index.Index()
-for run in runs:
-    idx.insert(run['id'], run['bbox'])
+for rid, run in runs.items():
+    idx.insert(rid, run['bbox'])
 
 app = Flask(__name__, static_folder='../web', static_url_path='')
 
@@ -30,19 +30,24 @@ def get_runs():
 
     print(f"🔍 Candidate run IDs for bbox ({minLat:.3f},{minLng:.3f})→({maxLat:.3f},{maxLng:.3f}): {ids}")
 
+    # choose pre-simplified geometry based on zoom level
+    if zoom >= 13:
+        key = 'full'
+    elif zoom >= 10:
+        key = 'mid'
+    else:
+        key = 'coarse'
+
     features = []
     for rid in ids:
-        run = next(r for r in runs if r['id'] == rid)
-        line = LineString(run['coords'])
+        run = runs[rid]
+        line = run['geoms'][key]
         clipped = line.intersection(bbox)
         if clipped.is_empty:
             continue
-        # simplify based on zoom
-        tol = 0.001 * (2 ** (12 - zoom))
-        simp = clipped.simplify(tol, preserve_topology=False)
         features.append({
             'type': 'Feature',
-            'geometry': mapping(simp),
+            'geometry': mapping(clipped),
             'properties': {}
         })
 

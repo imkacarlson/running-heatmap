@@ -15,7 +15,7 @@ A local, interactive heatmap of your GPS runs—powered by Flask, MapLibre GL JS
 ## Setup & Run
 
 1. **Import runs**
-   Generates `server/runs.pkl` from your raw files:
+   Generates `server/runs.pkl` from your raw files with pre-simplified geometries:
 
    ```bash
    cd server
@@ -75,6 +75,6 @@ map.addLayer({
 
 * **Adding new runs**: Drop new `.gpx`/`.fit.gz` files into `data/raw/` then re-run step 1.
 * **Rebuilding data**: No external tile build—server streams GeoJSON slices on demand.
-* **Performance**: R-tree spatial index + per-zoom simplification keeps pan/zoom responsive.
+* **Performance**: The importer precomputes simplified geometries for multiple zoom levels. The server uses these along with an R-tree spatial index so panning and zooming stay responsive.
 
 Enjoy exploring your run history!

@@ -1,4 +1,5 @@
 import pickle
+from functools import lru_cache
 from flask import Flask, request, jsonify, send_from_directory
 from shapely.geometry import box, mapping
 from tqdm import tqdm
@@ -18,14 +19,14 @@ app = Flask(__name__, static_folder='../web', static_url_path='')
 def root():
     return send_from_directory(app.static_folder, 'index.html')
 
-@app.route('/api/runs')
-def get_runs():
-    minLat = float(request.args.get('minLat'))
-    minLng = float(request.args.get('minLng'))
-    maxLat = float(request.args.get('maxLat'))
-    maxLng = float(request.args.get('maxLng'))
-    zoom = int(request.args.get('zoom'))
 
+def quantize(val, digits=4):
+    """Round coordinate for caching stability."""
+    return round(val, digits)
+
+
+@lru_cache(maxsize=512)
+def _runs_for_bbox(minLat, minLng, maxLat, maxLng, zoom):
     bbox = box(minLng, minLat, maxLng, maxLat)
     ids = list(idx.intersection((minLng, minLat, maxLng, maxLat)))
 
@@ -63,7 +64,18 @@ def get_runs():
         })
 
     print(f"→ Returning {len(features)} features")
-    return jsonify({'type': 'FeatureCollection', 'features': features})
+    return {'type': 'FeatureCollection', 'features': features}
+
+@app.route('/api/runs')
+def get_runs():
+    minLat = quantize(float(request.args.get('minLat')))
+    minLng = quantize(float(request.args.get('minLng')))
+    maxLat = quantize(float(request.args.get('maxLat')))
+    maxLng = quantize(float(request.args.get('maxLng')))
+    zoom = int(request.args.get('zoom'))
+
+    data = _runs_for_bbox(minLat, minLng, maxLat, maxLng, zoom)
+    return jsonify(data)
 
 if __name__ == '__main__':
     app.run(debug=True)

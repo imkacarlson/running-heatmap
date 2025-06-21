@@ -16,20 +16,29 @@
       height: 100%;
     }
 
-    /* progress bar container */
+    /* progress bars */
     #progress-container {
       position: absolute;
       top: 10px;
       right: 10px;
       width: 160px;
-      height: 8px;
-      background: rgba(255, 255, 255, 0.8);
-      border: 1px solid #aaa;
       display: none;
     }
 
-    /* bar itself */
-    #progress-bar {
+    .progress {
+      width: 100%;
+      height: 8px;
+      background: rgba(255, 255, 255, 0.8);
+      border: 1px solid #aaa;
+      margin-top: 4px;
+      position: relative;
+    }
+
+    .progress:first-child {
+      margin-top: 0;
+    }
+
+    .progress-bar {
       background: #007bff;
       width: 0%;
       height: 100%;
@@ -40,9 +49,9 @@
 
 <body>
   <div id="map"></div>
-  <div id="progress-container"><div id="progress-bar"></div></div>
+  <div id="progress-container"></div>
+
   <script>
-    // initialize an “empty” style so we can add our own sources/layers
     const map = new maplibregl.Map({
       container: 'map',
       style: {
@@ -55,7 +64,6 @@
     });
 
     map.on('load', () => {
-      // 1) Add OSM raster basemap
       map.addSource('osm-tiles', {
         type: 'raster',
         tiles: [
@@ -72,7 +80,6 @@
         source: 'osm-tiles'
       });
 
-      // 2) Add your runs source & heatmap layer
       map.addSource('runs', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] }
@@ -85,56 +92,58 @@
           'line-color': 'rgba(255,0,0,0.4)',
           'line-width': [
             'interpolate', ['linear'], ['zoom'],
-            0, 0.5,   // 0.5px at zoom 0 (nearly invisible zoomed out)
-            14, 2     // 2px at zoom 14 (street-width)
+            0, 0.5,
+            14, 2
           ]
         }
       });
 
-      // 3) Kick off the first fetch of features
       fetchAndUpdate();
     });
 
     const progressContainer = document.getElementById('progress-container');
-    const progressBar = document.getElementById('progress-bar');
 
-    function showProgress() {
+    function createProgress() {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'progress';
+      const bar = document.createElement('div');
+      bar.className = 'progress-bar';
+      wrapper.appendChild(bar);
+      progressContainer.appendChild(wrapper);
       progressContainer.style.display = 'block';
-      progressBar.style.width = '0%';
+      return { wrapper, bar };
     }
 
-    function updateProgress(pct) {
-      progressBar.style.width = pct + '%';
+    function removeProgress(wrapper) {
+      progressContainer.removeChild(wrapper);
+      if (progressContainer.children.length === 0) {
+        progressContainer.style.display = 'none';
+      }
     }
 
-    function hideProgress() {
-      progressContainer.style.display = 'none';
-    }
-
-    // fetch & update function (expects to be defined in main.js)
     function fetchAndUpdate() {
       const b = map.getBounds();
       const z = Math.floor(map.getZoom());
       const url = `/api/runs?minLat=${b.getSouth()}&minLng=${b.getWest()}&maxLat=${b.getNorth()}&maxLng=${b.getEast()}&zoom=${z}`;
+
+      const { wrapper, bar } = createProgress();
       const xhr = new XMLHttpRequest();
       xhr.open('GET', url);
       xhr.responseType = 'json';
       xhr.onprogress = (e) => {
         if (e.lengthComputable) {
           const pct = Math.round((e.loaded / e.total) * 100);
-          updateProgress(pct);
+          bar.style.width = pct + '%';
         }
       };
       xhr.onload = () => {
-        hideProgress();
+        removeProgress(wrapper);
         map.getSource('runs').setData(xhr.response);
       };
-      xhr.onerror = hideProgress;
-      showProgress();
+      xhr.onerror = () => removeProgress(wrapper);
       xhr.send();
     }
 
-    // re-fetch on moveend
     map.on('moveend', fetchAndUpdate);
   </script>
 </body>

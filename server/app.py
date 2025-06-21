@@ -29,7 +29,6 @@ def get_runs():
     bbox = box(minLng, minLat, maxLng, maxLat)
     ids = list(idx.intersection((minLng, minLat, maxLng, maxLat)))
 
-    print(f"🔍 Candidate run IDs for bbox ({minLat:.3f},{minLng:.3f})→({maxLat:.3f},{maxLng:.3f}): {ids}")
     print(
         f"🔍 Candidate run IDs for bbox ({minLat:.3f},{minLng:.3f})→({maxLat:.3f},{maxLng:.3f}): {ids}"
     )
@@ -44,14 +43,10 @@ def get_runs():
         key = 'coarse'
 
     features = []
-    for rid in ids:
     minx, miny, maxx, maxy = bbox.bounds
     for rid in tqdm(ids, desc="runs", unit="run"):
         run = runs[rid]
         line = run['geoms'][key]
-        clipped = line.intersection(bbox)
-        if clipped.is_empty:
-            continue
         rb = run['bbox']
         # if run is fully contained in the bbox, avoid expensive intersection
         if rb[0] >= minx and rb[1] >= miny and rb[2] <= maxx and rb[3] <= maxy:
@@ -63,7 +58,6 @@ def get_runs():
             geom = clipped
         features.append({
             'type': 'Feature',
-            'geometry': mapping(clipped),
             'geometry': mapping(geom),
             'properties': {}
         })

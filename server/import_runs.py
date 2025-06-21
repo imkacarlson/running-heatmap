@@ -29,8 +29,12 @@ def parse_fit(path):
         for frame in fit:
             if not isinstance(frame, FitDataMessage) or frame.name != 'record':
                 continue
-            raw_lat = frame.get_value('position_lat')
-            raw_lon = frame.get_value('position_long')
+            try:
+                raw_lat = frame.get_value('position_lat')
+                raw_lon = frame.get_value('position_long')
+            except KeyError:
+                # Skip records that don't include position fields
+                continue
             if raw_lat is None or raw_lon is None:
                 continue
             # convert semicircles → degrees

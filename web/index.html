@@ -50,8 +50,8 @@
 <body>
   <div id="map"></div>
   <div id="progress-container"></div>
+
   <script>
-    // initialize an “empty” style so we can add our own sources/layers
     const map = new maplibregl.Map({
       container: 'map',
       style: {
@@ -64,7 +64,6 @@
     });
 
     map.on('load', () => {
-      // 1) Add OSM raster basemap
       map.addSource('osm-tiles', {
         type: 'raster',
         tiles: [
@@ -81,7 +80,6 @@
         source: 'osm-tiles'
       });
 
-      // 2) Add your runs source & heatmap layer
       map.addSource('runs', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] }
@@ -94,13 +92,12 @@
           'line-color': 'rgba(255,0,0,0.4)',
           'line-width': [
             'interpolate', ['linear'], ['zoom'],
-            0, 0.5,   // 0.5px at zoom 0 (nearly invisible zoomed out)
-            14, 2     // 2px at zoom 14 (street-width)
+            0, 0.5,
+            14, 2
           ]
         }
       });
 
-      // 3) Kick off the first fetch of features
       fetchAndUpdate();
     });
 
@@ -124,7 +121,6 @@
       }
     }
 
-    // fetch & update function (expects to be defined in main.js)
     function fetchAndUpdate() {
       const b = map.getBounds();
       const z = Math.floor(map.getZoom());
@@ -148,7 +144,6 @@
       xhr.send();
     }
 
-    // re-fetch on moveend
     map.on('moveend', fetchAndUpdate);
   </script>
 </body>

@@ -25,7 +25,7 @@ A local, interactive heatmap of your GPS runs—powered by Flask, MapLibre GL JS
    python import_runs.py
    ```
 
-   You should see:
+  The script shows a progress bar while processing files. When finished you should see:
 
    ```
    Imported <N> runs → runs.pkl

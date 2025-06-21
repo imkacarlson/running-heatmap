@@ -5,6 +5,7 @@ import tempfile
 from shapely.geometry import LineString
 import gpxpy
 from fitdecode import FitReader, FitDataMessage
+from tqdm import tqdm
 
 RAW_DIR = os.path.join(os.path.dirname(__file__), '..', 'data', 'raw')
 OUTPUT_PKL = os.path.join(os.path.dirname(__file__), 'runs.pkl')
@@ -43,7 +44,10 @@ def main():
     runs = []
     rid = 0
 
-    for fname in os.listdir(RAW_DIR):
+    files = [f for f in os.listdir(RAW_DIR)
+             if os.path.isfile(os.path.join(RAW_DIR, f))]
+
+    for fname in tqdm(files, desc="Processing", unit="file"):
         path = os.path.join(RAW_DIR, fname)
         if not os.path.isfile(path):
             continue
@@ -94,3 +98,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+

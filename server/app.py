@@ -1,6 +1,7 @@
 import pickle
 from flask import Flask, request, jsonify, send_from_directory
 from shapely.geometry import box, mapping
+from tqdm import tqdm
 
 # Load runs and build spatial index
 with open('runs.pkl', 'rb') as f:
@@ -28,7 +29,10 @@ def get_runs():
     bbox = box(minLng, minLat, maxLng, maxLat)
     ids = list(idx.intersection((minLng, minLat, maxLng, maxLat)))
 
-    print(f"🔍 Candidate run IDs for bbox ({minLat:.3f},{minLng:.3f})→({maxLat:.3f},{maxLng:.3f}): {ids}")
+    print(
+        f"🔍 Candidate run IDs for bbox ({minLat:.3f},{minLng:.3f})→({maxLat:.3f},{maxLng:.3f}): {ids}"
+    )
+    print(f"↪ Processing {len(ids)} runs at zoom {zoom}")
 
     # choose pre-simplified geometry based on zoom level
     if zoom >= 13:
@@ -39,15 +43,22 @@ def get_runs():
         key = 'coarse'
 
     features = []
-    for rid in ids:
+    minx, miny, maxx, maxy = bbox.bounds
+    for rid in tqdm(ids, desc="runs", unit="run"):
         run = runs[rid]
         line = run['geoms'][key]
-        clipped = line.intersection(bbox)
-        if clipped.is_empty:
-            continue
+        rb = run['bbox']
+        # if run is fully contained in the bbox, avoid expensive intersection
+        if rb[0] >= minx and rb[1] >= miny and rb[2] <= maxx and rb[3] <= maxy:
+            geom = line
+        else:
+            clipped = line.intersection(bbox)
+            if clipped.is_empty:
+                continue
+            geom = clipped
         features.append({
             'type': 'Feature',
-            'geometry': mapping(clipped),
+            'geometry': mapping(geom),
             'properties': {}
         })
 

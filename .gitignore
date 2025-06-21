@@ -6,19 +6,12 @@ data/raw/*
 data/processed/*
 !data/processed/.gitkeep
 
-# Ignore tiles output
-tiles/*
-!tiles/.gitkeep
-
-# (Optional) Ignore other temp or cache files
-*.log
-*.tmp
-
 # Python
 .venv/
 __pycache__/
 *.py[cod]
 *.pyo
+*.pyc
 
-# MBTiles
-*.mbtiles
+#Other
+runs.pkl

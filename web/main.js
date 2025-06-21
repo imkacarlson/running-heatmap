@@ -5,6 +5,8 @@ const map = new maplibregl.Map({
   zoom: 4
 });
 
+let activeController = null;
+
 map.on('load', () => {
   map.addSource('runs', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
   map.addLayer({
@@ -23,9 +25,18 @@ function fetchAndUpdate() {
   const b = map.getBounds();
   const z = Math.floor(map.getZoom());
   const url = `/api/runs?minLat=${b.getSouth()}&minLng=${b.getWest()}&maxLat=${b.getNorth()}&maxLng=${b.getEast()}&zoom=${z}`;
-  fetch(url)
+
+  if (activeController) {
+    activeController.abort();
+  }
+  activeController = new AbortController();
+
+  fetch(url, { signal: activeController.signal })
     .then(r => r.json())
-    .then(data => map.getSource('runs').setData(data));
+    .then(data => map.getSource('runs').setData(data))
+    .catch(err => {
+      if (err.name !== 'AbortError') console.error(err);
+    });
 }
 
 map.on('moveend', fetchAndUpdate);

@@ -36,11 +36,15 @@ def _compute_runs(minLat, minLng, maxLat, maxLng, zoom, progress_cb=None):
     )
     print(f"↪ Processing {len(ids)} runs at zoom {zoom}")
 
-    # choose pre-simplified geometry based on zoom level
-    if zoom >= 13:
+    # choose pre-simplified geometry based on zoom level - more granular tiers
+    if zoom >= 15:
         key = 'full'
-    elif zoom >= 10:
+    elif zoom >= 12:
+        key = 'high'
+    elif zoom >= 9:
         key = 'mid'
+    elif zoom >= 6:
+        key = 'low'
     else:
         key = 'coarse'
 
@@ -61,8 +65,7 @@ def _compute_runs(minLat, minLng, maxLat, maxLng, zoom, progress_cb=None):
             geom = clipped
         features.append({
             'type': 'Feature',
-            'geometry': mapping(geom),
-            'properties': {}
+            'geometry': mapping(geom)
         })
         if progress_cb:
             progress_cb(int(i * 100 / total))
@@ -84,7 +87,12 @@ def get_runs():
     zoom = int(request.args.get('zoom'))
 
     data = _runs_for_bbox(minLat, minLng, maxLat, maxLng, zoom)
-    return jsonify(data)
+    
+    # Add caching headers for better performance
+    response = jsonify(data)
+    response.headers['Cache-Control'] = 'public, max-age=300'  # Cache for 5 minutes
+    response.headers['ETag'] = f'"{hash((minLat, minLng, maxLat, maxLng, zoom))}"'
+    return response
 
 
 @app.route('/api/stream_runs')
@@ -94,6 +102,7 @@ def stream_runs():
     maxLat = quantize(float(request.args.get('maxLat')))
     maxLng = quantize(float(request.args.get('maxLng')))
     zoom = int(request.args.get('zoom'))
+    chunk_size = int(request.args.get('chunk_size', 50))  # Features per chunk
 
     def generate():
         ids = list(idx.intersection((minLng, minLat, maxLng, maxLat)))
@@ -101,18 +110,23 @@ def stream_runs():
         print(
             f"🔍 Candidate run IDs for bbox ({minLat:.3f},{minLng:.3f})→({maxLat:.3f},{maxLng:.3f}): {ids}"
         )
-        print(f"↪ Processing {len(ids)} runs at zoom {zoom}")
+        print(f"↪ Processing {len(ids)} runs at zoom {zoom}, chunk_size={chunk_size}")
 
-        if zoom >= 13:
+        if zoom >= 15:
             key = 'full'
-        elif zoom >= 10:
+        elif zoom >= 12:
+            key = 'high'
+        elif zoom >= 9:
             key = 'mid'
+        elif zoom >= 6:
+            key = 'low'
         else:
             key = 'coarse'
 
         features = []
         minx, miny, maxx, maxy = minLng, minLat, maxLng, maxLat
         total = len(ids)
+        
         for i, rid in enumerate(tqdm(ids, desc="runs", unit="run"), 1):
             run = runs[rid]
             line = run['geoms'][key]
@@ -126,15 +140,24 @@ def stream_runs():
                 geom = clipped
             features.append({
                 'type': 'Feature',
-                'geometry': mapping(geom),
-                'properties': {}
+                'geometry': mapping(geom)
             })
+
+            # Send chunks of features as they're processed
+            if len(features) >= chunk_size:
+                chunk_data = {'type': 'FeatureCollection', 'features': features}
+                yield f"event: chunk\ndata: {json.dumps(chunk_data)}\n\n"
+                features = []  # Reset for next chunk
 
             yield f"event: progress\ndata: {int(i*100/total)}\n\n"
 
-        print(f"→ Returning {len(features)} features")
-        data = {'type': 'FeatureCollection', 'features': features}
-        yield f"event: data\ndata: {json.dumps(data)}\n\n"
+        # Send any remaining features
+        if features:
+            chunk_data = {'type': 'FeatureCollection', 'features': features}
+            yield f"event: chunk\ndata: {json.dumps(chunk_data)}\n\n"
+
+        print(f"→ Finished streaming features in chunks")
+        yield f"event: complete\ndata: done\n\n"
 
     headers = {'Cache-Control': 'no-cache'}
     return Response(stream_with_context(generate()), headers=headers, mimetype='text/event-stream')

@@ -44,12 +44,48 @@
       height: 100%;
       transition: width 0.2s ease;
     }
+
+    /* Loading indicator */
+    #loading-indicator {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 15px 25px;
+      border-radius: 5px;
+      font-family: Arial, sans-serif;
+      font-size: 14px;
+      display: none;
+      z-index: 1000;
+    }
+
+    .spinner {
+      border: 2px solid #f3f3f3;
+      border-top: 2px solid #007bff;
+      border-radius: 50%;
+      width: 16px;
+      height: 16px;
+      animation: spin 1s linear infinite;
+      display: inline-block;
+      margin-right: 8px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
   </style>
 </head>
 
 <body>
   <div id="map"></div>
   <div id="progress-container"></div>
+  <div id="loading-indicator">
+    <div class="spinner"></div>
+    Loading runs...
+  </div>
 
   <script>
     const map = new maplibregl.Map({
@@ -102,6 +138,7 @@
     });
 
     const progressContainer = document.getElementById('progress-container');
+    const loadingIndicator = document.getElementById('loading-indicator');
 
     function createProgress() {
       const wrapper = document.createElement('div');
@@ -122,13 +159,28 @@
     }
 
     let activeRequest = null;
+    let debounceTimeout = null;
 
     function fetchAndUpdate() {
+      // Debounce rapid pan/zoom events
+      if (debounceTimeout) {
+        clearTimeout(debounceTimeout);
+      }
+      
+      debounceTimeout = setTimeout(() => {
+        performFetch();
+      }, 150); // 150ms debounce delay
+    }
+
+    function performFetch() {
       if (activeRequest) {
         activeRequest.es.close();
         removeProgress(activeRequest.wrapper);
         activeRequest = null;
       }
+
+      // Show loading indicator at start
+      loadingIndicator.style.display = 'block';
 
       const b = map.getBounds();
       const z = Math.floor(map.getZoom());
@@ -140,17 +192,40 @@
 
       const finalize = () => {
         removeProgress(wrapper);
+        loadingIndicator.style.display = 'none';
         if (activeRequest && activeRequest.es === es) {
           activeRequest = null;
         }
         es.close();
       };
 
+      let allFeatures = [];
+
       es.addEventListener('progress', (e) => {
         bar.style.width = e.data + '%';
+        // Hide loading indicator once progress starts
+        if (loadingIndicator.style.display !== 'none') {
+          loadingIndicator.style.display = 'none';
+        }
+      });
+
+      es.addEventListener('chunk', (e) => {
+        const chunkData = JSON.parse(e.data);
+        allFeatures = allFeatures.concat(chunkData.features);
+        
+        // Update map with accumulated features for progressive rendering
+        map.getSource('runs').setData({
+          type: 'FeatureCollection',
+          features: allFeatures
+        });
+      });
+
+      es.addEventListener('complete', (e) => {
+        finalize();
       });
 
       es.addEventListener('data', (e) => {
+        // Fallback for old single-response mode
         map.getSource('runs').setData(JSON.parse(e.data));
         finalize();
       });

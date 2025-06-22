@@ -184,7 +184,17 @@
 
       const b = map.getBounds();
       const z = Math.floor(map.getZoom());
-      const url = `/api/stream_runs?minLat=${b.getSouth()}&minLng=${b.getWest()}&maxLat=${b.getNorth()}&maxLng=${b.getEast()}&zoom=${z}`;
+      
+      // Add buffer to bounds to ensure lines extending beyond viewport are included
+      const latBuffer = (b.getNorth() - b.getSouth()) * 0.1; // 10% buffer
+      const lngBuffer = (b.getEast() - b.getWest()) * 0.1;   // 10% buffer
+      
+      const minLat = b.getSouth() - latBuffer;
+      const maxLat = b.getNorth() + latBuffer;
+      const minLng = b.getWest() - lngBuffer;
+      const maxLng = b.getEast() + lngBuffer;
+      
+      const url = `/api/stream_runs?minLat=${minLat}&minLng=${minLng}&maxLat=${maxLat}&maxLng=${maxLng}&zoom=${z}`;
 
       const { wrapper, bar } = createProgress();
       const es = new EventSource(url);

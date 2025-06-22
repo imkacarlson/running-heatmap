@@ -9,6 +9,8 @@ let activeController = null;
 const caches = {}; // zoom -> {bounds, data}
 const cacheOrder = [];
 const MAX_CACHES = 3;
+let lastCenter = null;
+let lastZoom = null;
 
 function withinBounds(outer, inner) {
   return (
@@ -44,7 +46,8 @@ function storeCache(zoom, bounds, data) {
 }
 
 function marginForZoom(z) {
-  if (z >= 13) return 1.0;
+  if (z >= 15) return 4.0;
+  if (z >= 13) return 2.0;
   if (z >= 11) return 0.5;
   return 0.25;
 }
@@ -66,10 +69,22 @@ map.on('load', () => {
 function fetchAndUpdate() {
   const view = map.getBounds();
   const z = Math.floor(map.getZoom());
+  const center = map.getCenter();
 
   const cached = getCached(view, z);
   if (cached) {
     map.getSource('runs').setData(cached);
+  }
+
+  const latSpan = view.getNorth() - view.getSouth();
+  const lngSpan = view.getEast() - view.getWest();
+  const centerMoved =
+    !lastCenter ||
+    Math.abs(center.lat - lastCenter.lat) > latSpan * 0.2 ||
+    Math.abs(center.lng - lastCenter.lng) > lngSpan * 0.2 ||
+    z !== lastZoom;
+
+  if (!centerMoved && cached) {
     return;
   }
 
@@ -93,6 +108,8 @@ function fetchAndUpdate() {
       const bounds = new maplibregl.LngLatBounds([minLng, minLat], [maxLng, maxLat]);
       storeCache(z, bounds, data);
       map.getSource('runs').setData(data);
+      lastCenter = center;
+      lastZoom = z;
     })
     .catch(err => {
       if (err.name !== 'AbortError') console.error(err);

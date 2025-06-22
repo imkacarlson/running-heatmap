@@ -8,6 +8,7 @@ const map = new maplibregl.Map({
 let activeController = null;
 let cachedBounds = null;
 let cachedData = null;
+let cachedZoom = null;
 
 function withinBounds(outer, inner) {
   return (
@@ -34,8 +35,9 @@ map.on('load', () => {
 
 function fetchAndUpdate() {
   const view = map.getBounds();
+  const z = Math.floor(map.getZoom());
 
-  if (cachedBounds && withinBounds(cachedBounds, view)) {
+  if (cachedBounds && cachedZoom === z && withinBounds(cachedBounds, view)) {
     map.getSource('runs').setData(cachedData);
     return;
   }
@@ -47,7 +49,6 @@ function fetchAndUpdate() {
   const minLng = view.getWest() - lngExt;
   const maxLat = view.getNorth() + latExt;
   const maxLng = view.getEast() + lngExt;
-  const z = Math.floor(map.getZoom());
   const url = `/api/runs?minLat=${minLat}&minLng=${minLng}&maxLat=${maxLat}&maxLng=${maxLng}&zoom=${z}`;
 
   if (activeController) {
@@ -60,6 +61,7 @@ function fetchAndUpdate() {
     .then(data => {
       cachedBounds = new maplibregl.LngLatBounds([minLng, minLat], [maxLng, maxLat]);
       cachedData = data;
+      cachedZoom = z;
       map.getSource('runs').setData(data);
     })
     .catch(err => {

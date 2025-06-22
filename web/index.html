@@ -141,6 +141,16 @@
 
       currentFeatures = [];
       map.getSource('runs').setData({ type: 'FeatureCollection', features: [] });
+      let updateScheduled = false;
+
+      function scheduleUpdate() {
+        if (updateScheduled) return;
+        updateScheduled = true;
+        requestAnimationFrame(() => {
+          map.getSource('runs').setData({ type: 'FeatureCollection', features: currentFeatures });
+          updateScheduled = false;
+        });
+      }
 
       const finalize = () => {
         removeProgress(wrapper);
@@ -156,10 +166,13 @@
 
       es.addEventListener('feature', (e) => {
         currentFeatures.push(JSON.parse(e.data));
-        map.getSource('runs').setData({ type: 'FeatureCollection', features: currentFeatures });
+        scheduleUpdate();
       });
 
-      es.addEventListener('done', finalize);
+      es.addEventListener('done', () => {
+        scheduleUpdate();
+        finalize();
+      });
 
       es.onerror = finalize;
     }

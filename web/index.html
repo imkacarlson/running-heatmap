@@ -122,6 +122,7 @@
     }
 
     let activeRequest = null;
+    let currentFeatures = [];
 
     function fetchAndUpdate() {
       if (activeRequest) {
@@ -138,6 +139,9 @@
       const es = new EventSource(url);
       activeRequest = { es, wrapper };
 
+      currentFeatures = [];
+      map.getSource('runs').setData({ type: 'FeatureCollection', features: [] });
+
       const finalize = () => {
         removeProgress(wrapper);
         if (activeRequest && activeRequest.es === es) {
@@ -150,10 +154,12 @@
         bar.style.width = e.data + '%';
       });
 
-      es.addEventListener('data', (e) => {
-        map.getSource('runs').setData(JSON.parse(e.data));
-        finalize();
+      es.addEventListener('feature', (e) => {
+        currentFeatures.push(JSON.parse(e.data));
+        map.getSource('runs').setData({ type: 'FeatureCollection', features: currentFeatures });
       });
+
+      es.addEventListener('done', finalize);
 
       es.onerror = finalize;
     }

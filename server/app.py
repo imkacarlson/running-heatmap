@@ -110,7 +110,6 @@ def stream_runs():
         else:
             key = 'coarse'
 
-        features = []
         minx, miny, maxx, maxy = minLng, minLat, maxLng, maxLat
         total = len(ids)
         for i, rid in enumerate(tqdm(ids, desc="runs", unit="run"), 1):
@@ -124,17 +123,16 @@ def stream_runs():
                 if clipped.is_empty:
                     continue
                 geom = clipped
-            features.append({
+            feature = {
                 'type': 'Feature',
                 'geometry': mapping(geom),
                 'properties': {}
-            })
+            }
 
+            yield f"event: feature\ndata: {json.dumps(feature)}\n\n"
             yield f"event: progress\ndata: {int(i*100/total)}\n\n"
 
-        print(f"→ Returning {len(features)} features")
-        data = {'type': 'FeatureCollection', 'features': features}
-        yield f"event: data\ndata: {json.dumps(data)}\n\n"
+        yield "event: done\ndata: end\n\n"
 
     headers = {'Cache-Control': 'no-cache'}
     return Response(stream_with_context(generate()), headers=headers, mimetype='text/event-stream')

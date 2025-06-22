@@ -121,13 +121,21 @@
       }
     }
 
+    let activeRequest = null;
+
     function fetchAndUpdate() {
+      if (activeRequest) {
+        activeRequest.xhr.abort();
+      }
+
       const b = map.getBounds();
       const z = Math.floor(map.getZoom());
       const url = `/api/runs?minLat=${b.getSouth()}&minLng=${b.getWest()}&maxLat=${b.getNorth()}&maxLng=${b.getEast()}&zoom=${z}`;
 
       const { wrapper, bar } = createProgress();
       const xhr = new XMLHttpRequest();
+      activeRequest = { xhr, wrapper };
+
       xhr.open('GET', url);
       xhr.responseType = 'json';
       xhr.onprogress = (e) => {
@@ -136,11 +144,20 @@
           bar.style.width = pct + '%';
         }
       };
-      xhr.onload = () => {
+
+      const finalize = () => {
         removeProgress(wrapper);
+        if (activeRequest && activeRequest.xhr === xhr) {
+          activeRequest = null;
+        }
+      };
+
+      xhr.onload = () => {
+        finalize();
         map.getSource('runs').setData(xhr.response);
       };
-      xhr.onerror = () => removeProgress(wrapper);
+      xhr.onerror = finalize;
+      xhr.onabort = finalize;
       xhr.send();
     }
 

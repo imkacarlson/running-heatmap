@@ -6,9 +6,9 @@ const map = new maplibregl.Map({
 });
 
 let activeController = null;
-let cachedBounds = null;
-let cachedData = null;
-let cachedZoom = null;
+const caches = {}; // zoom -> {bounds, data}
+const cacheOrder = [];
+const MAX_CACHES = 3;
 
 function withinBounds(outer, inner) {
   return (
@@ -17,6 +17,36 @@ function withinBounds(outer, inner) {
     inner.getWest() >= outer.getWest() &&
     inner.getEast() <= outer.getEast()
   );
+}
+
+function getCached(view, zoom) {
+  const levels = Object.keys(caches)
+    .map((z) => parseInt(z, 10))
+    .sort((a, b) => b - a);
+  for (const z of levels) {
+    const entry = caches[z];
+    if (z >= zoom && withinBounds(entry.bounds, view)) {
+      return entry.data;
+    }
+  }
+  return null;
+}
+
+function storeCache(zoom, bounds, data) {
+  caches[zoom] = { bounds, data };
+  const idx = cacheOrder.indexOf(zoom);
+  if (idx !== -1) cacheOrder.splice(idx, 1);
+  cacheOrder.unshift(zoom);
+  if (cacheOrder.length > MAX_CACHES) {
+    const old = cacheOrder.pop();
+    delete caches[old];
+  }
+}
+
+function marginForZoom(z) {
+  if (z >= 13) return 1.0;
+  if (z >= 11) return 0.5;
+  return 0.25;
 }
 
 map.on('load', () => {
@@ -37,12 +67,13 @@ function fetchAndUpdate() {
   const view = map.getBounds();
   const z = Math.floor(map.getZoom());
 
-  if (cachedBounds && cachedZoom === z && withinBounds(cachedBounds, view)) {
-    map.getSource('runs').setData(cachedData);
+  const cached = getCached(view, z);
+  if (cached) {
+    map.getSource('runs').setData(cached);
     return;
   }
 
-  const margin = 0.25; // fetch 25% beyond current view
+  const margin = marginForZoom(z);
   const latExt = (view.getNorth() - view.getSouth()) * margin;
   const lngExt = (view.getEast() - view.getWest()) * margin;
   const minLat = view.getSouth() - latExt;
@@ -59,9 +90,8 @@ function fetchAndUpdate() {
   fetch(url, { signal: activeController.signal })
     .then(r => r.json())
     .then(data => {
-      cachedBounds = new maplibregl.LngLatBounds([minLng, minLat], [maxLng, maxLat]);
-      cachedData = data;
-      cachedZoom = z;
+      const bounds = new maplibregl.LngLatBounds([minLng, minLat], [maxLng, maxLat]);
+      storeCache(z, bounds, data);
       map.getSource('runs').setData(data);
     })
     .catch(err => {

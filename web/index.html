@@ -160,6 +160,8 @@
 
     let activeRequest = null;
     let debounceTimeout = null;
+    let preloadCache = new Map(); // Cache for preloaded data
+    let activePreloads = new Set(); // Track active preload requests
 
     function fetchAndUpdate() {
       // Debounce rapid pan/zoom events
@@ -179,9 +181,6 @@
         activeRequest = null;
       }
 
-      // Show loading indicator at start
-      loadingIndicator.style.display = 'block';
-
       const b = map.getBounds();
       const z = Math.floor(map.getZoom());
       
@@ -193,6 +192,17 @@
       const maxLat = b.getNorth() + latBuffer;
       const minLng = b.getWest() - lngBuffer;
       const maxLng = b.getEast() + lngBuffer;
+      
+      // Check cache first for instant loading at street level
+      const cachedData = checkCacheForCurrentView(minLat, minLng, maxLat, maxLng, z);
+      if (cachedData) {
+        console.log('🚀 Using cached data for instant loading');
+        map.getSource('runs').setData(cachedData);
+        return;
+      }
+
+      // Show loading indicator at start
+      loadingIndicator.style.display = 'block';
       
       const url = `/api/stream_runs?minLat=${minLat}&minLng=${minLng}&maxLat=${maxLat}&maxLng=${maxLng}&zoom=${z}`;
 
@@ -231,19 +241,110 @@
       });
 
       es.addEventListener('complete', (e) => {
+        // Cache the final accumulated data for future instant loading
+        if (allFeatures.length > 0) {
+          const cacheKey = `${minLat.toFixed(4)},${minLng.toFixed(4)},${maxLat.toFixed(4)},${maxLng.toFixed(4)}_${z}`;
+          const finalData = { type: 'FeatureCollection', features: allFeatures };
+          preloadCache.set(cacheKey, finalData);
+        }
         finalize();
       });
 
       es.addEventListener('data', (e) => {
         // Fallback for old single-response mode
-        map.getSource('runs').setData(JSON.parse(e.data));
+        const data = JSON.parse(e.data);
+        map.getSource('runs').setData(data);
+        
+        // Cache this data too
+        const cacheKey = `${minLat.toFixed(4)},${minLng.toFixed(4)},${maxLat.toFixed(4)},${maxLng.toFixed(4)}_${z}`;
+        preloadCache.set(cacheKey, data);
+        
         finalize();
       });
 
       es.onerror = finalize;
     }
 
-    map.on('moveend', fetchAndUpdate);
+    // Preloading system for street-level optimization
+    function generateAdjacentBounds(centerBounds, bufferFactor = 0.1) {
+      const latSpan = centerBounds.getNorth() - centerBounds.getSouth();
+      const lngSpan = centerBounds.getEast() - centerBounds.getWest();
+      
+      const latStep = latSpan * (1 + bufferFactor * 2);
+      const lngStep = lngSpan * (1 + bufferFactor * 2);
+      
+      const adjacent = [];
+      
+      // Generate 3x3 grid around current view (excluding center)
+      for (let latOffset = -1; latOffset <= 1; latOffset++) {
+        for (let lngOffset = -1; lngOffset <= 1; lngOffset++) {
+          if (latOffset === 0 && lngOffset === 0) continue; // Skip center (current view)
+          
+          const south = centerBounds.getSouth() + (latOffset * latStep);
+          const north = centerBounds.getNorth() + (latOffset * latStep);
+          const west = centerBounds.getWest() + (lngOffset * lngStep);
+          const east = centerBounds.getEast() + (lngOffset * lngStep);
+          
+          adjacent.push({
+            minLat: south, maxLat: north,
+            minLng: west, maxLng: east,
+            key: `${south.toFixed(4)},${west.toFixed(4)},${north.toFixed(4)},${east.toFixed(4)}`
+          });
+        }
+      }
+      
+      return adjacent;
+    }
+
+    function preloadAdjacentAreas() {
+      const zoom = Math.floor(map.getZoom());
+      
+      // Only preload at street level (zoom 14+) where users pan locally
+      if (zoom < 14) return;
+      
+      const bounds = map.getBounds();
+      const adjacentAreas = generateAdjacentBounds(bounds);
+      
+      adjacentAreas.forEach(area => {
+        const cacheKey = `${area.key}_${zoom}`;
+        
+        // Skip if already cached or currently loading
+        if (preloadCache.has(cacheKey) || activePreloads.has(cacheKey)) return;
+        
+        activePreloads.add(cacheKey);
+        
+        // Make background request
+        fetch(`/api/runs?minLat=${area.minLat}&minLng=${area.minLng}&maxLat=${area.maxLat}&maxLng=${area.maxLng}&zoom=${zoom}`)
+          .then(r => r.json())
+          .then(data => {
+            preloadCache.set(cacheKey, data);
+            
+            // Clean up old cache entries (keep last 20)
+            if (preloadCache.size > 20) {
+              const keys = Array.from(preloadCache.keys());
+              keys.slice(0, preloadCache.size - 20).forEach(key => preloadCache.delete(key));
+            }
+          })
+          .catch(err => console.log('Preload failed:', err))
+          .finally(() => {
+            activePreloads.delete(cacheKey);
+          });
+      });
+    }
+
+    function checkCacheForCurrentView(minLat, minLng, maxLat, maxLng, zoom) {
+      const key = `${minLat.toFixed(4)},${minLng.toFixed(4)},${maxLat.toFixed(4)},${maxLng.toFixed(4)}_${zoom}`;
+      return preloadCache.get(key);
+    }
+
+    map.on('moveend', () => {
+      fetchAndUpdate();
+      
+      // Start preloading adjacent areas after a short delay
+      setTimeout(() => {
+        preloadAdjacentAreas();
+      }, 500);
+    });
   </script>
 </body>
 

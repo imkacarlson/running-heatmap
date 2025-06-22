@@ -3,7 +3,8 @@ import json
 import time
 from functools import lru_cache
 from flask import Flask, request, jsonify, send_from_directory, Response, stream_with_context
-from shapely.geometry import box, mapping
+from shapely.geometry import mapping
+from shapely import clip_by_rect
 from tqdm import tqdm
 
 # Load runs and build spatial index
@@ -28,7 +29,6 @@ def quantize(val, digits=3):
 
 
 def _compute_runs(minLat, minLng, maxLat, maxLng, zoom, progress_cb=None):
-    bbox = box(minLng, minLat, maxLng, maxLat)
     ids = list(idx.intersection((minLng, minLat, maxLng, maxLat)))
 
     print(
@@ -45,7 +45,7 @@ def _compute_runs(minLat, minLng, maxLat, maxLng, zoom, progress_cb=None):
         key = 'coarse'
 
     features = []
-    minx, miny, maxx, maxy = bbox.bounds
+    minx, miny, maxx, maxy = minLng, minLat, maxLng, maxLat
     total = len(ids)
     for i, rid in enumerate(tqdm(ids, desc="runs", unit="run"), 1):
         run = runs[rid]
@@ -55,7 +55,7 @@ def _compute_runs(minLat, minLng, maxLat, maxLng, zoom, progress_cb=None):
         if rb[0] >= minx and rb[1] >= miny and rb[2] <= maxx and rb[3] <= maxy:
             geom = line
         else:
-            clipped = line.intersection(bbox)
+            clipped = clip_by_rect(line, minx, miny, maxx, maxy)
             if clipped.is_empty:
                 continue
             geom = clipped
@@ -96,7 +96,6 @@ def stream_runs():
     zoom = int(request.args.get('zoom'))
 
     def generate():
-        bbox = box(minLng, minLat, maxLng, maxLat)
         ids = list(idx.intersection((minLng, minLat, maxLng, maxLat)))
 
         print(
@@ -112,7 +111,7 @@ def stream_runs():
             key = 'coarse'
 
         features = []
-        minx, miny, maxx, maxy = bbox.bounds
+        minx, miny, maxx, maxy = minLng, minLat, maxLng, maxLat
         total = len(ids)
         for i, rid in enumerate(tqdm(ids, desc="runs", unit="run"), 1):
             run = runs[rid]
@@ -121,7 +120,7 @@ def stream_runs():
             if rb[0] >= minx and rb[1] >= miny and rb[2] <= maxx and rb[3] <= maxy:
                 geom = line
             else:
-                clipped = line.intersection(bbox)
+                clipped = clip_by_rect(line, minx, miny, maxx, maxy)
                 if clipped.is_empty:
                     continue
                 geom = clipped

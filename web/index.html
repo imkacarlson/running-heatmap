@@ -61,6 +61,26 @@
       z-index: 1000;
     }
 
+    /* Rendering status indicator */
+    #render-status {
+      position: absolute;
+      bottom: 10px;
+      right: 10px;
+      background: rgba(0, 0, 0, 0.7);
+      color: white;
+      padding: 8px 12px;
+      border-radius: 3px;
+      font-family: Arial, sans-serif;
+      font-size: 12px;
+      display: none;
+      z-index: 1000;
+    }
+
+    .render-active {
+      background: rgba(255, 165, 0, 0.8) !important;
+      color: black !important;
+    }
+
     .spinner {
       border: 2px solid #f3f3f3;
       border-top: 2px solid #007bff;
@@ -86,6 +106,7 @@
     <div class="spinner"></div>
     Loading runs...
   </div>
+  <div id="render-status">Rendering...</div>
 
   <script>
     const map = new maplibregl.Map({
@@ -139,6 +160,7 @@
 
     const progressContainer = document.getElementById('progress-container');
     const loadingIndicator = document.getElementById('loading-indicator');
+    const renderStatus = document.getElementById('render-status');
 
     function createProgress() {
       const wrapper = document.createElement('div');
@@ -162,6 +184,8 @@
     let debounceTimeout = null;
     let preloadCache = new Map(); // Cache for preloaded data
     let activePreloads = new Set(); // Track active preload requests
+    let renderTimeout = null;
+    let isRendering = false;
 
     function fetchAndUpdate() {
       // Debounce rapid pan/zoom events
@@ -197,7 +221,9 @@
       const cachedData = checkCacheForCurrentView(minLat, minLng, maxLat, maxLng, z);
       if (cachedData) {
         console.log('🚀 Using cached data for instant loading');
+        showRenderingStatus();
         map.getSource('runs').setData(cachedData);
+        trackRenderingComplete();
         return;
       }
 
@@ -217,6 +243,9 @@
           activeRequest = null;
         }
         es.close();
+        
+        // Ensure rendering tracking is triggered for final completion
+        trackRenderingComplete();
       };
 
       let allFeatures = [];
@@ -233,11 +262,18 @@
         const chunkData = JSON.parse(e.data);
         allFeatures = allFeatures.concat(chunkData.features);
         
+        // Show rendering status when first chunk arrives
+        if (allFeatures.length === chunkData.features.length) {
+          showRenderingStatus();
+        }
+        
         // Update map with accumulated features for progressive rendering
         map.getSource('runs').setData({
           type: 'FeatureCollection',
           features: allFeatures
         });
+        
+        trackRenderingComplete();
       });
 
       es.addEventListener('complete', (e) => {
@@ -253,7 +289,9 @@
       es.addEventListener('data', (e) => {
         // Fallback for old single-response mode
         const data = JSON.parse(e.data);
+        showRenderingStatus();
         map.getSource('runs').setData(data);
+        trackRenderingComplete();
         
         // Cache this data too
         const cacheKey = `${minLat.toFixed(4)},${minLng.toFixed(4)},${maxLat.toFixed(4)},${maxLng.toFixed(4)}_${z}`;
@@ -263,6 +301,49 @@
       });
 
       es.onerror = finalize;
+    }
+
+    // Rendering progress tracking functions
+    function showRenderingStatus() {
+      if (!isRendering) {
+        isRendering = true;
+        renderStatus.style.display = 'block';
+        renderStatus.className = 'render-active';
+        renderStatus.textContent = 'Rendering lines...';
+        
+        // Clear any existing timeout
+        if (renderTimeout) {
+          clearTimeout(renderTimeout);
+        }
+      }
+    }
+
+    function trackRenderingComplete() {
+      // Use RAF to detect when browser has finished rendering
+      if (renderTimeout) {
+        clearTimeout(renderTimeout);
+      }
+      
+      // Multiple approaches to detect rendering completion
+      renderTimeout = setTimeout(() => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            // Wait for 2 RAF cycles to ensure rendering is done
+            setTimeout(() => {
+              if (isRendering) {
+                isRendering = false;
+                renderStatus.className = '';
+                renderStatus.textContent = 'Rendering complete';
+                
+                // Hide status after 2 seconds
+                setTimeout(() => {
+                  renderStatus.style.display = 'none';
+                }, 2000);
+              }
+            }, 50); // Small delay to catch heavy rendering
+          });
+        });
+      }, 100); // Initial delay to batch rapid updates
     }
 
     // Preloading system for street-level optimization

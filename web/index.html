@@ -122,6 +122,17 @@
     }
 
     let activeRequest = null;
+    let cachedBounds = null;
+    let cachedData = null;
+
+    function withinBounds(outer, inner) {
+      return (
+        inner.getSouth() >= outer.getSouth() &&
+        inner.getNorth() <= outer.getNorth() &&
+        inner.getWest() >= outer.getWest() &&
+        inner.getEast() <= outer.getEast()
+      );
+    }
 
     function fetchAndUpdate() {
       if (activeRequest) {
@@ -130,9 +141,22 @@
         activeRequest = null;
       }
 
-      const b = map.getBounds();
+      const view = map.getBounds();
+
+      if (cachedBounds && withinBounds(cachedBounds, view)) {
+        map.getSource('runs').setData(cachedData);
+        return;
+      }
+
+      const margin = 0.25;
+      const latExt = (view.getNorth() - view.getSouth()) * margin;
+      const lngExt = (view.getEast() - view.getWest()) * margin;
+      const minLat = view.getSouth() - latExt;
+      const minLng = view.getWest() - lngExt;
+      const maxLat = view.getNorth() + latExt;
+      const maxLng = view.getEast() + lngExt;
       const z = Math.floor(map.getZoom());
-      const url = `/api/stream_runs?minLat=${b.getSouth()}&minLng=${b.getWest()}&maxLat=${b.getNorth()}&maxLng=${b.getEast()}&zoom=${z}`;
+      const url = `/api/stream_runs?minLat=${minLat}&minLng=${minLng}&maxLat=${maxLat}&maxLng=${maxLng}&zoom=${z}`;
 
       const { wrapper, bar } = createProgress();
       const es = new EventSource(url);
@@ -151,7 +175,10 @@
       });
 
       es.addEventListener('data', (e) => {
-        map.getSource('runs').setData(JSON.parse(e.data));
+        const data = JSON.parse(e.data);
+        cachedBounds = new maplibregl.LngLatBounds([minLng, minLat], [maxLng, maxLat]);
+        cachedData = data;
+        map.getSource('runs').setData(data);
         finalize();
       });
 

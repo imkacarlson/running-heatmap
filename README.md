@@ -75,6 +75,6 @@ map.addLayer({
 
 * **Adding new runs**: Drop new `.gpx`/`.fit.gz` files into `data/raw/` then re-run step 1.
 * **Rebuilding data**: No external tile build—server streams GeoJSON slices on demand.
-* **Performance**: The importer precomputes simplified geometries for multiple zoom levels. The server uses these along with an R-tree spatial index so panning and zooming stay responsive.
+* **Performance**: The importer precomputes simplified geometries for multiple zoom levels. The server uses these along with an R-tree spatial index so panning and zooming stay responsive. The front-end also caches data for a slightly larger area than is visible so that short pans don't require additional requests.
 
 Enjoy exploring your run history!

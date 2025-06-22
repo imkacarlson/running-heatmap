@@ -6,6 +6,17 @@ const map = new maplibregl.Map({
 });
 
 let activeController = null;
+let cachedBounds = null;
+let cachedData = null;
+
+function withinBounds(outer, inner) {
+  return (
+    inner.getSouth() >= outer.getSouth() &&
+    inner.getNorth() <= outer.getNorth() &&
+    inner.getWest() >= outer.getWest() &&
+    inner.getEast() <= outer.getEast()
+  );
+}
 
 map.on('load', () => {
   map.addSource('runs', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
@@ -22,9 +33,22 @@ map.on('load', () => {
 });
 
 function fetchAndUpdate() {
-  const b = map.getBounds();
+  const view = map.getBounds();
+
+  if (cachedBounds && withinBounds(cachedBounds, view)) {
+    map.getSource('runs').setData(cachedData);
+    return;
+  }
+
+  const margin = 0.25; // fetch 25% beyond current view
+  const latExt = (view.getNorth() - view.getSouth()) * margin;
+  const lngExt = (view.getEast() - view.getWest()) * margin;
+  const minLat = view.getSouth() - latExt;
+  const minLng = view.getWest() - lngExt;
+  const maxLat = view.getNorth() + latExt;
+  const maxLng = view.getEast() + lngExt;
   const z = Math.floor(map.getZoom());
-  const url = `/api/runs?minLat=${b.getSouth()}&minLng=${b.getWest()}&maxLat=${b.getNorth()}&maxLng=${b.getEast()}&zoom=${z}`;
+  const url = `/api/runs?minLat=${minLat}&minLng=${minLng}&maxLat=${maxLat}&maxLng=${maxLng}&zoom=${z}`;
 
   if (activeController) {
     activeController.abort();
@@ -33,7 +57,11 @@ function fetchAndUpdate() {
 
   fetch(url, { signal: activeController.signal })
     .then(r => r.json())
-    .then(data => map.getSource('runs').setData(data))
+    .then(data => {
+      cachedBounds = new maplibregl.LngLatBounds([minLng, minLat], [maxLng, maxLat]);
+      cachedData = data;
+      map.getSource('runs').setData(data);
+    })
     .catch(err => {
       if (err.name !== 'AbortError') console.error(err);
     });

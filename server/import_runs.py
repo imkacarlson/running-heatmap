@@ -172,7 +172,7 @@ def main():
                                 tf.close()
                                 coords = parser(tf.name)
                                 
-                                if coords:
+                                if coords and len(coords) >= 2:
                                     rid += 1
                                     ls = LineString(coords)
                                     runs[rid] = {
@@ -195,7 +195,7 @@ def main():
             # Handle individual files
             coords = process_file(path, fname)
             
-            if coords:
+            if coords and len(coords) >= 2:
                 rid += 1
                 ls = LineString(coords)
                 runs[rid] = {

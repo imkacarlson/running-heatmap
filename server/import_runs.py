@@ -3,6 +3,7 @@ import gzip
 import pickle
 import tempfile
 import zipfile
+import xml.etree.ElementTree as ET
 from shapely.geometry import LineString
 import gpxpy
 from fitdecode import FitReader, FitDataMessage
@@ -45,6 +46,34 @@ def parse_fit(path):
     return coords
 
 
+def parse_tcx(path):
+    coords = []
+    try:
+        tree = ET.parse(path)
+        root = tree.getroot()
+        
+        # TCX namespace
+        ns = {'tcx': 'http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2'}
+        
+        # Find all trackpoints with position data
+        for trackpoint in root.findall('.//tcx:Trackpoint[tcx:Position]', ns):
+            pos = trackpoint.find('tcx:Position', ns)
+            if pos is not None:
+                lat_elem = pos.find('tcx:LatitudeDegrees', ns)
+                lon_elem = pos.find('tcx:LongitudeDegrees', ns)
+                if lat_elem is not None and lon_elem is not None:
+                    try:
+                        lat = float(lat_elem.text)
+                        lon = float(lon_elem.text)
+                        coords.append((lon, lat))
+                    except (ValueError, TypeError):
+                        continue
+    except (ET.ParseError, FileNotFoundError):
+        pass
+    
+    return coords
+
+
 def process_file(file_path, file_name):
     """Process a single file and return coordinates if valid."""
     lower = file_name.lower()
@@ -73,6 +102,10 @@ def process_file(file_path, file_name):
     elif lower.endswith('.gpx'):
         coords = parse_gpx(file_path)
 
+    # TCX files (sometimes disguised as .txt)
+    elif lower.endswith(('.tcx', '.txt')):
+        coords = parse_tcx(file_path)
+
     return coords
 
 
@@ -87,8 +120,9 @@ def count_total_artifacts(files):
         lower = fname.lower()
         if lower.endswith('.zip'):
             with zipfile.ZipFile(path, 'r') as zf:
-                total += sum(1 for name in zf.namelist() if name.lower().endswith('.fit'))
-        elif lower.endswith(('.fit.gz', '.gpx.gz', '.fit', '.gpx')):
+                total += sum(1 for name in zf.namelist() 
+                           if name.lower().endswith(('.fit', '.txt', '.tcx')))
+        elif lower.endswith(('.fit.gz', '.gpx.gz', '.fit', '.gpx', '.tcx', '.txt')):
             total += 1
     return total
 
@@ -119,13 +153,24 @@ def main():
         if lower.endswith('.zip'):
             with zipfile.ZipFile(path, 'r') as zf:
                 for zip_fname in zf.namelist():
-                    if zip_fname.lower().endswith('.fit'):
+                    zip_lower = zip_fname.lower()
+                    if zip_lower.endswith(('.fit', '.txt', '.tcx')):
                         with zf.open(zip_fname) as zf_file:
-                            tf = tempfile.NamedTemporaryFile(suffix='.fit', delete=False)
+                            # Determine appropriate suffix and parser
+                            if zip_lower.endswith('.fit'):
+                                suffix = '.fit'
+                                parser = parse_fit
+                            elif zip_lower.endswith(('.txt', '.tcx')):
+                                suffix = '.tcx'
+                                parser = parse_tcx
+                            else:
+                                continue
+                                
+                            tf = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
                             try:
                                 tf.write(zf_file.read())
                                 tf.close()
-                                coords = parse_fit(tf.name)
+                                coords = parser(tf.name)
                                 
                                 if coords:
                                     rid += 1
@@ -163,10 +208,10 @@ def main():
                         'coarse': ls.simplify(0.0005, preserve_topology=False)
                     }
                 }
-            elif lower.endswith(('.fit.gz', '.gpx.gz', '.fit', '.gpx')):
+            elif lower.endswith(('.fit.gz', '.gpx.gz', '.fit', '.gpx', '.tcx', '.txt')):
                 skipped_count += 1
             # Update progress regardless of whether coords were found
-            if lower.endswith(('.fit.gz', '.gpx.gz', '.fit', '.gpx')):
+            if lower.endswith(('.fit.gz', '.gpx.gz', '.fit', '.gpx', '.tcx', '.txt')):
                 pbar.update(1)
 
     pbar.close()

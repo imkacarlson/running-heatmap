@@ -110,7 +110,7 @@ def stream_runs():
     if filter_runs:
         try:
             # Handle special case for showing no runs
-            if filter_runs == '0':
+            if filter_runs == '-1':
                 selected_run_ids = set()  # Empty set means show no runs
             else:
                 selected_run_ids = set(map(int, filter_runs.split(',')))

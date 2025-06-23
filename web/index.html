@@ -345,7 +345,7 @@
           url += `&filter_runs=${runIds}`;
         } else {
           // If sidebar is open but no runs selected, show nothing
-          url += `&filter_runs=0`;
+          url += `&filter_runs=-1`;
         }
       }
 
@@ -725,7 +725,16 @@
 
     // Update map display to show only selected runs
     function updateMapDisplay() {
-      console.log('Selected runs:', Array.from(selectedRuns));
+      console.log('Selected runs:', Array.from(selectedRuns), 'Sidebar open:', sidebarOpen);
+      
+      // If sidebar is open and no runs selected, immediately clear the map
+      if (sidebarOpen && selectedRuns.size === 0) {
+        map.getSource('runs').setData({
+          type: 'FeatureCollection',
+          features: []
+        });
+      }
+      
       // Trigger a refresh of the map data with current selection
       fetchAndUpdate();
     }

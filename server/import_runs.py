@@ -76,8 +76,8 @@ def process_file(file_path, file_name):
     return coords
 
 
-def count_total_runs(files):
-    """Count total number of runs across all files for progress tracking."""
+def count_total_artifacts(files):
+    """Count total number of potential run artifacts across all files for progress tracking."""
     total = 0
     for fname in files:
         path = os.path.join(RAW_DIR, fname)
@@ -101,12 +101,12 @@ def main():
     files = [f for f in os.listdir(RAW_DIR)
              if os.path.isfile(os.path.join(RAW_DIR, f))]
 
-    # Count total runs for progress tracking
-    total_runs = count_total_runs(files)
-    print(f"Found {total_runs} runs to process")
+    # Count total artifacts for progress tracking
+    total_artifacts = count_total_artifacts(files)
+    print(f"Found {total_artifacts} artifacts to process")
     
-    # Create progress bar for individual runs
-    pbar = tqdm(total=total_runs, desc="Processing runs", unit="run")
+    # Create progress bar for individual artifacts
+    pbar = tqdm(total=total_artifacts, desc="Processing artifacts", unit="artifact")
 
     for fname in files:
         path = os.path.join(RAW_DIR, fname)
@@ -142,7 +142,7 @@ def main():
                                     }
                                 else:
                                     skipped_count += 1
-                                # Update progress for each .fit file processed from zip
+                                # Update progress for each artifact processed from zip
                                 pbar.update(1)
                             finally:
                                 os.unlink(tf.name)
@@ -176,7 +176,7 @@ def main():
 
     print(f"Imported {len(runs)} runs → {OUTPUT_PKL}")
     if skipped_count > 0:
-        print(f"Skipped {skipped_count} files (no GPS coordinates found)")
+        print(f"Skipped {skipped_count} artifacts (no GPS coordinates found)")
 
 
 if __name__ == '__main__':

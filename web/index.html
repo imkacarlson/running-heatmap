@@ -6,8 +6,6 @@
   <title>Run Heatmap</title>
   <script src="https://unpkg.com/maplibre-gl/dist/maplibre-gl.js"></script>
   <link href="https://unpkg.com/maplibre-gl/dist/maplibre-gl.css" rel="stylesheet" />
-  <script src="https://unpkg.com/@mapbox/mapbox-gl-draw@1.4.3/dist/mapbox-gl-draw.js"></script>
-  <link rel="stylesheet" href="https://unpkg.com/@mapbox/mapbox-gl-draw@1.4.3/dist/mapbox-gl-draw.css" type="text/css" />
   <style>
     body,
     html,
@@ -219,6 +217,7 @@
     <div class="control-btn" id="zoom-out-btn" title="Zoom Out">−</div>
     <div class="control-btn north-btn" id="reset-north-btn" title="Reset North">N</div>
     <div class="control-btn" id="lasso-btn" title="Select Area">⊙</div>
+    <div class="control-btn" id="clear-selection-btn" title="Clear Selection" style="display: none;">✕</div>
   </div>
   
   <div id="side-panel">
@@ -407,57 +406,178 @@
       map.setBearing(0);
     });
 
-    // Initialize drawing functionality
-    const draw = new MapboxDraw({
-      displayControlsDefault: false,
-      controls: {},
-      modes: {
-        ...MapboxDraw.modes,
-        'draw_polygon': MapboxDraw.modes.draw_polygon
-      }
-    });
-    map.addControl(draw);
-
+    // Custom polygon drawing functionality
     let isDrawingMode = false;
     let selectedRuns = new Set();
+    let isDrawing = false;
+    let polygonCoords = [];
+    let currentPolygon = null;
 
-    // Lasso selection functionality
+    // Lasso selection functionality with click-and-drag
     document.getElementById('lasso-btn').addEventListener('click', () => {
       if (!isDrawingMode) {
         // Start drawing mode
         isDrawingMode = true;
         document.getElementById('lasso-btn').style.background = '#007bff';
         document.getElementById('lasso-btn').style.color = 'white';
-        draw.changeMode('draw_polygon');
+        map.getCanvas().style.cursor = 'crosshair';
+        
+        // Add drawing event listeners
+        map.on('mousedown', startDrawing);
+        map.on('mousemove', continueDrawing);
+        map.on('mouseup', finishDrawing);
       } else {
         // Exit drawing mode
-        isDrawingMode = false;
-        document.getElementById('lasso-btn').style.background = 'white';
-        document.getElementById('lasso-btn').style.color = '#333';
-        draw.changeMode('simple_select');
-        draw.deleteAll();
+        exitDrawingMode();
       }
     });
 
-    // Handle polygon completion
-    map.on('draw.create', async (e) => {
-      if (e.features.length > 0) {
-        const polygon = e.features[0];
-        await queryRunsInArea(polygon.geometry.coordinates[0]);
+    function startDrawing(e) {
+      if (!isDrawingMode) return;
+      
+      e.preventDefault();
+      isDrawing = true;
+      polygonCoords = [[e.lngLat.lng, e.lngLat.lat]];
+      
+      // Clear any existing polygon
+      if (currentPolygon) {
+        map.removeLayer('selection-polygon');
+        map.removeSource('selection-polygon');
+        currentPolygon = null;
+      }
+    }
+
+    function continueDrawing(e) {
+      if (!isDrawing || !isDrawingMode) return;
+      
+      polygonCoords.push([e.lngLat.lng, e.lngLat.lat]);
+      
+      // Update the polygon display
+      updatePolygonDisplay();
+    }
+
+    function finishDrawing(e) {
+      if (!isDrawing || !isDrawingMode) return;
+      
+      isDrawing = false;
+      
+      if (polygonCoords.length >= 3) {
+        // Close the polygon
+        polygonCoords.push(polygonCoords[0]);
+        updatePolygonDisplay();
         
-        // Exit drawing mode
-        isDrawingMode = false;
-        document.getElementById('lasso-btn').style.background = 'white';
-        document.getElementById('lasso-btn').style.color = '#333';
+        // Query runs in the area
+        queryRunsInArea(polygonCoords);
+        
+        // Show clear button
+        document.getElementById('clear-selection-btn').style.display = 'block';
       }
+      
+      // Exit drawing mode
+      exitDrawingMode();
+    }
+
+    function updatePolygonDisplay() {
+      if (polygonCoords.length < 2) return;
+      
+      // Remove existing polygon if any
+      if (map.getSource('selection-polygon')) {
+        if (map.getLayer('selection-polygon-outline')) {
+          map.removeLayer('selection-polygon-outline');
+        }
+        if (map.getLayer('selection-polygon')) {
+          map.removeLayer('selection-polygon');
+        }
+        map.removeSource('selection-polygon');
+      }
+      
+      // Create polygon geometry
+      const polygonGeometry = {
+        type: 'Polygon',
+        coordinates: [polygonCoords]
+      };
+      
+      // Add polygon to map
+      map.addSource('selection-polygon', {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          geometry: polygonGeometry
+        }
+      });
+      
+      map.addLayer({
+        id: 'selection-polygon',
+        type: 'fill',
+        source: 'selection-polygon',
+        paint: {
+          'fill-color': '#007bff',
+          'fill-opacity': 0.2
+        }
+      });
+      
+      map.addLayer({
+        id: 'selection-polygon-outline',
+        type: 'line',
+        source: 'selection-polygon',
+        paint: {
+          'line-color': '#007bff',
+          'line-width': 2,
+          'line-dasharray': [5, 5]
+        }
+      });
+      
+      currentPolygon = polygonGeometry;
+    }
+
+    function exitDrawingMode() {
+      isDrawingMode = false;
+      isDrawing = false;
+      document.getElementById('lasso-btn').style.background = 'white';
+      document.getElementById('lasso-btn').style.color = '#333';
+      map.getCanvas().style.cursor = '';
+      
+      // Remove event listeners
+      map.off('mousedown', startDrawing);
+      map.off('mousemove', continueDrawing);
+      map.off('mouseup', finishDrawing);
+    }
+
+    // Clear selection functionality
+    document.getElementById('clear-selection-btn').addEventListener('click', () => {
+      clearSelection();
     });
 
-    // Side panel functionality
-    document.getElementById('panel-close').addEventListener('click', () => {
+    function clearSelection() {
+      // Remove polygon from map
+      if (map.getSource('selection-polygon')) {
+        if (map.getLayer('selection-polygon-outline')) {
+          map.removeLayer('selection-polygon-outline');
+        }
+        if (map.getLayer('selection-polygon')) {
+          map.removeLayer('selection-polygon');
+        }
+        map.removeSource('selection-polygon');
+      }
+      
+      // Clear polygon data
+      currentPolygon = null;
+      polygonCoords = [];
+      
+      // Hide clear button
+      document.getElementById('clear-selection-btn').style.display = 'none';
+      
+      // Close side panel
       document.getElementById('side-panel').classList.remove('open');
+      
       // Clear selection and show all runs
       selectedRuns.clear();
       updateMapDisplay();
+    }
+
+    // Side panel functionality
+    document.getElementById('panel-close').addEventListener('click', () => {
+      clearSelection();
     });
 
     // Query runs in selected area

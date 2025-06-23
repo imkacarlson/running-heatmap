@@ -109,7 +109,11 @@ def stream_runs():
     selected_run_ids = None
     if filter_runs:
         try:
-            selected_run_ids = set(map(int, filter_runs.split(',')))
+            # Handle special case for showing no runs
+            if filter_runs == '0':
+                selected_run_ids = set()  # Empty set means show no runs
+            else:
+                selected_run_ids = set(map(int, filter_runs.split(',')))
         except ValueError:
             pass
 
@@ -117,8 +121,12 @@ def stream_runs():
         ids = list(idx.intersection((minLng, minLat, maxLng, maxLat)))
         
         # Filter by selected runs if provided
-        if selected_run_ids:
-            ids = [rid for rid in ids if rid in selected_run_ids]
+        if selected_run_ids is not None:
+            if len(selected_run_ids) == 0:
+                # Show no runs
+                ids = []
+            else:
+                ids = [rid for rid in ids if rid in selected_run_ids]
 
         print(
             f"🔍 Candidate run IDs for bbox ({minLat:.3f},{minLng:.3f})→({maxLat:.3f},{maxLng:.3f}): {len(ids)} runs"

@@ -337,11 +337,16 @@
       const b = map.getBounds();
       const z = Math.floor(map.getZoom());
       
-      // Add run filtering if we have selected runs
+      // Add run filtering if sidebar is open
       let url = `/api/stream_runs?minLat=${b.getSouth()}&minLng=${b.getWest()}&maxLat=${b.getNorth()}&maxLng=${b.getEast()}&zoom=${z}`;
-      if (selectedRuns.size > 0) {
-        const runIds = Array.from(selectedRuns).join(',');
-        url += `&filter_runs=${runIds}`;
+      if (sidebarOpen) {
+        if (selectedRuns.size > 0) {
+          const runIds = Array.from(selectedRuns).join(',');
+          url += `&filter_runs=${runIds}`;
+        } else {
+          // If sidebar is open but no runs selected, show nothing
+          url += `&filter_runs=0`;
+        }
       }
 
       const { wrapper, bar } = createProgress();
@@ -412,6 +417,7 @@
     let isDrawing = false;
     let polygonCoords = [];
     let currentPolygon = null;
+    let sidebarOpen = false;
 
     // Lasso selection functionality with click-and-drag
     document.getElementById('lasso-btn').addEventListener('click', () => {
@@ -595,6 +601,7 @@
       
       // Close side panel
       document.getElementById('side-panel').classList.remove('open');
+      sidebarOpen = false;
       
       // Clear selection and show all runs
       selectedRuns.clear();
@@ -623,6 +630,7 @@
           const data = await response.json();
           displayRunsInPanel(data.runs);
           document.getElementById('side-panel').classList.add('open');
+          sidebarOpen = true;
         } else {
           console.error('Failed to query runs in area');
         }
@@ -683,6 +691,7 @@
             selectedRuns.delete(run.id);
             card.classList.remove('selected');
           }
+          // Immediately update map when checkbox changes
           updateMapDisplay();
         });
 

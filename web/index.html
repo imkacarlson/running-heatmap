@@ -117,6 +117,95 @@
       font-size: 12px;
       font-weight: normal;
     }
+
+    /* Side panel for run information */
+    #side-panel {
+      position: absolute;
+      top: 0;
+      right: -350px;
+      width: 350px;
+      height: 100%;
+      background: white;
+      box-shadow: -2px 0 10px rgba(0,0,0,0.1);
+      transition: right 0.3s ease;
+      z-index: 1000;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #side-panel.open {
+      right: 0;
+    }
+
+    .panel-header {
+      padding: 15px;
+      background: #f8f9fa;
+      border-bottom: 1px solid #dee2e6;
+      font-weight: bold;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .panel-close {
+      cursor: pointer;
+      font-size: 18px;
+      color: #666;
+    }
+
+    .panel-close:hover {
+      color: #333;
+    }
+
+    .panel-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px;
+    }
+
+    .run-card {
+      border: 1px solid #dee2e6;
+      border-radius: 4px;
+      margin-bottom: 8px;
+      padding: 10px;
+      background: white;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+
+    .run-card:hover {
+      background: #f8f9fa;
+    }
+
+    .run-card.selected {
+      background: #e3f2fd;
+      border-color: #2196f3;
+    }
+
+    .run-date {
+      font-weight: bold;
+      margin-bottom: 4px;
+      color: #333;
+    }
+
+    .run-stats {
+      font-size: 12px;
+      color: #666;
+      display: flex;
+      gap: 15px;
+    }
+
+    .run-checkbox {
+      margin-right: 8px;
+    }
+
+    .panel-summary {
+      padding: 10px 15px;
+      background: #f8f9fa;
+      border-top: 1px solid #dee2e6;
+      font-size: 14px;
+    }
   </style>
 </head>
 
@@ -127,8 +216,23 @@
     <div class="control-btn" id="zoom-in-btn" title="Zoom In">+</div>
     <div class="control-btn" id="zoom-out-btn" title="Zoom Out">−</div>
     <div class="control-btn north-btn" id="reset-north-btn" title="Reset North">N</div>
+    <div class="control-btn" id="lasso-btn" title="Select Area">⊙</div>
+    <div class="control-btn" id="clear-selection-btn" title="Clear Selection" style="display: none;">✕</div>
   </div>
   
+  <div id="side-panel">
+    <div class="panel-header">
+      <span>Selected Area Runs</span>
+      <span class="panel-close" id="panel-close">×</span>
+    </div>
+    <div class="panel-content" id="panel-content">
+      <!-- Run cards will be populated here -->
+    </div>
+    <div class="panel-summary" id="panel-summary">
+      <!-- Summary info will be shown here -->
+    </div>
+  </div>
+
   <div id="progress-container"></div>
   <div id="loading-indicator">
     <div class="spinner"></div>
@@ -232,7 +336,18 @@
 
       const b = map.getBounds();
       const z = Math.floor(map.getZoom());
-      const url = `/api/stream_runs?minLat=${b.getSouth()}&minLng=${b.getWest()}&maxLat=${b.getNorth()}&maxLng=${b.getEast()}&zoom=${z}`;
+      
+      // Add run filtering if sidebar is open
+      let url = `/api/stream_runs?minLat=${b.getSouth()}&minLng=${b.getWest()}&maxLat=${b.getNorth()}&maxLng=${b.getEast()}&zoom=${z}`;
+      if (sidebarOpen) {
+        if (selectedRuns.size > 0) {
+          const runIds = Array.from(selectedRuns).join(',');
+          url += `&filter_runs=${runIds}`;
+        } else {
+          // If sidebar is open but no runs selected, show nothing
+          url += `&filter_runs=-1`;
+        }
+      }
 
       const { wrapper, bar } = createProgress();
       const es = new EventSource(url);
@@ -295,6 +410,334 @@
     document.getElementById('reset-north-btn').addEventListener('click', () => {
       map.setBearing(0);
     });
+
+    // Custom polygon drawing functionality
+    let isDrawingMode = false;
+    let selectedRuns = new Set();
+    let isDrawing = false;
+    let polygonCoords = [];
+    let currentPolygon = null;
+    let sidebarOpen = false;
+
+    // Lasso selection functionality with click-and-drag
+    document.getElementById('lasso-btn').addEventListener('click', () => {
+      if (!isDrawingMode) {
+        // Start drawing mode
+        isDrawingMode = true;
+        document.getElementById('lasso-btn').style.background = '#007bff';
+        document.getElementById('lasso-btn').style.color = 'white';
+        map.getCanvas().style.cursor = 'crosshair';
+        
+        // Add drawing event listeners
+        map.on('mousedown', startDrawing);
+        map.on('mousemove', continueDrawing);
+        map.on('mouseup', finishDrawing);
+      } else {
+        // Exit drawing mode
+        exitDrawingMode();
+      }
+    });
+
+    function startDrawing(e) {
+      if (!isDrawingMode) return;
+      
+      e.preventDefault();
+      isDrawing = true;
+      polygonCoords = [[e.lngLat.lng, e.lngLat.lat]];
+      
+      // Clear any existing polygon
+      if (currentPolygon) {
+        map.removeLayer('selection-polygon');
+        map.removeSource('selection-polygon');
+        currentPolygon = null;
+      }
+    }
+
+    function continueDrawing(e) {
+      if (!isDrawing || !isDrawingMode) return;
+      
+      polygonCoords.push([e.lngLat.lng, e.lngLat.lat]);
+      
+      // Update the polygon display
+      updatePolygonDisplay();
+    }
+
+    function finishDrawing(e) {
+      if (!isDrawing || !isDrawingMode) return;
+      
+      isDrawing = false;
+      
+      if (polygonCoords.length >= 3) {
+        // Close the polygon
+        polygonCoords.push(polygonCoords[0]);
+        updatePolygonDisplay();
+        
+        // Query runs in the area
+        queryRunsInArea(polygonCoords);
+        
+        // Show clear button
+        document.getElementById('clear-selection-btn').style.display = 'block';
+      }
+      
+      // Exit drawing mode
+      exitDrawingMode();
+    }
+
+    function updatePolygonDisplay() {
+      if (polygonCoords.length < 2) return;
+      
+      // Remove existing polygon if any
+      if (map.getSource('selection-polygon')) {
+        if (map.getLayer('selection-polygon-outline')) {
+          map.removeLayer('selection-polygon-outline');
+        }
+        if (map.getLayer('selection-polygon')) {
+          map.removeLayer('selection-polygon');
+        }
+        map.removeSource('selection-polygon');
+      }
+      
+      let geometry;
+      
+      // While drawing, show as a line; when complete, show as polygon
+      if (isDrawing) {
+        geometry = {
+          type: 'LineString',
+          coordinates: polygonCoords
+        };
+      } else {
+        geometry = {
+          type: 'Polygon',
+          coordinates: [polygonCoords]
+        };
+      }
+      
+      // Add geometry to map
+      map.addSource('selection-polygon', {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          geometry: geometry
+        }
+      });
+      
+      if (isDrawing) {
+        // Show as line while drawing
+        map.addLayer({
+          id: 'selection-polygon-outline',
+          type: 'line',
+          source: 'selection-polygon',
+          paint: {
+            'line-color': '#007bff',
+            'line-width': 3,
+            'line-opacity': 0.8
+          }
+        });
+      } else {
+        // Show as filled polygon when complete
+        map.addLayer({
+          id: 'selection-polygon',
+          type: 'fill',
+          source: 'selection-polygon',
+          paint: {
+            'fill-color': '#007bff',
+            'fill-opacity': 0.2
+          }
+        });
+        
+        map.addLayer({
+          id: 'selection-polygon-outline',
+          type: 'line',
+          source: 'selection-polygon',
+          paint: {
+            'line-color': '#007bff',
+            'line-width': 2,
+            'line-dasharray': [5, 5]
+          }
+        });
+      }
+      
+      if (!isDrawing) {
+        currentPolygon = geometry;
+      }
+    }
+
+    function exitDrawingMode() {
+      isDrawingMode = false;
+      isDrawing = false;
+      document.getElementById('lasso-btn').style.background = 'white';
+      document.getElementById('lasso-btn').style.color = '#333';
+      map.getCanvas().style.cursor = '';
+      
+      // Remove event listeners
+      map.off('mousedown', startDrawing);
+      map.off('mousemove', continueDrawing);
+      map.off('mouseup', finishDrawing);
+    }
+
+    // Clear selection functionality
+    document.getElementById('clear-selection-btn').addEventListener('click', () => {
+      clearSelection();
+    });
+
+    function clearSelection() {
+      // Remove polygon from map
+      if (map.getSource('selection-polygon')) {
+        if (map.getLayer('selection-polygon-outline')) {
+          map.removeLayer('selection-polygon-outline');
+        }
+        if (map.getLayer('selection-polygon')) {
+          map.removeLayer('selection-polygon');
+        }
+        map.removeSource('selection-polygon');
+      }
+      
+      // Clear polygon data
+      currentPolygon = null;
+      polygonCoords = [];
+      
+      // Hide clear button
+      document.getElementById('clear-selection-btn').style.display = 'none';
+      
+      // Close side panel
+      document.getElementById('side-panel').classList.remove('open');
+      sidebarOpen = false;
+      
+      // Clear selection and show all runs
+      selectedRuns.clear();
+      updateMapDisplay();
+    }
+
+    // Side panel functionality
+    document.getElementById('panel-close').addEventListener('click', () => {
+      clearSelection();
+    });
+
+    // Query runs in selected area
+    async function queryRunsInArea(coordinates) {
+      try {
+        const response = await fetch('/api/runs_in_area', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            polygon: coordinates
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          displayRunsInPanel(data.runs);
+          document.getElementById('side-panel').classList.add('open');
+          sidebarOpen = true;
+        } else {
+          console.error('Failed to query runs in area');
+        }
+      } catch (error) {
+        console.error('Error querying runs:', error);
+      }
+    }
+
+    // Display runs in side panel
+    function displayRunsInPanel(runs) {
+      const panelContent = document.getElementById('panel-content');
+      const panelSummary = document.getElementById('panel-summary');
+      
+      panelContent.innerHTML = '';
+      
+      if (runs.length === 0) {
+        panelContent.innerHTML = '<p style="text-align: center; color: #666; margin: 20px;">No runs found in selected area</p>';
+        panelSummary.innerHTML = '';
+        return;
+      }
+
+      // Sort runs by date (newest first)
+      runs.sort((a, b) => new Date(b.metadata.start_time) - new Date(a.metadata.start_time));
+
+      // Create run cards
+      runs.forEach(run => {
+        const card = document.createElement('div');
+        card.className = 'run-card';
+        card.dataset.runId = run.id;
+        
+        const startDate = new Date(run.metadata.start_time);
+        const distance = (run.metadata.distance / 1000).toFixed(2); // Convert to km
+        const duration = formatDuration(run.metadata.duration);
+        
+        card.innerHTML = `
+          <div style="display: flex; align-items: center;">
+            <input type="checkbox" class="run-checkbox" checked>
+            <div style="flex: 1;">
+              <div class="run-date">${startDate.toLocaleDateString()} ${startDate.toLocaleTimeString()}</div>
+              <div class="run-stats">
+                <span>📏 ${distance} km</span>
+                <span>⏱️ ${duration}</span>
+              </div>
+            </div>
+          </div>
+        `;
+
+        // Add to selected runs by default
+        selectedRuns.add(run.id);
+        
+        // Handle checkbox changes
+        const checkbox = card.querySelector('.run-checkbox');
+        checkbox.addEventListener('change', (e) => {
+          if (e.target.checked) {
+            selectedRuns.add(run.id);
+            card.classList.add('selected');
+          } else {
+            selectedRuns.delete(run.id);
+            card.classList.remove('selected');
+          }
+          // Immediately update map when checkbox changes
+          updateMapDisplay();
+        });
+
+        card.classList.add('selected');
+        panelContent.appendChild(card);
+      });
+
+      // Update summary
+      const mostRecentRun = runs[0];
+      const mostRecentDate = new Date(mostRecentRun.metadata.start_time);
+      panelSummary.innerHTML = `
+        <strong>${runs.length}</strong> runs found<br>
+        <strong>Last run:</strong> ${mostRecentDate.toLocaleDateString()}
+      `;
+
+      updateMapDisplay();
+    }
+
+    // Format duration in seconds to readable format
+    function formatDuration(seconds) {
+      const hours = Math.floor(seconds / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      const secs = Math.floor(seconds % 60);
+      
+      if (hours > 0) {
+        return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+      } else {
+        return `${minutes}:${secs.toString().padStart(2, '0')}`;
+      }
+    }
+
+    // Update map display to show only selected runs
+    function updateMapDisplay() {
+      console.log('Selected runs:', Array.from(selectedRuns), 'Sidebar open:', sidebarOpen);
+      
+      // If sidebar is open and no runs selected, immediately clear the map
+      if (sidebarOpen && selectedRuns.size === 0) {
+        map.getSource('runs').setData({
+          type: 'FeatureCollection',
+          features: []
+        });
+      }
+      
+      // Trigger a refresh of the map data with current selection
+      fetchAndUpdate();
+    }
   </script>
 </body>
 

@@ -3,7 +3,7 @@ import json
 import time
 from functools import lru_cache
 from flask import Flask, request, jsonify, send_from_directory, Response, stream_with_context
-from shapely.geometry import mapping
+from shapely.geometry import mapping, Polygon
 from shapely import clip_by_rect
 from tqdm import tqdm
 
@@ -103,13 +103,36 @@ def stream_runs():
     maxLng = quantize(float(request.args.get('maxLng')))
     zoom = int(request.args.get('zoom'))
     chunk_size = int(request.args.get('chunk_size', 50))  # Features per chunk
+    
+    # Get optional filter for selected runs
+    filter_runs = request.args.get('filter_runs')
+    selected_run_ids = None
+    if filter_runs:
+        try:
+            # Handle special case for showing no runs
+            if filter_runs == '-1':
+                selected_run_ids = set()  # Empty set means show no runs
+            else:
+                selected_run_ids = set(map(int, filter_runs.split(',')))
+        except ValueError:
+            pass
 
     def generate():
         ids = list(idx.intersection((minLng, minLat, maxLng, maxLat)))
+        
+        # Filter by selected runs if provided
+        if selected_run_ids is not None:
+            if len(selected_run_ids) == 0:
+                # Show no runs
+                ids = []
+            else:
+                ids = [rid for rid in ids if rid in selected_run_ids]
 
         print(
-            f"🔍 Candidate run IDs for bbox ({minLat:.3f},{minLng:.3f})→({maxLat:.3f},{maxLng:.3f}): {ids}"
+            f"🔍 Candidate run IDs for bbox ({minLat:.3f},{minLng:.3f})→({maxLat:.3f},{maxLng:.3f}): {len(ids)} runs"
         )
+        if selected_run_ids:
+            print(f"↪ Filtered to {len(ids)} selected runs")
         print(f"↪ Processing {len(ids)} runs at zoom {zoom}, chunk_size={chunk_size}")
 
         if zoom >= 15:
@@ -140,7 +163,8 @@ def stream_runs():
                 geom = clipped
             features.append({
                 'type': 'Feature',
-                'geometry': mapping(geom)
+                'geometry': mapping(geom),
+                'properties': {'run_id': rid}  # Add run ID for identification
             })
 
             # Send chunks of features as they're processed
@@ -161,6 +185,69 @@ def stream_runs():
 
     headers = {'Cache-Control': 'no-cache'}
     return Response(stream_with_context(generate()), headers=headers, mimetype='text/event-stream')
+
+
+@app.route('/api/runs_in_area', methods=['POST'])
+def get_runs_in_area():
+    """Find runs that intersect with a user-drawn polygon."""
+    try:
+        data = request.get_json()
+        if not data or 'polygon' not in data:
+            return jsonify({'error': 'Missing polygon data'}), 400
+        
+        # Create polygon from coordinates
+        polygon_coords = data['polygon']
+        if len(polygon_coords) < 3:
+            return jsonify({'error': 'Polygon must have at least 3 points'}), 400
+        
+        # Ensure polygon is closed
+        if polygon_coords[0] != polygon_coords[-1]:
+            polygon_coords.append(polygon_coords[0])
+        
+        selection_polygon = Polygon(polygon_coords)
+        if not selection_polygon.is_valid:
+            return jsonify({'error': 'Invalid polygon'}), 400
+        
+        # Get polygon bounding box for initial filtering
+        minx, miny, maxx, maxy = selection_polygon.bounds
+        candidate_ids = list(idx.intersection((minx, miny, maxx, maxy)))
+        
+        print(f"🔍 Checking {len(candidate_ids)} candidate runs for polygon intersection")
+        
+        intersecting_runs = []
+        
+        for rid in candidate_ids:
+            run = runs[rid]
+            
+            # Check if run geometry intersects with selection polygon
+            line_geom = run['geoms']['full']  # Use full resolution for accurate intersection
+            
+            if line_geom.intersects(selection_polygon):
+                # Prepare run data with metadata
+                run_data = {
+                    'id': rid,
+                    'geometry': mapping(line_geom),
+                    'metadata': run.get('metadata', {
+                        'start_time': None,
+                        'end_time': None,
+                        'distance': 0,
+                        'duration': 0,
+                        'source_file': 'unknown'
+                    })
+                }
+                intersecting_runs.append(run_data)
+        
+        print(f"→ Found {len(intersecting_runs)} runs intersecting with selection")
+        
+        return jsonify({
+            'runs': intersecting_runs,
+            'total': len(intersecting_runs)
+        })
+        
+    except Exception as e:
+        print(f"Error in runs_in_area: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
+
 
 if __name__ == '__main__':
     app.run(debug=True)

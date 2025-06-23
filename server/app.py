@@ -192,21 +192,51 @@ def get_runs_in_area():
     """Find runs that intersect with a user-drawn polygon."""
     try:
         data = request.get_json()
+        print(f"Received data: {data}")
+        
         if not data or 'polygon' not in data:
+            print("Missing polygon data in request")
             return jsonify({'error': 'Missing polygon data'}), 400
         
         # Create polygon from coordinates
         polygon_coords = data['polygon']
+        print(f"Polygon coordinates: {len(polygon_coords)} points")
+        print(f"First coord: {polygon_coords[0] if polygon_coords else 'None'}")
+        print(f"Last coord: {polygon_coords[-1] if polygon_coords else 'None'}")
+        
         if len(polygon_coords) < 3:
+            print(f"Polygon too small: {len(polygon_coords)} points")
             return jsonify({'error': 'Polygon must have at least 3 points'}), 400
         
         # Ensure polygon is closed
         if polygon_coords[0] != polygon_coords[-1]:
             polygon_coords.append(polygon_coords[0])
+            print("Closed polygon by adding first point to end")
+        
+        # Validate coordinate format
+        for i, coord in enumerate(polygon_coords):
+            if not isinstance(coord, list) or len(coord) != 2:
+                print(f"Invalid coordinate at index {i}: {coord}")
+                return jsonify({'error': f'Invalid coordinate format at index {i}'}), 400
+            if not all(isinstance(x, (int, float)) for x in coord):
+                print(f"Non-numeric coordinate at index {i}: {coord}")
+                return jsonify({'error': f'Non-numeric coordinate at index {i}'}), 400
         
         selection_polygon = Polygon(polygon_coords)
         if not selection_polygon.is_valid:
-            return jsonify({'error': 'Invalid polygon'}), 400
+            print(f"Invalid polygon geometry, attempting to fix...")
+            # Try to fix the polygon using buffer(0) which can resolve self-intersections
+            try:
+                fixed_polygon = selection_polygon.buffer(0)
+                if fixed_polygon.is_valid and not fixed_polygon.is_empty:
+                    selection_polygon = fixed_polygon
+                    print("Successfully fixed polygon geometry")
+                else:
+                    print(f"Could not fix polygon geometry")
+                    return jsonify({'error': 'Invalid polygon geometry - please try drawing again'}), 400
+            except Exception as e:
+                print(f"Error fixing polygon: {e}")
+                return jsonify({'error': 'Invalid polygon geometry - please try drawing again'}), 400
         
         # Get polygon bounding box for initial filtering
         minx, miny, maxx, maxy = selection_polygon.bounds

@@ -76,6 +76,23 @@ def process_file(file_path, file_name):
     return coords
 
 
+def count_total_runs(files):
+    """Count total number of runs across all files for progress tracking."""
+    total = 0
+    for fname in files:
+        path = os.path.join(RAW_DIR, fname)
+        if not os.path.isfile(path):
+            continue
+        
+        lower = fname.lower()
+        if lower.endswith('.zip'):
+            with zipfile.ZipFile(path, 'r') as zf:
+                total += sum(1 for name in zf.namelist() if name.lower().endswith('.fit'))
+        elif lower.endswith(('.fit.gz', '.gpx.gz', '.fit', '.gpx')):
+            total += 1
+    return total
+
+
 def main():
     runs = {}
     rid = 0
@@ -83,7 +100,14 @@ def main():
     files = [f for f in os.listdir(RAW_DIR)
              if os.path.isfile(os.path.join(RAW_DIR, f))]
 
-    for fname in tqdm(files, desc="Processing", unit="file"):
+    # Count total runs for progress tracking
+    total_runs = count_total_runs(files)
+    print(f"Found {total_runs} runs to process")
+    
+    # Create progress bar for individual runs
+    pbar = tqdm(total=total_runs, desc="Processing runs", unit="run")
+
+    for fname in files:
         path = os.path.join(RAW_DIR, fname)
         if not os.path.isfile(path):
             continue
@@ -115,6 +139,8 @@ def main():
                                             'coarse': ls.simplify(0.0005, preserve_topology=False)
                                         }
                                     }
+                                # Update progress for each .fit file processed from zip
+                                pbar.update(1)
                             finally:
                                 os.unlink(tf.name)
         else:
@@ -134,7 +160,12 @@ def main():
                         'coarse': ls.simplify(0.0005, preserve_topology=False)
                     }
                 }
+            # Update progress regardless of whether coords were found
+            if lower.endswith(('.fit.gz', '.gpx.gz', '.fit', '.gpx')):
+                pbar.update(1)
 
+    pbar.close()
+    
     with open(OUTPUT_PKL, 'wb') as f:
         pickle.dump(runs, f)
 

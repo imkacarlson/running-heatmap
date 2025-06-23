@@ -1,6 +1,6 @@
 # Run Heatmap
 
-A local, interactive heatmap of your GPS runs—powered by Flask, MapLibre GL JS, and OpenStreetMap.
+A local, interactive heatmap of your GPS runs—powered by Flask, MapLibre GL JS, and OpenStreetMap. Supports data from Strava, Garmin Connect, and other GPS devices.
 
 ## Prerequisites
 
@@ -10,12 +10,14 @@ A local, interactive heatmap of your GPS runs—powered by Flask, MapLibre GL JS
   sudo apt update
   sudo apt install python3-venv libspatialindex-dev
 
-* Place your raw GPX/FIT(.gz) files under `data/raw/` (this folder is git-ignored).
+* Place your raw GPS files under `data/raw/` (this folder is git-ignored):
+  - **Strava exports**: `.fit.gz`, `.gpx.gz`, `.fit`, `.gpx` files
+  - **Garmin Connect exports**: `.zip` files containing `.fit` or `.txt` (TCX) files
 
 ## Setup & Run
 
 1. **Import runs**
-   Generates `server/runs.pkl` from your raw files with pre-simplified geometries:
+   Generates `server/runs.pkl` from your raw GPS files with pre-simplified geometries. Supports multiple formats including FIT, GPX, and TCX:
 
    ```bash
    cd server
@@ -25,10 +27,13 @@ A local, interactive heatmap of your GPS runs—powered by Flask, MapLibre GL JS
    python import_runs.py
    ```
 
-  The script shows a progress bar while processing files. When finished you should see:
+  The script shows progress while processing artifacts and reports results:
 
    ```
-   Imported <N> runs → runs.pkl
+   Found 628 artifacts to process
+   Processing artifacts: 100%|████████████| 628/628 [01:32<00:00,  6.81artifact/s]
+   Imported 245 runs → runs.pkl
+   Skipped 383 artifacts (no GPS coordinates found)
    ```
 
 2. **Start the server**
@@ -73,7 +78,7 @@ map.addLayer({
 
 ## Workflow
 
-* **Adding new runs**: Drop new `.gpx`/`.fit.gz` files into `data/raw/` then re-run step 1.
+* **Adding new runs**: Drop new GPS files (individual `.fit`/`.gpx` files or Garmin Connect `.zip` exports) into `data/raw/` then re-run step 1.
 * **Rebuilding data**: No external tile build—server streams GeoJSON slices on demand.
 * **Performance**: The importer precomputes simplified geometries for multiple zoom levels. The server uses these along with an R-tree spatial index and fast bounding box clipping so panning and zooming stay responsive even with dense data.
 

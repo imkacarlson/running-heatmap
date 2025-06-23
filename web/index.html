@@ -660,6 +660,11 @@
     // Query runs in selected area
     async function queryRunsInArea(coordinates) {
       try {
+        console.log('Sending polygon coordinates:', coordinates);
+        console.log('Polygon length:', coordinates.length);
+        console.log('First coord:', coordinates[0]);
+        console.log('Last coord:', coordinates[coordinates.length - 1]);
+        
         const response = await fetch('/api/runs_in_area', {
           method: 'POST',
           headers: {
@@ -676,10 +681,13 @@
           document.getElementById('side-panel').classList.add('open');
           sidebarOpen = true;
         } else {
-          console.error('Failed to query runs in area');
+          const errorText = await response.text();
+          console.error('Failed to query runs in area:', response.status, errorText);
+          alert(`Error querying runs: ${response.status} - ${errorText}`);
         }
       } catch (error) {
         console.error('Error querying runs:', error);
+        alert(`Network error: ${error.message}`);
       }
     }
 

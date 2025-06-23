@@ -491,43 +491,69 @@
         map.removeSource('selection-polygon');
       }
       
-      // Create polygon geometry
-      const polygonGeometry = {
-        type: 'Polygon',
-        coordinates: [polygonCoords]
-      };
+      let geometry;
       
-      // Add polygon to map
+      // While drawing, show as a line; when complete, show as polygon
+      if (isDrawing) {
+        geometry = {
+          type: 'LineString',
+          coordinates: polygonCoords
+        };
+      } else {
+        geometry = {
+          type: 'Polygon',
+          coordinates: [polygonCoords]
+        };
+      }
+      
+      // Add geometry to map
       map.addSource('selection-polygon', {
         type: 'geojson',
         data: {
           type: 'Feature',
-          geometry: polygonGeometry
+          geometry: geometry
         }
       });
       
-      map.addLayer({
-        id: 'selection-polygon',
-        type: 'fill',
-        source: 'selection-polygon',
-        paint: {
-          'fill-color': '#007bff',
-          'fill-opacity': 0.2
-        }
-      });
+      if (isDrawing) {
+        // Show as line while drawing
+        map.addLayer({
+          id: 'selection-polygon-outline',
+          type: 'line',
+          source: 'selection-polygon',
+          paint: {
+            'line-color': '#007bff',
+            'line-width': 3,
+            'line-opacity': 0.8
+          }
+        });
+      } else {
+        // Show as filled polygon when complete
+        map.addLayer({
+          id: 'selection-polygon',
+          type: 'fill',
+          source: 'selection-polygon',
+          paint: {
+            'fill-color': '#007bff',
+            'fill-opacity': 0.2
+          }
+        });
+        
+        map.addLayer({
+          id: 'selection-polygon-outline',
+          type: 'line',
+          source: 'selection-polygon',
+          paint: {
+            'line-color': '#007bff',
+            'line-width': 2,
+            'line-dasharray': [5, 5]
+          }
+        });
+      }
       
-      map.addLayer({
-        id: 'selection-polygon-outline',
-        type: 'line',
-        source: 'selection-polygon',
-        paint: {
-          'line-color': '#007bff',
-          'line-width': 2,
-          'line-dasharray': [5, 5]
-        }
-      });
-      
-      currentPolygon = polygonGeometry;
+      if (!isDrawing) {
+        currentPolygon = geometry;
+      }
     }
 
     function exitDrawingMode() {

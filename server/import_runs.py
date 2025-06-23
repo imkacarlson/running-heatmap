@@ -96,6 +96,7 @@ def count_total_runs(files):
 def main():
     runs = {}
     rid = 0
+    skipped_count = 0
 
     files = [f for f in os.listdir(RAW_DIR)
              if os.path.isfile(os.path.join(RAW_DIR, f))]
@@ -139,6 +140,8 @@ def main():
                                             'coarse': ls.simplify(0.0005, preserve_topology=False)
                                         }
                                     }
+                                else:
+                                    skipped_count += 1
                                 # Update progress for each .fit file processed from zip
                                 pbar.update(1)
                             finally:
@@ -160,6 +163,8 @@ def main():
                         'coarse': ls.simplify(0.0005, preserve_topology=False)
                     }
                 }
+            elif lower.endswith(('.fit.gz', '.gpx.gz', '.fit', '.gpx')):
+                skipped_count += 1
             # Update progress regardless of whether coords were found
             if lower.endswith(('.fit.gz', '.gpx.gz', '.fit', '.gpx')):
                 pbar.update(1)
@@ -170,6 +175,8 @@ def main():
         pickle.dump(runs, f)
 
     print(f"Imported {len(runs)} runs → {OUTPUT_PKL}")
+    if skipped_count > 0:
+        print(f"Skipped {skipped_count} files (no GPS coordinates found)")
 
 
 if __name__ == '__main__':

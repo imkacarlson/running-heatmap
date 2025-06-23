@@ -206,6 +206,25 @@
       border-top: 1px solid #dee2e6;
       font-size: 14px;
     }
+
+    .panel-controls {
+      padding: 10px 15px;
+      background: #f8f9fa;
+      border-bottom: 1px solid #dee2e6;
+      display: flex;
+      gap: 10px;
+    }
+
+    .control-link {
+      color: #007bff;
+      cursor: pointer;
+      text-decoration: underline;
+      font-size: 12px;
+    }
+
+    .control-link:hover {
+      color: #0056b3;
+    }
   </style>
 </head>
 
@@ -224,6 +243,10 @@
     <div class="panel-header">
       <span>Selected Area Runs</span>
       <span class="panel-close" id="panel-close">×</span>
+    </div>
+    <div class="panel-controls">
+      <span class="control-link" id="select-all">Select All</span>
+      <span class="control-link" id="deselect-all">Deselect All</span>
     </div>
     <div class="panel-content" id="panel-content">
       <!-- Run cards will be populated here -->
@@ -608,6 +631,27 @@
       updateMapDisplay();
     }
 
+    // Select All / Deselect All functionality
+    document.getElementById('select-all').addEventListener('click', () => {
+      const checkboxes = document.querySelectorAll('.run-checkbox');
+      checkboxes.forEach(checkbox => {
+        if (!checkbox.checked) {
+          checkbox.checked = true;
+          checkbox.dispatchEvent(new Event('change'));
+        }
+      });
+    });
+
+    document.getElementById('deselect-all').addEventListener('click', () => {
+      const checkboxes = document.querySelectorAll('.run-checkbox');
+      checkboxes.forEach(checkbox => {
+        if (checkbox.checked) {
+          checkbox.checked = false;
+          checkbox.dispatchEvent(new Event('change'));
+        }
+      });
+    });
+
     // Side panel functionality
     document.getElementById('panel-close').addEventListener('click', () => {
       clearSelection();
@@ -662,7 +706,7 @@
         card.dataset.runId = run.id;
         
         const startDate = new Date(run.metadata.start_time);
-        const distance = (run.metadata.distance / 1000).toFixed(2); // Convert to km
+        const distance = (run.metadata.distance * 0.000621371).toFixed(2); // Convert to miles
         const duration = formatDuration(run.metadata.duration);
         
         card.innerHTML = `
@@ -671,7 +715,7 @@
             <div style="flex: 1;">
               <div class="run-date">${startDate.toLocaleDateString()} ${startDate.toLocaleTimeString()}</div>
               <div class="run-stats">
-                <span>📏 ${distance} km</span>
+                <span>📏 ${distance} mi</span>
                 <span>⏱️ ${duration}</span>
               </div>
             </div>

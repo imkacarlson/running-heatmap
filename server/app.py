@@ -224,8 +224,19 @@ def get_runs_in_area():
         
         selection_polygon = Polygon(polygon_coords)
         if not selection_polygon.is_valid:
-            print(f"Invalid polygon geometry: {selection_polygon.is_valid}")
-            return jsonify({'error': 'Invalid polygon geometry'}), 400
+            print(f"Invalid polygon geometry, attempting to fix...")
+            # Try to fix the polygon using buffer(0) which can resolve self-intersections
+            try:
+                fixed_polygon = selection_polygon.buffer(0)
+                if fixed_polygon.is_valid and not fixed_polygon.is_empty:
+                    selection_polygon = fixed_polygon
+                    print("Successfully fixed polygon geometry")
+                else:
+                    print(f"Could not fix polygon geometry")
+                    return jsonify({'error': 'Invalid polygon geometry - please try drawing again'}), 400
+            except Exception as e:
+                print(f"Error fixing polygon: {e}")
+                return jsonify({'error': 'Invalid polygon geometry - please try drawing again'}), 400
         
         # Get polygon bounding box for initial filtering
         minx, miny, maxx, maxy = selection_polygon.bounds

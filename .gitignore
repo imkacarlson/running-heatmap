@@ -12,6 +12,9 @@ runs.pkl
 # Ignore generated mobile app directory and all contents
 mobile/
 
+# Ignore mobile deployment ZIP files
+running-heatmap-mobile-*.zip
+
 # Python
 .venv/
 __pycache__/

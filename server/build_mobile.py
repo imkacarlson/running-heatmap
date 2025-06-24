@@ -46,16 +46,27 @@ def build_mobile_app():
         for level, geom in run['geoms'].items():
             geoms[level] = mapping(geom)
         
+        # Convert metadata to JSON-serializable format
+        metadata = run.get('metadata', {
+            'start_time': None,
+            'end_time': None,
+            'distance': 0,
+            'duration': 0,
+            'source_file': 'unknown'
+        })
+        
+        # Convert datetime objects to ISO strings
+        json_metadata = {}
+        for key, value in metadata.items():
+            if hasattr(value, 'isoformat'):  # datetime object
+                json_metadata[key] = value.isoformat()
+            else:
+                json_metadata[key] = value
+        
         runs_data[str(rid)] = {
             'geoms': geoms,
             'bbox': run['bbox'],
-            'metadata': run.get('metadata', {
-                'start_time': None,
-                'end_time': None,
-                'distance': 0,
-                'duration': 0,
-                'source_file': 'unknown'
-            })
+            'metadata': json_metadata
         }
         
         # Add to spatial index data

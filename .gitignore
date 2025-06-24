@@ -6,6 +6,12 @@ data/raw/*
 data/processed/*
 !data/processed/.gitkeep
 
+# Ignore processed run data (contains personal GPS data)
+runs.pkl
+
+# Ignore generated mobile app directory and all contents
+mobile/
+
 # Python
 .venv/
 __pycache__/
@@ -13,5 +19,17 @@ __pycache__/
 *.pyo
 *.pyc
 
-#Other
-runs.pkl
+# Node.js (for mobile APK packaging)
+node_modules/
+package-lock.json
+npm-debug.log*
+
+# Android build files (if using APK packaging)
+android/
+capacitor.config.json
+package.json
+
+# Mobile app temporary files
+www/
+*.apk
+*.aab

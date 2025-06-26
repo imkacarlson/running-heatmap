@@ -26,7 +26,7 @@ mkdir -p ~/android-sdk/cmdline-tools
 cd ~/android-sdk/cmdline-tools
 wget https://dl.google.com/android/repository/commandlinetools-linux-latest.zip
 unzip commandlinetools-linux-*.zip
-mv cmdline-tools latest # This step is still crucial for correct SDK setup
+mv cmdline-tools latest
 cd ~
 
 # Set up environment variables (add to ~/.bashrc)

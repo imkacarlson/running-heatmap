@@ -1,10 +1,10 @@
 # Running Heatmap Mobile Setup Guide
 
-This guide will help you create a mobile version of your running heatmap that works entirely offline on your Android phone.
+This guide will help you create a native Android APK of your running heatmap that works entirely offline on your phone.
 
 ## Overview
 
-Your existing PC web server remains unchanged! This creates a separate mobile app that bundles all your run data locally.
+Your existing PC web server remains unchanged! This process creates a separate, native Android app that bundles all your run data locally.
 
 ## Step 1: Build Mobile Data Files
 
@@ -17,60 +17,39 @@ python build_mobile.py
 
 This will:
 - ✅ Convert your `runs.pkl` to JSON format
-- ✅ Create a JavaScript spatial library  
+- ✅ Create a JavaScript spatial library
 - ✅ Generate mobile-optimized HTML/CSS
-- ✅ Add offline service worker
-- ✅ Create a complete `../mobile/` directory
+- ✅ Add an offline service worker
+- ✅ Create a complete `../mobile/` directory with all necessary web assets.
 
-**Note:** This may take a few minutes with thousands of runs. The script will show progress and final file sizes.
+**Note:** This may take a few minutes with thousands of runs. The script will show progress.
 
-## Step 2: Choose Your Mobile Option
+## Step 2: Package as a Native Android APK
 
-### Option A: Progressive Web App (Recommended)
+This step bundles the web assets into a native Android application using Capacitor.
 
-Easiest option - no Android development tools required:
+1.  **Install prerequisites:**
+    ```bash
+    # Install Node.js and npm if not already installed
+    # Install Android Studio
+    # Install the Java Development Kit (JDK)
+    ```
 
-1. **Test locally first:**
-   ```bash
-   cd ../mobile
-   python -m http.server 8080
-   ```
-   
-2. **Visit http://localhost:8080 on your phone**
-   - Connect phone to same WiFi network
-   - Open browser and navigate to your computer's IP:8080
-   - Test all features work correctly
+2.  **Package the Android app:**
+    From the `server/` directory, run the packaging script:
+    ```bash
+    python package_android.py
+    ```
+    This script will create an Android project in the `mobile/` directory.
 
-3. **Deploy to phone:**
-   - Copy the entire `mobile/` folder to your phone
-   - Use any file manager app to serve the HTML
-   - OR upload to a simple web host and access via browser
-   - Add to home screen when prompted for app-like experience
-
-### Option B: Native Android APK
-
-For a true native app experience:
-
-1. **Install prerequisites:**
-   ```bash
-   # Install Node.js if not already installed
-   # Install Android Studio
-   # Install Java Development Kit (JDK)
-   ```
-
-2. **Package as Android app:**
-   ```bash
-   cd server
-   python package_android.py
-   ```
-
-3. **Build in Android Studio:**
-   ```bash
-   cd ../mobile
-   npx cap open android
-   ```
-   - Build and run from Android Studio
-   - Install APK on your phone
+3.  **Build the APK in Android Studio:**
+    ```bash
+    cd ../mobile
+    npx cap open android
+    ```
+    - This command will open the project in Android Studio.
+    - From Android Studio, you can build the APK (`Build > Build Bundle(s) / APK(s) > Build APK(s)`) and run it on an emulator or a connected device.
+    - Once built, you can find the APK in `mobile/android/app/build/outputs/apk/debug/`.
 
 ## Step 3: Test Mobile Features
 
@@ -80,7 +59,7 @@ For a true native app experience:
 - ✅ **Offline mode:** Works without internet after first load
 - ✅ **Performance:** Optimized for mobile hardware
 
-### Advanced Features  
+### Advanced Features
 - ✅ **Lasso selection:** Touch and drag to select areas
 - ✅ **Run filtering:** View runs in selected areas
 - ✅ **Metadata display:** Date, distance, duration for each run
@@ -95,8 +74,8 @@ flask run
 # Visit http://127.0.0.1:5000
 ```
 
-### Your Mobile Version  
-- Completely standalone
+### Your Mobile Version
+- Completely standalone native Android app
 - All data bundled locally
 - No server required
 - Works offline
@@ -110,62 +89,54 @@ running-heatmap/
 ├── server/              # Your original PC version (unchanged)
 │   ├── app.py          # Flask server
 │   ├── runs.pkl        # Your run data
-│   └── build_mobile.py # Mobile build script
+│   ├── build_mobile.py # Mobile build script
+│   └── package_android.py # Android packaging script
 ├── web/                # Original web interface (unchanged)
-└── mobile/             # NEW: Mobile version
-    ├── index.html      # Mobile-optimized interface
-    ├── sw.js          # Service worker for offline
-    ├── data/          # Your runs in JSON format
-    └── js/            # Client-side spatial library
+└── mobile/             # NEW: Mobile project
+    ├── www/            # Web assets for the app
+    ├── android/        # Native Android project
+    ├── node_modules/   # Dependencies
+    └── ...
 ```
 
 ## Updating Mobile Data
 
-When you add new runs:
+When you add new runs to your PC version:
 
-1. **Import new runs on PC:**
-   ```bash
-   cd server
-   python import_runs.py
-   ```
+1.  **Import new runs on PC:**
+    ```bash
+    cd server
+    python import_runs.py
+    ```
 
-2. **Rebuild mobile version:**
-   ```bash
-   python build_mobile.py
-   ```
+2.  **Rebuild mobile assets:**
+    ```bash
+    python build_mobile.py
+    ```
 
-3. **Update phone app:**
-   - Copy new `mobile/` folder to phone
-   - OR rebuild APK if using Android Studio
+3.  **Sync and rebuild the APK:**
+    ```bash
+    cd ../mobile
+    npx cap sync android
+    npx cap open android
+    ```
+    - Rebuild the APK in Android Studio to include the new data.
 
 ## Troubleshooting
 
-### Large File Sizes
-- Check `mobile/data/` directory size
-- Consider reducing run data if needed
-- Service worker will cache for fast loading
-
 ### Performance Issues
-- Ensure good WiFi for initial data load
-- Once cached, should work smoothly offline
-- Pixel 7A has plenty of power for this app
+- The app should work smoothly offline. If you experience initial slowness, it might be related to the initial data load.
+- The Pixel 7A has plenty of power for this app.
 
 ### Missing Features
-- Polygon selection uses simplified geometry intersection
-- All core features preserved from PC version
-- Touch interactions optimized for mobile
+- Polygon selection uses simplified geometry intersection for performance.
+- All core features from the PC version are preserved.
+- Touch interactions are optimized for mobile.
 
 ## Security & Privacy
 
-- ✅ **All data stays local** - no cloud/server required
-- ✅ **No tracking** - completely offline after first load  
-- ✅ **Your runs stay private** - never leaves your device
-
-## Need Help?
-
-1. **Check console logs** in mobile browser for errors
-2. **Test PC version first** to ensure data is good
-3. **Verify file sizes** in mobile/data/ directory
-4. **Try PWA option first** before Android APK
+- ✅ **All data stays local** - no cloud/server required.
+- ✅ **No tracking** - completely offline after the first load.
+- ✅ **Your runs stay private** - the data never leaves your device.
 
 Enjoy your runs on mobile! 🏃‍♂️📱

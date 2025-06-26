@@ -331,106 +331,18 @@ def copy_mobile_templates(mobile_dir):
         
         print(f"✅ Updated HTML with service worker registration")
 
-def create_readme(mobile_dir):
-    """Create README for the mobile app."""
-    
-    readme_content = f'''# Running Heatmap Mobile App
-
-This is a standalone mobile version of your running heatmap that works entirely offline.
-
-## Quick Start (PWA)
-
-1. **Extract this ZIP** to your phone's storage
-2. **Install a web server app** like "Simple HTTP Server" from Play Store
-3. **Serve this directory** and open in your browser
-4. **Add to home screen** when prompted for app-like experience
-
-## Generated Files
-
-- `index.html` - Mobile-optimized web interface
-- `sw.js` - Service worker for offline functionality
-- `js/spatial.js` - Client-side spatial querying library
-- `data/runs.json` - Your run data in JSON format
-- `data/spatial_index.json` - Spatial index for fast queries
-
-## Features
-
-- ✅ Fully offline - no server required
-- ✅ Touch-optimized interface
-- ✅ Polygon selection tool (lasso)
-- ✅ Run filtering and metadata display
-- ✅ Optimized for mobile performance
-- ✅ Service worker caching
-
-## Alternative: Android APK
-For native app, run `python package_android.py` on your computer.
-
-Enjoy your runs on mobile! 🏃‍♂️📱
-'''
-    
-    readme_path = os.path.join(mobile_dir, 'README.md')
-    with open(readme_path, 'w') as f:
-        f.write(readme_content)
-    
-    print(f"📚 Created README.md")
-
-def create_mobile_zip(mobile_dir):
-    """Create a ZIP file ready for phone deployment."""
-    import zipfile
-    from datetime import datetime
-    
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    zip_filename = f"running-heatmap-mobile-{timestamp}.zip"
-    zip_path = os.path.join(os.path.dirname(mobile_dir), zip_filename)
-    
-    print(f"📦 Creating deployment ZIP: {zip_filename}")
-    
-    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as zipf:
-        for root, dirs, files in os.walk(mobile_dir):
-            for file in files:
-                file_path = os.path.join(root, file)
-                # Create archive path relative to mobile_dir
-                archive_name = os.path.relpath(file_path, mobile_dir)
-                zipf.write(file_path, archive_name)
-                
-    zip_size = os.path.getsize(zip_path) / (1024 * 1024)
-    print(f"✅ Created {zip_filename} ({zip_size:.1f} MB)")
-    
-    return zip_path
-
 if __name__ == '__main__':
     try:
         mobile_dir, run_count = build_mobile_app()
         create_mobile_spatial_lib()
         copy_mobile_templates(mobile_dir)
-        create_readme(mobile_dir)
-        
-        # Create deployment ZIP
-        zip_path = create_mobile_zip(mobile_dir)
         
         print(f"\n🎉 Mobile build complete!")
         print(f"📱 Output directory: {mobile_dir}")
         print(f"🏃‍♂️ {run_count} runs exported")
-        print(f"📦 Deployment ZIP: {os.path.basename(zip_path)}")
         
-        print(f"\nNext steps:")
-        print(f"1. 📱 Copy {os.path.basename(zip_path)} to your phone")
-        print(f"2. 📂 Extract ZIP on phone")
-        print(f"3. 🌐 Use web server app to serve the folder")
-        print(f"4. 🏠 Add to home screen for PWA experience")
-        print(f"\nAlternative:")
+        print(f"\nNext step:")
         print(f"• Package for Android: python package_android.py")
-        
-        # Show file sizes
-        if os.path.exists(mobile_dir):
-            total_size = 0
-            for root, dirs, files in os.walk(mobile_dir):
-                for file in files:
-                    file_path = os.path.join(root, file)
-                    total_size += os.path.getsize(file_path)
-            
-            print(f"\n📊 Mobile app size: {total_size / (1024*1024):.1f} MB")
-            print(f"📦 ZIP size: {os.path.getsize(zip_path) / (1024*1024):.1f} MB")
         
     except FileNotFoundError as e:
         print(f"❌ Error: runs.pkl not found. Please run import_runs.py first.")

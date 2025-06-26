@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Run Heatmap Mobile</title>
+  <script src="https://unpkg.com/maplibre-gl/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl/dist/maplibre-gl.css" rel="stylesheet" />
+  <style>
+    body, html, #map {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      overflow: hidden;
+    }
+
+    /* Mobile-optimized progress indicators */
+    #progress-container {
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 200px;
+      display: none;
+      z-index: 1000;
+    }
+
+    .progress {
+      width: 100%;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.9);
+      border: 1px solid #aaa;
+      border-radius: 3px;
+      margin-top: 4px;
+      position: relative;
+    }
+
+    .progress-bar {
+      background: #007bff;
+      width: 0%;
+      height: 100%;
+      border-radius: 2px;
+      transition: width 0.2s ease;
+    }
+
+    /* Mobile loading indicator */
+    #loading-indicator {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 20px 30px;
+      border-radius: 8px;
+      font-size: 16px;
+      display: none;
+      z-index: 1000;
+    }
+
+    .spinner {
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #007bff;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      animation: spin 1s linear infinite;
+      display: inline-block;
+      margin-right: 10px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    /* Mobile-optimized map controls */
+    .map-controls {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .control-btn {
+      background: white;
+      border: 2px solid #ccc;
+      border-radius: 8px;
+      width: 48px;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 20px;
+      font-weight: bold;
+      color: #333;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+      transition: all 0.2s;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .control-btn:active {
+      transform: scale(0.95);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+
+    .control-btn.active {
+      background: #007bff;
+      color: white;
+      border-color: #0056b3;
+    }
+
+    /* Mobile sidebar */
+    #side-panel {
+      position: absolute;
+      top: 0;
+      right: -100vw;
+      width: 85vw;
+      max-width: 400px;
+      height: 100vh;
+      background: white;
+      box-shadow: -4px 0 20px rgba(0,0,0,0.15);
+      transition: right 0.3s ease;
+      z-index: 1000;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #side-panel.open {
+      right: 0;
+    }
+
+    .panel-header {
+      padding: 20px;
+      background: #f8f9fa;
+      border-bottom: 1px solid #dee2e6;
+      font-weight: bold;
+      font-size: 18px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .panel-close {
+      cursor: pointer;
+      font-size: 24px;
+      color: #666;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .panel-close:active {
+      background: #e0e0e0;
+    }
+
+    .panel-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 15px;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .run-card {
+      border: 2px solid #dee2e6;
+      border-radius: 8px;
+      margin-bottom: 12px;
+      padding: 15px;
+      background: white;
+      cursor: pointer;
+      transition: all 0.2s;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .run-card:active {
+      transform: scale(0.98);
+    }
+
+    .run-card.selected {
+      background: #e3f2fd;
+      border-color: #2196f3;
+    }
+
+    .run-date {
+      font-weight: bold;
+      margin-bottom: 8px;
+      color: #333;
+      font-size: 16px;
+    }
+
+    .run-stats {
+      font-size: 14px;
+      color: #666;
+      display: flex;
+      gap: 20px;
+    }
+
+    .run-checkbox {
+      margin-right: 12px;
+      transform: scale(1.2);
+    }
+
+    .panel-summary {
+      padding: 15px 20px;
+      background: #f8f9fa;
+      border-top: 1px solid #dee2e6;
+      font-size: 16px;
+    }
+
+    .panel-controls {
+      padding: 15px 20px;
+      background: #f8f9fa;
+      border-bottom: 1px solid #dee2e6;
+      display: flex;
+      gap: 20px;
+    }
+
+    .control-link {
+      color: #007bff;
+      cursor: pointer;
+      text-decoration: underline;
+      font-size: 16px;
+      padding: 8px;
+      border-radius: 4px;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .control-link:active {
+      background: #e3f2fd;
+    }
+
+    /* Mobile-specific overlay for drawing */
+    #drawing-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 500;
+      display: none;
+      background: rgba(0,0,0,0.1);
+    }
+
+    #drawing-overlay.active {
+      display: block;
+    }
+
+    /* Status message for mobile */
+    #status-message {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.8);
+      color: white;
+      padding: 12px 20px;
+      border-radius: 6px;
+      font-size: 14px;
+      display: none;
+      z-index: 1000;
+    }
+
+    /* Touch-friendly clear button */
+    #clear-selection-btn {
+      background: #dc3545;
+      color: white;
+      border-color: #c82333;
+    }
+
+    /* Ensure text is readable on mobile */
+    @media (max-width: 480px) {
+      .panel-header {
+        font-size: 16px;
+        padding: 15px;
+      }
+      
+      .run-card {
+        padding: 12px;
+      }
+      
+      .run-date {
+        font-size: 15px;
+      }
+      
+      .run-stats {
+        font-size: 13px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="map"></div>
+  
+  <div class="map-controls">
+    <div class="control-btn" id="zoom-in-btn" title="Zoom In">+</div>
+    <div class="control-btn" id="zoom-out-btn" title="Zoom Out">−</div>
+    <div class="control-btn" id="reset-north-btn" title="Reset North">N</div>
+    <div class="control-btn" id="lasso-btn" title="Select Area">⊙</div>
+    <div class="control-btn" id="clear-selection-btn" title="Clear Selection" style="display: none;">✕</div>
+  </div>
+  
+  <div id="drawing-overlay"></div>
+  
+  <div id="side-panel">
+    <div class="panel-header">
+      <span>Selected Runs</span>
+      <span class="panel-close" id="panel-close">×</span>
+    </div>
+    <div class="panel-controls">
+      <span class="control-link" id="select-all">Select All</span>
+      <span class="control-link" id="deselect-all">Deselect All</span>
+    </div>
+    <div class="panel-content" id="panel-content">
+      <!-- Run cards will be populated here -->
+    </div>
+    <div class="panel-summary" id="panel-summary">
+      <!-- Summary info will be shown here -->
+    </div>
+  </div>
+
+  <div id="progress-container"></div>
+  <div id="loading-indicator">
+    <div class="spinner"></div>
+    Loading runs...
+  </div>
+  
+  <div id="status-message"></div>
+
+  <!-- Load spatial library -->
+  <script src="./js/spatial.js"></script>
+  
+  <script>
+    // Mobile-optimized heatmap application
+    
+    let map;
+    let selectedRuns = new Set();
+    let sidebarOpen = false;
+    let isDrawingMode = false;
+    let isDrawing = false;
+    let polygonCoords = [];
+    let currentPolygon = null;
+    let debounceTimeout = null;
+
+    // Initialize map
+    function initMap() {
+      map = new maplibregl.Map({
+        container: 'map',
+        style: {
+          version: 8,
+          sources: {},
+          layers: []
+        },
+        center: [-98, 39],
+        zoom: 4,
+        touchZoomRotate: true,
+        touchPitch: false
+      });
+
+      map.on('load', async () => {
+        // Add OSM tiles
+        map.addSource('osm-tiles', {
+          type: 'raster',
+          tiles: [
+            'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
+            'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
+            'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png'
+          ],
+          tileSize: 256,
+          attribution: '© OpenStreetMap contributors'
+        });
+        
+        map.addLayer({
+          id: 'osm-layer',
+          type: 'raster',
+          source: 'osm-tiles'
+        });
+
+        // Add runs layer
+        map.addSource('runs', {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [] }
+        });
+        
+        map.addLayer({
+          id: 'runs-layer',
+          type: 'line',
+          source: 'runs',
+          paint: {
+            'line-color': 'rgba(255,0,0,0.5)',
+            'line-width': [
+              'interpolate', ['linear'], ['zoom'],
+              0, 1,
+              14, 3
+            ]
+          }
+        });
+
+        // Load spatial data
+        try {
+          await window.spatialIndex.loadData();
+          showStatus('Data loaded successfully');
+          fetchAndUpdate();
+        } catch (error) {
+          showStatus('Failed to load data: ' + error.message);
+          console.error('Data loading failed:', error);
+        }
+      });
+
+      map.on('moveend', fetchAndUpdate);
+    }
+
+    // Show status message
+    function showStatus(message, duration = 3000) {
+      const statusEl = document.getElementById('status-message');
+      statusEl.textContent = message;
+      statusEl.style.display = 'block';
+      
+      setTimeout(() => {
+        statusEl.style.display = 'none';
+      }, duration);
+    }
+
+    // Progress management
+    function createProgress() {
+      const container = document.getElementById('progress-container');
+      const wrapper = document.createElement('div');
+      wrapper.className = 'progress';
+      const bar = document.createElement('div');
+      bar.className = 'progress-bar';
+      wrapper.appendChild(bar);
+      container.appendChild(wrapper);
+      container.style.display = 'block';
+      return { wrapper, bar };
+    }
+
+    function removeProgress(wrapper) {
+      const container = document.getElementById('progress-container');
+      if (container.contains(wrapper)) {
+        container.removeChild(wrapper);
+      }
+      if (container.children.length === 0) {
+        container.style.display = 'none';
+      }
+    }
+
+    // Fetch and update runs
+    function fetchAndUpdate() {
+      if (!window.spatialIndex.loaded) return;
+      
+      if (debounceTimeout) {
+        clearTimeout(debounceTimeout);
+      }
+      
+      debounceTimeout = setTimeout(() => {
+        performFetch();
+      }, 150);
+    }
+
+    function performFetch() {
+      const loadingIndicator = document.getElementById('loading-indicator');
+      loadingIndicator.style.display = 'block';
+      
+      const { wrapper, bar } = createProgress();
+      
+      setTimeout(() => {
+        try {
+          const bounds = map.getBounds();
+          const zoom = Math.floor(map.getZoom());
+          
+          let data;
+          if (sidebarOpen && selectedRuns.size > 0) {
+            // Show only selected runs
+            data = window.spatialIndex.filterRunsByIds(
+              Array.from(selectedRuns),
+              bounds.getSouth(), bounds.getWest(),
+              bounds.getNorth(), bounds.getEast(),
+              zoom
+            );
+          } else if (sidebarOpen && selectedRuns.size === 0) {
+            // Show no runs when sidebar open but none selected
+            data = { type: 'FeatureCollection', features: [] };
+          } else {
+            // Show all runs
+            data = window.spatialIndex.getRunsForBounds(
+              bounds.getSouth(), bounds.getWest(),
+              bounds.getNorth(), bounds.getEast(),
+              zoom
+            );
+          }
+          
+          // Simulate progress
+          bar.style.width = '50%';
+          setTimeout(() => {
+            bar.style.width = '100%';
+            map.getSource('runs').setData(data);
+            
+            setTimeout(() => {
+              removeProgress(wrapper);
+              loadingIndicator.style.display = 'none';
+            }, 200);
+          }, 100);
+          
+        } catch (error) {
+          console.error('Fetch error:', error);
+          removeProgress(wrapper);
+          loadingIndicator.style.display = 'none';
+          showStatus('Error loading runs');
+        }
+      }, 50);
+    }
+
+    // Touch-optimized drawing functions
+    function setupDrawing() {
+      const overlay = document.getElementById('drawing-overlay');
+      
+      // Touch events for drawing
+      overlay.addEventListener('touchstart', startDrawing, { passive: false });
+      overlay.addEventListener('touchmove', continueDrawing, { passive: false });
+      overlay.addEventListener('touchend', finishDrawing, { passive: false });
+      
+      // Mouse events for desktop testing
+      overlay.addEventListener('mousedown', startDrawing);
+      overlay.addEventListener('mousemove', continueDrawing);
+      overlay.addEventListener('mouseup', finishDrawing);
+    }
+
+    function startDrawing(e) {
+      if (!isDrawingMode) return;
+      
+      e.preventDefault();
+      isDrawing = true;
+      
+      const point = getEventPoint(e);
+      const lngLat = map.unproject(point);
+      
+      polygonCoords = [[lngLat.lng, lngLat.lat]];
+      
+      if (currentPolygon) {
+        clearPolygonDisplay();
+      }
+    }
+
+    function continueDrawing(e) {
+      if (!isDrawing || !isDrawingMode) return;
+      
+      e.preventDefault();
+      
+      const point = getEventPoint(e);
+      const lngLat = map.unproject(point);
+      
+      polygonCoords.push([lngLat.lng, lngLat.lat]);
+      updatePolygonDisplay();
+    }
+
+    function finishDrawing(e) {
+      if (!isDrawing || !isDrawingMode) return;
+      
+      e.preventDefault();
+      isDrawing = false;
+      
+      if (polygonCoords.length >= 3) {
+        polygonCoords.push(polygonCoords[0]); // Close polygon
+        updatePolygonDisplay();
+        queryRunsInArea(polygonCoords);
+        document.getElementById('clear-selection-btn').style.display = 'block';
+      }
+      
+      exitDrawingMode();
+    }
+
+    function getEventPoint(e) {
+      if (e.touches && e.touches.length > 0) {
+        return [e.touches[0].clientX, e.touches[0].clientY];
+      }
+      return [e.clientX, e.clientY];
+    }
+
+    function updatePolygonDisplay() {
+      clearPolygonDisplay();
+      
+      if (polygonCoords.length < 2) return;
+      
+      const geometry = isDrawing ? 
+        { type: 'LineString', coordinates: polygonCoords } :
+        { type: 'Polygon', coordinates: [polygonCoords] };
+      
+      map.addSource('selection-polygon', {
+        type: 'geojson',
+        data: { type: 'Feature', geometry: geometry }
+      });
+      
+      if (isDrawing) {
+        map.addLayer({
+          id: 'selection-polygon-outline',
+          type: 'line',
+          source: 'selection-polygon',
+          paint: {
+            'line-color': '#007bff',
+            'line-width': 3,
+            'line-opacity': 0.8
+          }
+        });
+      } else {
+        map.addLayer({
+          id: 'selection-polygon',
+          type: 'fill',
+          source: 'selection-polygon',
+          paint: {
+            'fill-color': '#007bff',
+            'fill-opacity': 0.2
+          }
+        });
+        
+        map.addLayer({
+          id: 'selection-polygon-outline',
+          type: 'line',
+          source: 'selection-polygon',
+          paint: {
+            'line-color': '#007bff',
+            'line-width': 2,
+            'line-dasharray': [5, 5]
+          }
+        });
+      }
+      
+      if (!isDrawing) {
+        currentPolygon = geometry;
+      }
+    }
+
+    function clearPolygonDisplay() {
+      if (map.getSource('selection-polygon')) {
+        if (map.getLayer('selection-polygon-outline')) {
+          map.removeLayer('selection-polygon-outline');
+        }
+        if (map.getLayer('selection-polygon')) {
+          map.removeLayer('selection-polygon');
+        }
+        map.removeSource('selection-polygon');
+      }
+    }
+
+    function queryRunsInArea(coordinates) {
+      try {
+        const runs = window.spatialIndex.getRunsInPolygon(coordinates);
+        displayRunsInPanel(runs);
+        document.getElementById('side-panel').classList.add('open');
+        sidebarOpen = true;
+      } catch (error) {
+        console.error('Error querying runs:', error);
+        showStatus('Error finding runs in area');
+      }
+    }
+
+    function displayRunsInPanel(runs) {
+      const panelContent = document.getElementById('panel-content');
+      const panelSummary = document.getElementById('panel-summary');
+      
+      panelContent.innerHTML = '';
+      
+      if (runs.length === 0) {
+        panelContent.innerHTML = '<p style="text-align: center; color: #666; margin: 20px; font-size: 16px;">No runs found in selected area</p>';
+        panelSummary.innerHTML = '';
+        return;
+      }
+
+      // Sort runs by date
+      runs.sort((a, b) => new Date(b.metadata.start_time) - new Date(a.metadata.start_time));
+
+      // Create run cards
+      runs.forEach(run => {
+        const card = document.createElement('div');
+        card.className = 'run-card selected';
+        card.dataset.runId = run.id;
+        
+        const startDate = new Date(run.metadata.start_time);
+        const distance = (run.metadata.distance * 0.000621371).toFixed(2);
+        const duration = formatDuration(run.metadata.duration);
+        
+        card.innerHTML = `
+          <div style="display: flex; align-items: center;">
+            <input type="checkbox" class="run-checkbox" checked>
+            <div style="flex: 1;">
+              <div class="run-date">${startDate.toLocaleDateString()} ${startDate.toLocaleTimeString()}</div>
+              <div class="run-stats">
+                <span>📏 ${distance} mi</span>
+                <span>⏱️ ${duration}</span>
+              </div>
+            </div>
+          </div>
+        `;
+
+        selectedRuns.add(run.id);
+        
+        const checkbox = card.querySelector('.run-checkbox');
+        checkbox.addEventListener('change', (e) => {
+          if (e.target.checked) {
+            selectedRuns.add(run.id);
+            card.classList.add('selected');
+          } else {
+            selectedRuns.delete(run.id);
+            card.classList.remove('selected');
+          }
+          updateMapDisplay();
+        });
+
+        panelContent.appendChild(card);
+      });
+
+      // Update summary
+      const mostRecentRun = runs[0];
+      const mostRecentDate = new Date(mostRecentRun.metadata.start_time);
+      panelSummary.innerHTML = `
+        <strong>${runs.length}</strong> runs found<br>
+        <strong>Last run:</strong> ${mostRecentDate.toLocaleDateString()}
+      `;
+
+      updateMapDisplay();
+    }
+
+    function formatDuration(seconds) {
+      const hours = Math.floor(seconds / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      const secs = Math.floor(seconds % 60);
+      
+      if (hours > 0) {
+        return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+      } else {
+        return `${minutes}:${secs.toString().padStart(2, '0')}`;
+      }
+    }
+
+    function updateMapDisplay() {
+      fetchAndUpdate();
+    }
+
+    function exitDrawingMode() {
+      isDrawingMode = false;
+      isDrawing = false;
+      document.getElementById('lasso-btn').classList.remove('active');
+      document.getElementById('drawing-overlay').classList.remove('active');
+    }
+
+    function clearSelection() {
+      clearPolygonDisplay();
+      currentPolygon = null;
+      polygonCoords = [];
+      document.getElementById('clear-selection-btn').style.display = 'none';
+      document.getElementById('side-panel').classList.remove('open');
+      sidebarOpen = false;
+      selectedRuns.clear();
+      updateMapDisplay();
+    }
+
+    // Event listeners
+    document.addEventListener('DOMContentLoaded', () => {
+      initMap();
+      setupDrawing();
+      
+      // Control buttons
+      document.getElementById('zoom-in-btn').addEventListener('click', () => {
+        map.zoomIn();
+      });
+
+      document.getElementById('zoom-out-btn').addEventListener('click', () => {
+        map.zoomOut();
+      });
+
+      document.getElementById('reset-north-btn').addEventListener('click', () => {
+        map.setBearing(0);
+      });
+
+      document.getElementById('lasso-btn').addEventListener('click', () => {
+        if (!isDrawingMode) {
+          isDrawingMode = true;
+          document.getElementById('lasso-btn').classList.add('active');
+          document.getElementById('drawing-overlay').classList.add('active');
+          showStatus('Draw on map to select area');
+        } else {
+          exitDrawingMode();
+        }
+      });
+
+      document.getElementById('clear-selection-btn').addEventListener('click', clearSelection);
+      document.getElementById('panel-close').addEventListener('click', clearSelection);
+
+      // Panel controls
+      document.getElementById('select-all').addEventListener('click', () => {
+        const checkboxes = document.querySelectorAll('.run-checkbox');
+        checkboxes.forEach(checkbox => {
+          if (!checkbox.checked) {
+            checkbox.checked = true;
+            checkbox.dispatchEvent(new Event('change'));
+          }
+        });
+      });
+
+      document.getElementById('deselect-all').addEventListener('click', () => {
+        const checkboxes = document.querySelectorAll('.run-checkbox');
+        checkboxes.forEach(checkbox => {
+          if (checkbox.checked) {
+            checkbox.checked = false;
+            checkbox.dispatchEvent(new Event('change'));
+          }
+        });
+      });
+    });
+  </script>
+</body>
+</html>

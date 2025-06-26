@@ -225,7 +225,11 @@ class MobileSpatialIndex {
 
             // Check if any point of the run's full geometry is inside the polygon
             let intersects = false;
-            for (const part of run.geoms.full.coordinates) {
+            let parts = run.geoms.full.type === 'LineString'
+                ? [run.geoms.full.coordinates]
+                : run.geoms.full.coordinates;
+
+            for (const part of parts) {
                 for (const point of part) {
                     if (this.pointInPolygon(point, polygonCoords)) {
                         intersects = true;

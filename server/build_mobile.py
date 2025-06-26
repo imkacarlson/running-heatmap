@@ -214,7 +214,6 @@ class MobileSpatialIndex {
      * Find runs intersecting with polygon
      */
     getRunsInPolygon(polygonCoords) {
-        // Simple implementation - check bbox intersection first
         const polygon = this.createPolygonBBox(polygonCoords);
         const candidateIds = this.queryBBox(polygon.minLng, polygon.minLat, polygon.maxLng, polygon.maxLat);
         
@@ -223,14 +222,26 @@ class MobileSpatialIndex {
         for (const rid of candidateIds) {
             const run = this.runs[rid];
             if (!run) continue;
-            
-            // For now, just return runs whose bbox intersects
-            // TODO: Implement proper point-in-polygon testing
-            intersectingRuns.push({
-                id: parseInt(rid),
-                geometry: run.geoms.full,
-                metadata: run.metadata
-            });
+
+            // Check if any point of the run's full geometry is inside the polygon
+            let intersects = false;
+            for (const part of run.geoms.full.coordinates) {
+                for (const point of part) {
+                    if (this.pointInPolygon(point, polygonCoords)) {
+                        intersects = true;
+                        break;
+                    }
+                }
+                if (intersects) break;
+            }
+
+            if (intersects) {
+                intersectingRuns.push({
+                    id: parseInt(rid),
+                    geometry: run.geoms.full,
+                    metadata: run.metadata
+                });
+            }
         }
         
         return intersectingRuns;
@@ -248,6 +259,21 @@ class MobileSpatialIndex {
         }
         
         return { minLng, minLat, maxLng, maxLat };
+    }
+
+    pointInPolygon(point, polygon) {
+        let [lng, lat] = point;
+        let isInside = false;
+        for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+            let [xi, yi] = polygon[i];
+            let [xj, yj] = polygon[j];
+
+            let intersect = ((yi > lat) !== (yj > lat))
+                && (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi);
+            if (intersect) isInside = !isInside;
+        }
+
+        return isInside;
     }
     
     /**

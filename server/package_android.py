@@ -295,6 +295,43 @@ Enjoy your runs on mobile! 🏃‍♂️📱
     
     print(f"📝 Created build scripts and documentation")
 
+def build_apk(mobile_dir):
+    """Build APK using Gradle."""
+    
+    print("🔨 Building APK...")
+    
+    android_dir = os.path.join(mobile_dir, 'android')
+    
+    # Build debug APK
+    try:
+        print("📦 Running Gradle assembleDebug...")
+        result = subprocess.run(['./gradlew', 'assembleDebug'], 
+                              cwd=android_dir, check=True, 
+                              capture_output=True, text=True)
+        print("✅ Debug APK built successfully")
+        
+        # Find the APK file
+        apk_path = os.path.join(android_dir, 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk')
+        if os.path.exists(apk_path):
+            # Copy APK to mobile root with timestamp
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_apk = os.path.join(mobile_dir, f'running-heatmap-{timestamp}.apk')
+            shutil.copy2(apk_path, output_apk)
+            print(f"📱 APK saved to: {output_apk}")
+            return output_apk
+        else:
+            print(f"⚠️ APK not found at expected location: {apk_path}")
+            return None
+            
+    except subprocess.CalledProcessError as e:
+        print(f"❌ APK build failed: {e}")
+        if e.stdout:
+            print("STDOUT:", e.stdout[-1000:])  # Last 1000 chars
+        if e.stderr:
+            print("STDERR:", e.stderr[-1000:])  # Last 1000 chars
+        return None
+
 def main():
     """Main packaging function."""
     
@@ -328,14 +365,21 @@ def main():
         # Create build scripts
         create_build_script(mobile_dir)
         
+        # Build APK automatically
+        apk_path = build_apk(mobile_dir)
+        
         print(f"\n🎉 Android packaging complete!")
         print(f"📱 Mobile app directory: {os.path.abspath(mobile_dir)}")
-        print(f"\nNext steps:")
-        print(f"1. cd {mobile_dir}")
-        print(f"2. npx cap open android")
-        print(f"3. Build and run in Android Studio")
-        print(f"\nOr run directly:")
-        print(f"  npx cap run android")
+        
+        if apk_path:
+            print(f"📦 APK built: {os.path.abspath(apk_path)}")
+            print(f"\nTo install on device:")
+            print(f"  adb install {os.path.basename(apk_path)}")
+        else:
+            print(f"\n⚠️ APK build failed, but you can still:")
+            print(f"1. cd {mobile_dir}")
+            print(f"2. npx cap open android")
+            print(f"3. Build and run in Android Studio")
         
     except Exception as e:
         print(f"❌ Packaging failed: {e}")

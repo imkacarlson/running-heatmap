@@ -361,8 +361,11 @@ def copy_mobile_templates(mobile_dir):
         
         print(f"✅ Updated HTML with service worker registration")
 
-if __name__ == '__main__':
+def run_full_build_and_package():
+    """Run complete mobile build and Android packaging."""
+    
     try:
+        # Step 1: Build mobile app
         mobile_dir, run_count = build_mobile_app()
         create_mobile_spatial_lib()
         copy_mobile_templates(mobile_dir)
@@ -371,8 +374,14 @@ if __name__ == '__main__':
         print(f"📱 Output directory: {mobile_dir}")
         print(f"🏃‍♂️ {run_count} runs exported")
         
-        print(f"\nNext step:")
-        print(f"• Package for Android: python package_android.py")
+        # Step 2: Package for Android and build APK
+        print(f"\n🔄 Starting Android packaging...")
+        
+        # Import and run the Android packaging
+        import package_android
+        
+        # Run the full Android packaging process
+        package_android.main()
         
     except FileNotFoundError as e:
         print(f"❌ Error: runs.pkl not found. Please run import_runs.py first.")
@@ -380,3 +389,30 @@ if __name__ == '__main__':
     except Exception as e:
         print(f"❌ Build failed: {e}")
         raise
+
+if __name__ == '__main__':
+    import sys
+    
+    # Check if user wants full build (including APK)
+    if len(sys.argv) > 1 and sys.argv[1] == '--full':
+        run_full_build_and_package()
+    else:
+        try:
+            mobile_dir, run_count = build_mobile_app()
+            create_mobile_spatial_lib()
+            copy_mobile_templates(mobile_dir)
+            
+            print(f"\n🎉 Mobile build complete!")
+            print(f"📱 Output directory: {mobile_dir}")
+            print(f"🏃‍♂️ {run_count} runs exported")
+            
+            print(f"\nNext steps:")
+            print(f"• Package for Android: python package_android.py")
+            print(f"• Or run full build: python build_mobile.py --full")
+            
+        except FileNotFoundError as e:
+            print(f"❌ Error: runs.pkl not found. Please run import_runs.py first.")
+            print(f"   Make sure you're in the server/ directory.")
+        except Exception as e:
+            print(f"❌ Build failed: {e}")
+            raise

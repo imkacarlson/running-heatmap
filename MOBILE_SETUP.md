@@ -6,50 +6,122 @@ This guide will help you create a native Android APK of your running heatmap tha
 
 Your existing PC web server remains unchanged! This process creates a separate, native Android app that bundles all your run data locally.
 
-## Step 1: Build Mobile Data Files
+## WSL Prerequisites (Windows Users)
 
-From your `server/` directory, run the mobile build script:
+If you're running this in WSL (Windows Subsystem for Linux), install these prerequisites first:
+
+```bash
+# Update package list
+sudo apt update
+
+# Install Java Development Kit (required for Android builds)
+sudo apt install openjdk-17-jdk
+
+# Install Node.js and npm (if not already installed)
+sudo apt install nodejs npm
+
+# Install Android SDK command line tools
+sudo apt install wget unzip
+mkdir -p ~/android-sdk/cmdline-tools
+cd ~/android-sdk/cmdline-tools
+wget https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip
+unzip commandlinetools-linux-*.zip
+mv cmdline-tools latest
+cd ~
+
+# Set up environment variables (add to ~/.bashrc)
+echo 'export ANDROID_HOME=~/android-sdk' >> ~/.bashrc
+echo 'export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools' >> ~/.bashrc
+source ~/.bashrc
+
+# Accept licenses and install SDK components
+yes | sdkmanager --licenses
+sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.0"
+
+# Verify installations
+java -version
+node --version  
+npm --version
+echo $ANDROID_HOME
+```
+
+**Installing APKs from WSL:**
+- Copy APK to Windows: `cp mobile/running-heatmap-*.apk /mnt/c/Users/YourName/Desktop/`
+- Or use `adb install mobile/running-heatmap-*.apk` directly from WSL
+
+## Quick Start (Fully Automated)
+
+The fastest way to build a complete APK:
+
+```bash
+cd server
+python build_mobile.py --full
+```
+
+This single command will:
+- ✅ Convert your `runs.pkl` to JSON format
+- ✅ Create a JavaScript spatial library  
+- ✅ Generate mobile-optimized HTML/CSS
+- ✅ Add an offline service worker
+- ✅ Set up Capacitor Android project
+- ✅ Install npm dependencies
+- ✅ **Build the APK automatically using Gradle**
+- ✅ Output a timestamped APK file ready to install
+
+**Output:** You'll get a file like `mobile/running-heatmap-20250626_143022.apk`
+
+## Prerequisites
+
+Before running the automated build, make sure you have:
+
+```bash
+# Node.js and npm
+node --version
+npm --version
+
+# Java Development Kit (JDK) for Android builds
+java -version
+
+# Optional: Android SDK tools (if you want to install directly)
+adb --version
+```
+
+## Manual Step-by-Step Process
+
+If you prefer more control or want to understand each step:
+
+### Step 1: Build Mobile Data Files
 
 ```bash
 cd server
 python build_mobile.py
 ```
 
+This creates the mobile web assets in `../mobile/` directory.
+
+### Step 2: Package and Build APK
+
+```bash
+python package_android.py
+```
+
 This will:
-- ✅ Convert your `runs.pkl` to JSON format
-- ✅ Create a JavaScript spatial library
-- ✅ Generate mobile-optimized HTML/CSS
-- ✅ Add an offline service worker
-- ✅ Create a complete `../mobile/` directory with all necessary web assets.
+- ✅ Set up Capacitor Android project
+- ✅ Install npm dependencies
+- ✅ Sync web assets to Android project
+- ✅ **Build APK using Gradle**
+- ✅ Output timestamped APK file
 
-**Note:** This may take a few minutes with thousands of runs. The script will show progress.
+### Step 3: Alternative Android Studio Method
 
-## Step 2: Package as a Native Android APK
+If you prefer using Android Studio:
 
-This step bundles the web assets into a native Android application using Capacitor.
+```bash
+cd ../mobile
+npx cap open android
+```
 
-1.  **Install prerequisites:**
-    ```bash
-    # Install Node.js and npm if not already installed
-    # Install Android Studio
-    # Install the Java Development Kit (JDK)
-    ```
-
-2.  **Package the Android app:**
-    From the `server/` directory, run the packaging script:
-    ```bash
-    python package_android.py
-    ```
-    This script will create an Android project in the `mobile/` directory.
-
-3.  **Build the APK in Android Studio:**
-    ```bash
-    cd ../mobile
-    npx cap open android
-    ```
-    - This command will open the project in Android Studio.
-    - From Android Studio, you can build the APK (`Build > Build Bundle(s) / APK(s) > Build APK(s)`) and run it on an emulator or a connected device.
-    - Once built, you can find the APK in `mobile/android/app/build/outputs/apk/debug/`.
+Then build manually in Android Studio (`Build > Build Bundle(s) / APK(s) > Build APK(s)`).
 
 ## Step 3: Test Mobile Features
 
@@ -99,10 +171,32 @@ running-heatmap/
     └── ...
 ```
 
+## Installing the APK
+
+Once you have your APK file:
+
+### Option 1: Direct Install (if you have adb)
+```bash
+adb install mobile/running-heatmap-YYYYMMDD_HHMMSS.apk
+```
+
+### Option 2: Manual Install
+1. Copy the APK file to your Android device
+2. Enable "Install from unknown sources" in Android settings
+3. Tap the APK file to install
+
 ## Updating Mobile Data
 
 When you add new runs to your PC version:
 
+**Quick Update (Recommended):**
+```bash
+cd server
+python import_runs.py           # Import new runs
+python build_mobile.py --full   # Rebuild everything + new APK
+```
+
+**Manual Update Process:**
 1.  **Import new runs on PC:**
     ```bash
     cd server
@@ -114,13 +208,10 @@ When you add new runs to your PC version:
     python build_mobile.py
     ```
 
-3.  **Sync and rebuild the APK:**
+3.  **Rebuild the APK:**
     ```bash
-    cd ../mobile
-    npx cap sync android
-    npx cap open android
+    python package_android.py
     ```
-    - Rebuild the APK in Android Studio to include the new data.
 
 ## Troubleshooting
 

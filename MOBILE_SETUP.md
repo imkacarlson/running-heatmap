@@ -24,9 +24,9 @@ sudo apt install nodejs npm
 sudo apt install wget unzip
 mkdir -p ~/android-sdk/cmdline-tools
 cd ~/android-sdk/cmdline-tools
-wget https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip
+wget https://dl.google.com/android/repository/commandlinetools-linux-latest.zip
 unzip commandlinetools-linux-*.zip
-mv cmdline-tools latest
+mv cmdline-tools latest # This step is still crucial for correct SDK setup
 cd ~
 
 # Set up environment variables (add to ~/.bashrc)

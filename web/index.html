@@ -236,6 +236,7 @@
     <div class="control-btn" id="zoom-out-btn" title="Zoom Out">−</div>
     <div class="control-btn north-btn" id="reset-north-btn" title="Reset North">N</div>
     <div class="control-btn" id="lasso-btn" title="Select Area">⊙</div>
+    <div class="control-btn" id="strava-sync-btn" title="Sync with Strava">🔄</div>
     <div class="control-btn" id="clear-selection-btn" title="Clear Selection" style="display: none;">✕</div>
   </div>
   
@@ -774,6 +775,33 @@
         return `${minutes}:${secs.toString().padStart(2, '0')}`;
       }
     }
+
+    document.getElementById('strava-sync-btn').addEventListener('click', async () => {
+      const indicator = document.getElementById('loading-indicator');
+      indicator.innerHTML = '<div class="spinner"></div>Syncing with Strava...';
+      indicator.style.display = 'block';
+
+      try {
+        const response = await fetch('/api/sync_strava', { method: 'POST' });
+        const result = await response.json();
+
+        if (response.ok) {
+          alert(result.message);
+          if (result.new_runs > 0) {
+            // Reload the page to get the new data
+            location.reload();
+          }
+        } else {
+          alert(`Error: ${result.error}`);
+        }
+      } catch (error) {
+        console.error('Strava sync failed:', error);
+        alert('An error occurred during the Strava sync.');
+      } finally {
+        indicator.style.display = 'none';
+        indicator.innerHTML = '<div class="spinner"></div>Loading runs...'; // Reset indicator text
+      }
+    });
 
     // Update map display to show only selected runs
     function updateMapDisplay() {

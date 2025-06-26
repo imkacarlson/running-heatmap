@@ -36,3 +36,7 @@ package.json
 www/
 *.apk
 *.aab
+
+# Strava API credentials and tokens
+config.ini
+strava_tokens.json

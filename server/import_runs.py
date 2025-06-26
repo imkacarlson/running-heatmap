@@ -345,6 +345,39 @@ def main():
         print(f"Skipped {skipped_count} artifacts (no GPS coordinates found)")
 
 
+import polyline
+
+def process_strava_run(activity):
+    """Process a single Strava activity into a run object."""
+    # Decode the polyline from Strava
+    coords = polyline.decode(activity['map']['summary_polyline'])
+    # Strava provides (lat, lon), but we need (lon, lat)
+    line = LineString([(lon, lat) for lat, lon in coords])
+
+    # Create simplified geometries
+    geoms = {
+        'full': line,
+        'high': line.simplify(0.0001),
+        'mid': line.simplify(0.0005),
+        'low': line.simplify(0.001),
+        'coarse': line.simplify(0.005)
+    }
+
+    # Extract metadata
+    metadata = {
+        'start_time': datetime.fromisoformat(activity['start_date']),
+        'end_time': datetime.fromisoformat(activity['start_date']) + timedelta(seconds=activity['elapsed_time']),
+        'distance': activity['distance'],
+        'duration': activity['moving_time'],
+        'source_file': f"strava_{activity['id']}"
+    }
+
+    return {
+        'geoms': geoms,
+        'bbox': line.bounds,
+        'metadata': metadata
+    }
+
 if __name__ == '__main__':
     main()
 

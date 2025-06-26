@@ -279,5 +279,52 @@ def get_runs_in_area():
         return jsonify({'error': 'Internal server error'}), 500
 
 
+from strava_client import StravaClient
+from import_runs import process_strava_run
+
+@app.route('/api/sync_strava', methods=['POST'])
+def sync_strava():
+    """Sync runs from Strava."""
+    try:
+        client = StravaClient()
+        if not client.is_authenticated():
+            return jsonify({'error': 'Strava not authenticated. Please run strava_client.py first.'}), 401
+
+        # Find the timestamp of the last run
+        last_run_timestamp = 0
+        if runs:
+            last_run_timestamp = max(run['metadata']['start_time'].timestamp() for run in runs.values() if 'start_time' in run.get('metadata', {}))
+
+        print(f"Fetching Strava activities after timestamp: {last_run_timestamp}")
+        activities = client.get_activities(after_timestamp=last_run_timestamp)
+
+        if not activities:
+            return jsonify({'message': 'No new activities to sync.', 'new_runs': 0})
+
+        print(f"Found {len(activities)} new activities from Strava.")
+
+        new_run_count = 0
+        for activity in activities:
+            if activity['type'] == 'Run' and activity['sport_type'] == 'Run':
+                run_id = activity['id']
+                if run_id not in runs:
+                    run_data = process_strava_run(activity)
+                    runs[run_id] = run_data
+                    # Add to spatial index
+                    idx.insert(run_id, run_data['bbox'])
+                    new_run_count += 1
+        
+        if new_run_count > 0:
+            # Save updated runs
+            with open('runs.pkl', 'wb') as f:
+                pickle.dump(runs, f)
+            print(f"Added {new_run_count} new runs.")
+
+        return jsonify({'message': f'Sync complete. Added {new_run_count} new runs.', 'new_runs': new_run_count})
+
+    except Exception as e:
+        print(f"Error during Strava sync: {e}")
+        return jsonify({'error': 'Internal server error during sync.'}), 500
+
 if __name__ == '__main__':
     app.run(debug=True)

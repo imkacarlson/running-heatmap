@@ -310,6 +310,8 @@
     <div class="control-btn" id="reset-north-btn" title="Reset North">N</div>
     <div class="control-btn" id="lasso-btn" title="Select Area">⊙</div>
     <div class="control-btn" id="clear-selection-btn" title="Clear Selection" style="display: none;">✕</div>
+    <input type="file" id="gpx-files" multiple accept=".gpx" style="display:none" />
+    <div class="control-btn" id="upload-btn" title="Upload GPX">⬆</div>
   </div>
   
   <div id="drawing-overlay"></div>
@@ -781,6 +783,34 @@
 
       document.getElementById('reset-north-btn').addEventListener('click', () => {
         map.setBearing(0);
+      });
+
+      document.getElementById('upload-btn').addEventListener('click', () => {
+        document.getElementById('gpx-files').click();
+      });
+
+      document.getElementById('gpx-files').addEventListener('change', async (e) => {
+        const files = e.target.files;
+        if (!files.length) return;
+        const form = new FormData();
+        for (const file of files) {
+          form.append('files', file);
+        }
+        try {
+          showStatus('Uploading GPX...');
+          const resp = await fetch('/api/upload', { method: 'POST', body: form });
+          if (!resp.ok) {
+            const txt = await resp.text();
+            alert('Upload failed: ' + txt);
+          } else {
+            fetchAndUpdate();
+          }
+        } catch (err) {
+          alert('Upload error: ' + err.message);
+        } finally {
+          hideStatus();
+          e.target.value = '';
+        }
       });
 
       document.getElementById('lasso-btn').addEventListener('click', () => {

@@ -2,16 +2,25 @@ import pickle
 import json
 import time
 from functools import lru_cache
-from flask import Flask, request, jsonify, send_from_directory, Response, stream_with_context
-from shapely.geometry import mapping, Polygon
+from flask import (
+    Flask,
+    request,
+    jsonify,
+    send_from_directory,
+    Response,
+    stream_with_context,
+)
+from shapely.geometry import mapping, Polygon, LineString
 from shapely import clip_by_rect
 from tqdm import tqdm
+import gpxpy
+from rtree import index
+
 
 # Load runs and build spatial index
 with open('runs.pkl', 'rb') as f:
     runs = pickle.load(f)
 
-from rtree import index
 idx = index.Index()
 for rid, run in runs.items():
     idx.insert(rid, run['bbox'])
@@ -26,6 +35,67 @@ def root():
 def quantize(val, digits=3):
     """Round coordinate for caching stability."""
     return round(val, digits)
+
+
+def parse_gpx_fileobj(file_obj):
+    """Parse a GPX file-like object and return coordinates and metadata."""
+    gpx = gpxpy.parse(file_obj)
+    coords = []
+    metadata = {
+        'start_time': None,
+        'end_time': None,
+        'distance': 0,
+        'duration': 0,
+    }
+
+    points_with_time = []
+    for track in gpx.tracks:
+        for segment in track.segments:
+            for p in segment.points:
+                coords.append((p.longitude, p.latitude))
+                if p.time:
+                    points_with_time.append(p)
+
+    if points_with_time:
+        metadata['start_time'] = points_with_time[0].time
+        metadata['end_time'] = points_with_time[-1].time
+        metadata['duration'] = (
+            points_with_time[-1].time - points_with_time[0].time
+        ).total_seconds()
+
+    if gpx.tracks:
+        metadata['distance'] = gpx.length_3d() or gpx.length_2d() or 0
+
+    return coords, metadata
+
+
+def add_run(coords, metadata, source_name='upload'):
+    """Add a new run to the dataset and persist it."""
+    global runs
+    rid = max(runs.keys(), default=0) + 1
+    ls = LineString(coords)
+    runs[rid] = {
+        'bbox': ls.bounds,
+        'geoms': {
+            'full': ls,
+            'high': ls.simplify(0.00005, preserve_topology=False),
+            'mid': ls.simplify(0.0001, preserve_topology=False),
+            'low': ls.simplify(0.0003, preserve_topology=False),
+            'coarse': ls.simplify(0.0005, preserve_topology=False),
+        },
+        'metadata': {
+            'start_time': metadata.get('start_time'),
+            'end_time': metadata.get('end_time'),
+            'distance': metadata.get('distance'),
+            'duration': metadata.get('duration'),
+            'source_file': source_name,
+        },
+    }
+    idx.insert(rid, runs[rid]['bbox'])
+    with open('runs.pkl', 'wb') as f:
+        pickle.dump(runs, f)
+    _runs_for_bbox.cache_clear()
+    return rid
 
 
 def _compute_runs(minLat, minLng, maxLat, maxLng, zoom, progress_cb=None):
@@ -277,6 +347,28 @@ def get_runs_in_area():
     except Exception as e:
         print(f"Error in runs_in_area: {e}")
         return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/upload', methods=['POST'])
+def upload_gpx():
+    """Upload one or more GPX files and persist them as runs."""
+    if 'files' not in request.files:
+        return jsonify({'error': 'No files provided'}), 400
+
+    added = []
+    for f in request.files.getlist('files'):
+        if not f.filename:
+            continue
+        try:
+            coords, meta = parse_gpx_fileobj(f.stream)
+        except Exception as e:
+            return jsonify({'error': f'Failed to parse {f.filename}: {e}'}), 400
+
+        if len(coords) >= 2:
+            rid = add_run(coords, meta, f.filename)
+            added.append(rid)
+
+    return jsonify({'added': added})
 
 
 if __name__ == '__main__':

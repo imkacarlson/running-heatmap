@@ -14,6 +14,19 @@ RAW_DIR = os.path.join(os.path.dirname(__file__), '..', 'data', 'raw')
 OUTPUT_PKL = os.path.join(os.path.dirname(__file__), 'runs.pkl')
 
 
+def _normalize_activity_type(raw_type):
+    if not raw_type:
+        return 'other'
+    t = str(raw_type).lower()
+    if 'run' in t or 'jog' in t:
+        return 'run'
+    if 'bike' in t or 'cycl' in t or 'ride' in t:
+        return 'bike'
+    if 'walk' in t or 'hike' in t:
+        return 'walk'
+    return 'other'
+
+
 def parse_gpx(path):
     with open(path, 'r') as f:
         gpx = gpxpy.parse(f)
@@ -22,11 +35,22 @@ def parse_gpx(path):
         'start_time': None,
         'end_time': None,
         'distance': 0,
-        'duration': 0
+        'duration': 0,
+        'activity_type': 'other',
+        'activity_raw': None
     }
     
     points_with_time = []
+    raw_type = None
     for track in gpx.tracks:
+        if hasattr(track, 'type') and track.type:
+            raw_type = track.type
+        if not raw_type:
+            for ext in getattr(track, 'extensions', []) or []:
+                tag = getattr(ext, 'tag', '').lower()
+                if 'type' in tag or 'activity' in tag:
+                    raw_type = ext.text
+                    break
         for segment in track.segments:
             for p in segment.points:
                 coords.append((p.longitude, p.latitude))
@@ -41,7 +65,10 @@ def parse_gpx(path):
     # Calculate distance from GPX
     if gpx.tracks:
         metadata['distance'] = gpx.length_3d() or gpx.length_2d() or 0
-        
+
+    metadata['activity_raw'] = raw_type
+    metadata['activity_type'] = _normalize_activity_type(raw_type)
+
     return coords, metadata
 
 
@@ -51,16 +78,19 @@ def parse_fit(path):
         'start_time': None,
         'end_time': None,
         'distance': 0,
-        'duration': 0
+        'duration': 0,
+        'activity_type': 'other',
+        'activity_raw': None
     }
     
     timestamps = []
     
+    raw_type = None
     with FitReader(path) as fit:
         for frame in fit:
             if not isinstance(frame, FitDataMessage):
                 continue
-                
+
             # Extract session metadata
             if frame.name == 'session':
                 try:
@@ -70,6 +100,8 @@ def parse_fit(path):
                         metadata['duration'] = frame.get_value('total_elapsed_time')
                     if frame.get_value('total_distance'):
                         metadata['distance'] = frame.get_value('total_distance')
+                    if frame.get_value('sport'):
+                        raw_type = frame.get_value('sport')
                 except KeyError:
                     pass
                     
@@ -98,7 +130,10 @@ def parse_fit(path):
         metadata['start_time'] = timestamps[0]
         metadata['end_time'] = timestamps[-1]
         metadata['duration'] = (timestamps[-1] - timestamps[0]).total_seconds()
-        
+
+    metadata['activity_raw'] = raw_type
+    metadata['activity_type'] = _normalize_activity_type(raw_type)
+
     return coords, metadata
 
 
@@ -108,7 +143,9 @@ def parse_tcx(path):
         'start_time': None,
         'end_time': None,
         'distance': 0,
-        'duration': 0
+        'duration': 0,
+        'activity_type': 'other',
+        'activity_raw': None
     }
     
     try:
@@ -121,6 +158,9 @@ def parse_tcx(path):
         # Extract activity metadata
         activity = root.find('.//tcx:Activity', ns)
         if activity is not None:
+            # Activity type attribute
+            if 'Sport' in activity.attrib:
+                metadata['activity_raw'] = activity.get('Sport')
             # Get activity ID (start time)
             activity_id = activity.get('Id')
             if activity_id:
@@ -169,9 +209,11 @@ def parse_tcx(path):
                 metadata['start_time'] = timestamps[0]
             metadata['end_time'] = timestamps[-1]
             
+        metadata['activity_type'] = _normalize_activity_type(metadata['activity_raw'])
+
     except (ET.ParseError, FileNotFoundError):
         pass
-    
+
     return coords, metadata
 
 
@@ -183,7 +225,9 @@ def process_file(file_path, file_name):
         'start_time': None,
         'end_time': None,
         'distance': 0,
-        'duration': 0
+        'duration': 0,
+        'activity_type': 'other',
+        'activity_raw': None
     }
 
     # handle .fit.gz and .gpx.gz
@@ -296,6 +340,8 @@ def main():
                                             'end_time': metadata['end_time'],
                                             'distance': metadata['distance'],
                                             'duration': metadata['duration'],
+                                            'activity_type': metadata['activity_type'],
+                                            'activity_raw': metadata['activity_raw'],
                                             'source_file': zip_fname
                                         }
                                     }
@@ -326,6 +372,8 @@ def main():
                         'end_time': metadata['end_time'],
                         'distance': metadata['distance'],
                         'duration': metadata['duration'],
+                        'activity_type': metadata['activity_type'],
+                        'activity_raw': metadata['activity_raw'],
                         'source_file': fname
                     }
                 }

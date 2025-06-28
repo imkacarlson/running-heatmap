@@ -37,6 +37,20 @@ def quantize(val, digits=3):
     return round(val, digits)
 
 
+def _normalize_activity_type(raw_type):
+    """Convert various activity descriptors to standard categories."""
+    if not raw_type:
+        return 'other'
+    t = raw_type.lower()
+    if 'run' in t or 'jog' in t:
+        return 'run'
+    if 'bike' in t or 'cycl' in t or 'ride' in t:
+        return 'bike'
+    if 'walk' in t or 'hike' in t:
+        return 'walk'
+    return 'other'
+
+
 def parse_gpx_fileobj(file_obj):
     """Parse a GPX file-like object and return coordinates and metadata."""
     gpx = gpxpy.parse(file_obj)
@@ -46,10 +60,21 @@ def parse_gpx_fileobj(file_obj):
         'end_time': None,
         'distance': 0,
         'duration': 0,
+        'activity_type': 'other',
+        'activity_raw': None,
     }
 
     points_with_time = []
+    raw_type = None
     for track in gpx.tracks:
+        if hasattr(track, 'type') and track.type:
+            raw_type = track.type
+        if not raw_type:
+            for ext in getattr(track, 'extensions', []) or []:
+                tag = getattr(ext, 'tag', '').lower()
+                if 'type' in tag or 'activity' in tag:
+                    raw_type = ext.text
+                    break
         for segment in track.segments:
             for p in segment.points:
                 coords.append((p.longitude, p.latitude))
@@ -65,6 +90,9 @@ def parse_gpx_fileobj(file_obj):
 
     if gpx.tracks:
         metadata['distance'] = gpx.length_3d() or gpx.length_2d() or 0
+
+    metadata['activity_raw'] = raw_type
+    metadata['activity_type'] = _normalize_activity_type(raw_type)
 
     return coords, metadata
 
@@ -88,6 +116,8 @@ def add_run(coords, metadata, source_name='upload'):
             'end_time': metadata.get('end_time'),
             'distance': metadata.get('distance'),
             'duration': metadata.get('duration'),
+            'activity_type': metadata.get('activity_type', 'other'),
+            'activity_raw': metadata.get('activity_raw'),
             'source_file': source_name,
         },
     }
@@ -332,6 +362,8 @@ def get_runs_in_area():
                         'end_time': None,
                         'distance': 0,
                         'duration': 0,
+                        'activity_type': 'other',
+                        'activity_raw': None,
                         'source_file': 'unknown'
                     })
                 }

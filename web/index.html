@@ -742,21 +742,29 @@
         const card = document.createElement('div');
         card.className = 'run-card';
         card.dataset.runId = run.id;
-        
+
         const startDate = new Date(run.metadata.start_time);
         const distance = (run.metadata.distance * 0.000621371).toFixed(2); // Convert to miles
         const duration = formatDuration(run.metadata.duration);
-        
+        const type = run.metadata.activity_type || 'other';
+        let icon = '❓';
+        if (type === 'run') icon = '🏃';
+        else if (type === 'bike') icon = '🚴';
+        else if (type === 'walk') icon = '🚶';
+        const extra = (type === 'other' && run.metadata.activity_raw) ? `<div style="font-size:11px;color:#666;">${run.metadata.activity_raw}</div>` : '';
+
         card.innerHTML = `
           <div style="display: flex; align-items: center;">
             <input type="checkbox" class="run-checkbox" checked>
-            <div style="flex: 1;">
+            <div style="flex: 1; margin-left:4px;">
               <div class="run-date">${startDate.toLocaleDateString()} ${startDate.toLocaleTimeString()}</div>
               <div class="run-stats">
                 <span>📏 ${distance} mi</span>
                 <span>⏱️ ${duration}</span>
               </div>
+              ${extra}
             </div>
+            <div style="font-size:20px;margin-left:4px;">${icon}</div>
           </div>
         `;
 

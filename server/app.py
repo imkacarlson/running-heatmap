@@ -44,7 +44,7 @@ def _normalize_activity_type(raw_type):
     t = raw_type.lower()
     if 'run' in t or 'jog' in t:
         return 'run'
-    if 'bike' in t or 'cycl' in t or 'ride' in t:
+    if 'bike' in t or 'biking' in t or 'cycl' in t or 'ride' in t:
         return 'bike'
     if 'walk' in t:
         return 'walk'

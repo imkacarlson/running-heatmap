@@ -749,7 +749,7 @@
         const type = run.metadata.activity_type || 'other';
         let icon = '❓';
         if (type === 'run') icon = '🏃';
-        else if (type === 'bike') icon = '🚴';
+        else if (type === 'bike' || type === 'biking') icon = '🚴';
         else if (type === 'walk') icon = '🚶';
         else if (type === 'hike') icon = '🥾';
         const extra = (type === 'other' && run.metadata.activity_raw) ? `<div style="font-size:11px;color:#666;">${run.metadata.activity_raw}</div>` : '';

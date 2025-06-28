@@ -691,6 +691,12 @@
         const startDate = new Date(run.metadata.start_time);
         const distance = (run.metadata.distance * 0.000621371).toFixed(2);
         const duration = formatDuration(run.metadata.duration);
+        const type = run.metadata.activity_type || 'other';
+        let icon = '❓';
+        if (type === 'run') icon = '🏃';
+        else if (type === 'bike') icon = '🚴';
+        else if (type === 'walk') icon = '🚶';
+        else if (type === 'hike') icon = '🥾';
         
         card.innerHTML = `
           <div style="display: flex; align-items: center;">
@@ -702,6 +708,7 @@
                 <span>⏱️ ${duration}</span>
               </div>
             </div>
+            <div style="font-size:20px;margin-left:4px;">${icon}</div>
           </div>
         `;
 

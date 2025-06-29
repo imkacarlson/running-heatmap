@@ -9,7 +9,7 @@ const DATA_CACHE_NAME = 'running-heatmap-data-v1';
 const STATIC_FILES = [
   './',
   './index.html',
-  './js/spatial.js',
+  './main.js',
   'https://unpkg.com/maplibre-gl/dist/maplibre-gl.js',
   'https://unpkg.com/maplibre-gl/dist/maplibre-gl.css'
 ];

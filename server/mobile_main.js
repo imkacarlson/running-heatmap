@@ -92,7 +92,7 @@ class SpatialIndex {
     const bbox = this.getPolygonBbox(coords);
     const geoms = {
       high: { type: 'LineString', coordinates: this.simplify(coords, 0.00005) },
-      medium: { type: 'LineString', coordinates: this.simplify(coords, 0.0003) },
+      mid: { type: 'LineString', coordinates: this.simplify(coords, 0.0003) },
       low: { type: 'LineString', coordinates: this.simplify(coords, 0.0009) }
     };
     this.runsData[id.toString()] = { geoms, bbox, metadata };
@@ -124,10 +124,10 @@ class SpatialIndex {
           // Choose appropriate zoom level with fallback
           const zoomLevel = this.getZoomLevel(zoom);
           let geom = runData.geoms[zoomLevel];
-          
+
           // Fallback to other zoom levels if current one is invalid/empty
           if (!geom || !geom.coordinates || geom.coordinates.length === 0) {
-            geom = runData.geoms['medium'] || runData.geoms['low'] || runData.geoms['high'];
+            geom = runData.geoms['mid'] || runData.geoms['low'] || runData.geoms['high'];
           }
           
           // Validate geometry before adding
@@ -178,7 +178,7 @@ class SpatialIndex {
           
           // Fallback to other zoom levels if current one is invalid/empty
           if (!geom || !geom.coordinates || geom.coordinates.length === 0) {
-            geom = runData.geoms['medium'] || runData.geoms['low'] || runData.geoms['high'];
+            geom = runData.geoms['mid'] || runData.geoms['low'] || runData.geoms['high'];
           }
           
           // Validate geometry before adding
@@ -258,7 +258,7 @@ class SpatialIndex {
             
             // If still no intersection, check if polygon intersects with run geometry
             if (!intersects) {
-              const geom = runData.geoms.high || runData.geoms.medium || runData.geoms.low;
+              const geom = runData.geoms.high || runData.geoms.mid || runData.geoms.low;
               if (geom && geom.coordinates) {
                 // Check if any coordinate point is in the polygon
                 for (const coord of geom.coordinates) {
@@ -287,7 +287,7 @@ class SpatialIndex {
 
   getZoomLevel(zoom) {
     if (zoom >= 13) return 'high';
-    if (zoom >= 10) return 'medium';
+    if (zoom >= 10) return 'mid';
     return 'low';
   }
 

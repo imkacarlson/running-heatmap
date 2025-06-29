@@ -79,7 +79,8 @@
     /* Mobile-optimized map controls */
     .map-controls {
       position: absolute;
-      top: 20px;
+      top: env(safe-area-inset-top, 20px);
+      top: max(60px, env(safe-area-inset-top, 20px));
       right: 20px;
       z-index: 1000;
       display: flex;
@@ -120,11 +121,11 @@
     /* Mobile sidebar */
     #side-panel {
       position: absolute;
-      top: 0;
+      top: env(safe-area-inset-top, 0px);
       right: -100vw;
       width: 85vw;
       max-width: 400px;
-      height: 100vh;
+      height: calc(100vh - env(safe-area-inset-top, 0px));
       background: white;
       box-shadow: -4px 0 20px rgba(0,0,0,0.15);
       transition: right 0.3s ease;
@@ -310,8 +311,6 @@
     <div class="control-btn" id="reset-north-btn" title="Reset North">N</div>
     <div class="control-btn" id="lasso-btn" title="Select Area">⊙</div>
     <div class="control-btn" id="clear-selection-btn" title="Clear Selection" style="display: none;">✕</div>
-    <input type="file" id="gpx-files" multiple accept=".gpx" style="display:none" />
-    <div class="control-btn" id="upload-btn" title="Upload GPX">⬆</div>
   </div>
   
   <div id="drawing-overlay"></div>
@@ -342,7 +341,7 @@
   <div id="status-message"></div>
 
   <!-- Load spatial library -->
-  <script src="./js/spatial.js"></script>
+  <script src="main.js"></script>
   
   <script>
     // Mobile-optimized heatmap application
@@ -410,7 +409,7 @@
           }
         });
 
-        // Load spatial data
+        // Load spatial data (handles localStorage merging internally)
         try {
           await window.spatialIndex.loadData();
           showStatus('Data loaded successfully');
@@ -434,6 +433,9 @@
         statusEl.style.display = 'none';
       }, duration);
     }
+
+    // Make showStatus available globally for debugging
+    window.showStatusForDebug = showStatus;
 
     // Progress management
     function createProgress() {
@@ -507,6 +509,14 @@
           bar.style.width = '50%';
           setTimeout(() => {
             bar.style.width = '100%';
+            
+            // Show user feedback about what's being loaded
+            if (data.features.length === 0) {
+              showStatus(`No runs visible at zoom level ${zoom}`, 2000);
+            } else {
+              showStatus(`Loaded ${data.features.length} runs`, 1000);
+            }
+            
             map.getSource('runs').setData(data);
             
             setTimeout(() => {
@@ -519,7 +529,7 @@
           console.error('Fetch error:', error);
           removeProgress(wrapper);
           loadingIndicator.style.display = 'none';
-          showStatus('Error loading runs');
+          showStatus(`Error loading runs: ${error.message}`, 3000);
         }
       }, 50);
     }
@@ -792,33 +802,6 @@
         map.setBearing(0);
       });
 
-      document.getElementById('upload-btn').addEventListener('click', () => {
-        document.getElementById('gpx-files').click();
-      });
-
-      document.getElementById('gpx-files').addEventListener('change', async (e) => {
-        const files = e.target.files;
-        if (!files.length) return;
-        const form = new FormData();
-        for (const file of files) {
-          form.append('files', file);
-        }
-        try {
-          showStatus('Uploading GPX...');
-          const resp = await fetch('/api/upload', { method: 'POST', body: form });
-          if (!resp.ok) {
-            const txt = await resp.text();
-            alert('Upload failed: ' + txt);
-          } else {
-            fetchAndUpdate();
-          }
-        } catch (err) {
-          alert('Upload error: ' + err.message);
-        } finally {
-          hideStatus();
-          e.target.value = '';
-        }
-      });
 
       document.getElementById('lasso-btn').addEventListener('click', () => {
         if (!isDrawingMode) {

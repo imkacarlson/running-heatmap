@@ -355,19 +355,17 @@ def get_runs_in_area():
             line_geom = run['geoms']['full']  # Use full resolution for accurate intersection
             
             if line_geom.intersects(selection_polygon):
-                # Prepare run data with metadata
+                # Prepare run data with metadata, converting datetimes to strings for JSON
+                metadata = run.get('metadata', {}).copy()
+                if metadata.get('start_time') and hasattr(metadata['start_time'], 'isoformat'):
+                    metadata['start_time'] = metadata['start_time'].isoformat()
+                if metadata.get('end_time') and hasattr(metadata['end_time'], 'isoformat'):
+                    metadata['end_time'] = metadata['end_time'].isoformat()
+
                 run_data = {
                     'id': rid,
                     'geometry': mapping(line_geom),
-                    'metadata': run.get('metadata', {
-                        'start_time': None,
-                        'end_time': None,
-                        'distance': 0,
-                        'duration': 0,
-                        'activity_type': 'other',
-                        'activity_raw': None,
-                        'source_file': 'unknown'
-                    })
+                    'metadata': metadata
                 }
                 intersecting_runs.append(run_data)
         

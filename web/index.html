@@ -122,21 +122,67 @@
     #side-panel {
       position: absolute;
       top: 0;
-      right: -350px;
+      right: 0;
       width: 350px;
       height: 100%;
       background: white;
       box-shadow: -2px 0 10px rgba(0,0,0,0.1);
-      transition: right 0.3s ease;
+      transition: transform 0.3s ease, width 0.3s ease;
       z-index: 1000;
       overflow: hidden;
-      display: flex;
+      display: none;
       flex-direction: column;
+      transform: translateX(100%);
     }
 
     #side-panel.open {
-      right: 0;
+      display: flex;
+      transform: translateX(0);
     }
+
+    #side-panel.open.collapsed {
+      width: 30px;
+    }
+
+    #side-panel.collapsed .panel-header,
+    #side-panel.collapsed .panel-controls,
+    #side-panel.collapsed .panel-content,
+    #side-panel.collapsed .panel-summary {
+      display: none;
+    }
+
+    /* Expand button for collapsed state */
+    .expand-btn {
+      display: none;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      cursor: pointer;
+      font-size: 16px;
+      color: #666;
+      background: white;
+      border: 1px solid #dee2e6;
+      border-radius: 4px;
+      width: 24px;
+      height: 24px;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #side-panel.collapsed .expand-btn {
+      display: flex;
+    }
+
+    #side-panel:not(.collapsed) .expand-btn {
+      display: none;
+    }
+
+    .expand-btn:hover {
+      color: #333;
+      background: #f8f9fa;
+    }
+
 
     .panel-header {
       padding: 15px;
@@ -148,13 +194,14 @@
       align-items: center;
     }
 
-    .panel-close {
+    .panel-close, .panel-collapse {
       cursor: pointer;
       font-size: 18px;
       color: #666;
+      margin-left: 10px;
     }
 
-    .panel-close:hover {
+    .panel-close:hover, .panel-collapse:hover {
       color: #333;
     }
 
@@ -242,9 +289,13 @@
   </div>
   
   <div id="side-panel">
+    <div class="expand-btn" id="expand-btn">◄</div>
     <div class="panel-header">
       <span>Selected Area Runs</span>
-      <span class="panel-close" id="panel-close">×</span>
+      <div>
+        <span class="panel-collapse" id="panel-collapse">►</span>
+        <span class="panel-close" id="panel-close">×</span>
+      </div>
     </div>
     <div class="panel-controls">
       <span class="control-link" id="select-all">Select All</span>
@@ -687,6 +738,18 @@
       clearSelection();
     });
 
+    // Panel collapse functionality
+    document.getElementById('panel-collapse').addEventListener('click', () => {
+      const panel = document.getElementById('side-panel');
+      panel.classList.add('collapsed');
+    });
+
+    // Panel expand functionality
+    document.getElementById('expand-btn').addEventListener('click', () => {
+      const panel = document.getElementById('side-panel');
+      panel.classList.remove('collapsed');
+    });
+
     // Query runs in selected area
     async function queryRunsInArea(coordinates) {
       try {
@@ -707,9 +770,11 @@
 
         if (response.ok) {
           const data = await response.json();
-          displayRunsInPanel(data.runs);
-          document.getElementById('side-panel').classList.add('open');
+          const panel = document.getElementById('side-panel');
+          panel.classList.add('open');
+          panel.classList.remove('collapsed');
           sidebarOpen = true;
+          displayRunsInPanel(data.runs);
         } else {
           const errorText = await response.text();
           console.error('Failed to query runs in area:', response.status, errorText);

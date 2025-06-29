@@ -311,6 +311,8 @@
     <div class="control-btn" id="reset-north-btn" title="Reset North">N</div>
     <div class="control-btn" id="lasso-btn" title="Select Area">⊙</div>
     <div class="control-btn" id="clear-selection-btn" title="Clear Selection" style="display: none;">✕</div>
+    <div class="control-btn" id="upload-btn" title="Upload GPX">⤴</div>
+    <input type="file" id="file-input" accept=".gpx" multiple style="display:none;" />
   </div>
   
   <div id="drawing-overlay"></div>
@@ -784,6 +786,92 @@
       updateMapDisplay();
     }
 
+    function normalizeActivityType(raw) {
+      if (!raw) return 'other';
+      const t = raw.toLowerCase();
+      if (t.includes('run') || t.includes('jog')) return 'run';
+      if (t.includes('bike') || t.includes('ride') || t.includes('cycl')) return 'bike';
+      if (t.includes('walk')) return 'walk';
+      if (t.includes('hike')) return 'hike';
+      return 'other';
+    }
+
+    function haversine(a, b) {
+      const R = 6371000;
+      const toRad = d => d * Math.PI / 180;
+      const dLat = toRad(b[1] - a[1]);
+      const dLon = toRad(b[0] - a[0]);
+      const lat1 = toRad(a[1]);
+      const lat2 = toRad(b[1]);
+      const s = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+      return 2 * R * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
+    }
+
+    function computeDistance(coords) {
+      let d = 0;
+      for (let i = 1; i < coords.length; i++) {
+        d += haversine(coords[i - 1], coords[i]);
+      }
+      return d;
+    }
+
+    function simplifyCoords(coords, tolerance) {
+      if (coords.length <= 2) return coords;
+      const simplified = [coords[0]];
+      let last = coords[0];
+      for (let i = 1; i < coords.length - 1; i++) {
+        const c = coords[i];
+        const dx = c[0] - last[0];
+        const dy = c[1] - last[1];
+        if (Math.sqrt(dx * dx + dy * dy) > tolerance) {
+          simplified.push(c);
+          last = c;
+        }
+      }
+      simplified.push(coords[coords.length - 1]);
+      return simplified;
+    }
+
+    function parseGpxText(text) {
+      const doc = new DOMParser().parseFromString(text, 'application/xml');
+      const trkpts = Array.from(doc.getElementsByTagName('trkpt'));
+      const coords = [];
+      const times = [];
+      trkpts.forEach(pt => {
+        const lat = parseFloat(pt.getAttribute('lat'));
+        const lon = parseFloat(pt.getAttribute('lon'));
+        coords.push([lon, lat]);
+        const timeEl = pt.getElementsByTagName('time')[0];
+        if (timeEl) times.push(new Date(timeEl.textContent));
+      });
+      const typeEl = doc.querySelector('trk > type');
+      const rawType = typeEl ? typeEl.textContent.trim() : null;
+      const meta = {
+        start_time: times.length ? times[0].toISOString() : null,
+        end_time: times.length ? times[times.length - 1].toISOString() : null,
+        duration: times.length ? (times[times.length - 1] - times[0]) / 1000 : 0,
+        distance: computeDistance(coords),
+        activity_type: normalizeActivityType(rawType),
+        activity_raw: rawType
+      };
+      return { coords, metadata: meta };
+    }
+
+    function handleFileUpload(files) {
+      const list = Array.from(files || []);
+      const promises = list.map(f => f.text().then(txt => {
+        const { coords, metadata } = parseGpxText(txt);
+        metadata.source_file = f.name;
+        window.spatialIndex.addRun(coords, metadata);
+      }));
+      Promise.all(promises).then(() => {
+        if (list.length) {
+          showStatus(`Added ${list.length} run(s)`);
+          fetchAndUpdate();
+        }
+      });
+    }
+
     // Event listeners
     document.addEventListener('DOMContentLoaded', () => {
       initMap();
@@ -836,6 +924,15 @@
             checkbox.dispatchEvent(new Event('change'));
           }
         });
+      });
+
+      document.getElementById('upload-btn').addEventListener('click', () => {
+        document.getElementById('file-input').click();
+      });
+
+      document.getElementById('file-input').addEventListener('change', (e) => {
+        handleFileUpload(e.target.files);
+        e.target.value = '';
       });
     });
   </script>

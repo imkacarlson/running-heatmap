@@ -4,6 +4,8 @@ class SpatialIndex {
     this.loaded = false;
     this.runsData = null;
     this.spatialIndex = null;
+    this.userRuns = [];
+    this.nextId = 1;
   }
 
   async loadData() {
@@ -22,7 +24,11 @@ class SpatialIndex {
         throw new Error(`Failed to load spatial index: ${indexResponse.status}`);
       }
       this.spatialIndex = await indexResponse.json();
-      
+
+      this.nextId = Math.max(0, ...Object.keys(this.runsData).map(id => parseInt(id))) + 1;
+
+      this.loadUserRuns();
+
       this.loaded = true;
       console.log(`Loaded ${Object.keys(this.runsData).length} runs with spatial index`);
       
@@ -35,6 +41,66 @@ class SpatialIndex {
       console.error('Failed to load spatial data:', error);
       throw error;
     }
+  }
+
+  loadUserRuns() {
+    const stored = localStorage.getItem('userRuns');
+    if (!stored) return;
+    try {
+      const arr = JSON.parse(stored);
+      arr.forEach(run => {
+        const id = run.id.toString();
+        this.runsData[id] = { geoms: run.geoms, bbox: run.bbox, metadata: run.metadata };
+        this.spatialIndex.push({ id: parseInt(id), bbox: run.bbox });
+        this.userRuns.push(run);
+        const num = parseInt(id);
+        if (num >= this.nextId) this.nextId = num + 1;
+      });
+      console.log(`Loaded ${arr.length} user runs from storage`);
+    } catch (e) {
+      console.error('Failed to load stored runs', e);
+    }
+  }
+
+  saveUserRuns() {
+    try {
+      localStorage.setItem('userRuns', JSON.stringify(this.userRuns));
+    } catch (e) {
+      console.error('Failed to save user runs', e);
+    }
+  }
+
+  simplify(coords, tolerance) {
+    if (coords.length <= 2) return coords;
+    const simplified = [coords[0]];
+    let last = coords[0];
+    for (let i = 1; i < coords.length - 1; i++) {
+      const c = coords[i];
+      const dx = c[0] - last[0];
+      const dy = c[1] - last[1];
+      if (Math.sqrt(dx * dx + dy * dy) > tolerance) {
+        simplified.push(c);
+        last = c;
+      }
+    }
+    simplified.push(coords[coords.length - 1]);
+    return simplified;
+  }
+
+  addRun(coords, metadata) {
+    const id = this.nextId++;
+    const bbox = this.getPolygonBbox(coords);
+    const geoms = {
+      high: { type: 'LineString', coordinates: this.simplify(coords, 0.00005) },
+      medium: { type: 'LineString', coordinates: this.simplify(coords, 0.0003) },
+      low: { type: 'LineString', coordinates: this.simplify(coords, 0.0009) }
+    };
+    this.runsData[id.toString()] = { geoms, bbox, metadata };
+    this.spatialIndex.push({ id, bbox });
+    const run = { id: id.toString(), geoms, bbox, metadata };
+    this.userRuns.push(run);
+    this.saveUserRuns();
+    return id;
   }
 
   getRunsForBounds(minLat, minLng, maxLat, maxLng, zoom) {

@@ -73,7 +73,17 @@ When you add new runs using the PC version, you can update your mobile app by fo
     ```bash
     python build_mobile.py
     ```
-    The script will regenerate the data and build a new APK with your latest runs.
+The script will regenerate the data and build a new APK with your latest runs.
+
+## Uploading Runs on the Device
+
+After installing the APK you can add new activities directly on your phone:
+
+1.  Open the app and tap the **⤴** upload button.
+2.  Choose one or more GPX files from your device.
+3.  The runs are parsed and stored locally so they remain visible even after restarting the app.
+
+These manually uploaded runs behave the same as your preloaded data—they show up on the map, work with the lasso tool and remain private on your device.
 
 ## File Structure
 

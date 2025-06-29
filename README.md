@@ -31,6 +31,10 @@ This project processes raw GPS files (Strava export, Garmin Connect, etc.) and s
 1. Put your raw GPS files under `data/raw/` (git ignored):
    - Strava exports: `.fit.gz`, `.gpx.gz`, `.fit`, `.gpx`
    - Garmin Connect exports: `.zip` containing `.fit` or `.txt`/`.tcx`
+     - After requesting a Garmin export at https://www.garmin.com/en-US/account/datamanagement/exportdata/, look under
+       `DI_CONNECT/DI-Connect-Fitness-Uploaded-Files/` for many
+       `UploadedFiles*.zip` archives. Drop these zip files into
+       `data/raw/` to import them.
 2. Build the processed dataset:
 
    ```bash

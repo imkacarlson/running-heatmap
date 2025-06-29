@@ -139,6 +139,51 @@
       right: 0;
     }
 
+    #side-panel.open.collapsed {
+      width: 60px;
+    }
+
+    #side-panel.collapsed .panel-header,
+    #side-panel.collapsed .panel-controls,
+    #side-panel.collapsed .panel-content,
+    #side-panel.collapsed .panel-summary {
+      display: none;
+    }
+
+    /* Mobile expand button for collapsed state */
+    .expand-btn {
+      display: none;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      cursor: pointer;
+      font-size: 20px;
+      color: #666;
+      background: white;
+      border: 2px solid #dee2e6;
+      border-radius: 8px;
+      width: 44px;
+      height: 44px;
+      align-items: center;
+      justify-content: center;
+      touch-action: manipulation;
+      user-select: none;
+    }
+
+    #side-panel.collapsed .expand-btn {
+      display: flex;
+    }
+
+    #side-panel:not(.collapsed) .expand-btn {
+      display: none;
+    }
+
+    .expand-btn:active {
+      background: #f8f9fa;
+      transform: translate(-50%, -50%) scale(0.95);
+    }
+
     .panel-header {
       padding: 20px;
       background: #f8f9fa;
@@ -150,12 +195,15 @@
       align-items: center;
     }
 
-    .panel-close {
+    .panel-close, .panel-collapse {
       cursor: pointer;
       font-size: 24px;
       color: #666;
       width: 32px;
       height: 32px;
+      margin-left: 12px;
+      touch-action: manipulation;
+      user-select: none;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -163,7 +211,7 @@
       -webkit-tap-highlight-color: transparent;
     }
 
-    .panel-close:active {
+    .panel-close:active, .panel-collapse:active {
       background: #e0e0e0;
     }
 
@@ -318,9 +366,13 @@
   <div id="drawing-overlay"></div>
   
   <div id="side-panel">
+    <div class="expand-btn" id="expand-btn">◄</div>
     <div class="panel-header">
       <span>Selected Runs</span>
-      <span class="panel-close" id="panel-close">×</span>
+      <div>
+        <span class="panel-collapse" id="panel-collapse">►</span>
+        <span class="panel-close" id="panel-close">×</span>
+      </div>
     </div>
     <div class="panel-controls">
       <span class="control-link" id="select-all">Select All</span>
@@ -904,6 +956,18 @@
 
       document.getElementById('clear-selection-btn').addEventListener('click', clearSelection);
       document.getElementById('panel-close').addEventListener('click', clearSelection);
+
+      // Mobile panel collapse functionality
+      document.getElementById('panel-collapse').addEventListener('click', () => {
+        const panel = document.getElementById('side-panel');
+        panel.classList.add('collapsed');
+      });
+
+      // Mobile panel expand functionality
+      document.getElementById('expand-btn').addEventListener('click', () => {
+        const panel = document.getElementById('side-panel');
+        panel.classList.remove('collapsed');
+      });
 
       // Panel controls
       document.getElementById('select-all').addEventListener('click', () => {

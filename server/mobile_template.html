@@ -124,11 +124,10 @@
       top: env(safe-area-inset-top, 0px);
       right: -100vw;
       width: 85vw;
-      max-width: 400px;
       height: calc(100vh - env(safe-area-inset-top, 0px));
       background: white;
       box-shadow: -4px 0 20px rgba(0,0,0,0.15);
-      transition: right 0.3s ease;
+      transition: right 0.3s ease, transform 0.3s ease;
       z-index: 1000;
       overflow: hidden;
       display: flex;
@@ -137,6 +136,11 @@
 
     #side-panel.open {
       right: 0;
+      transform: translateX(0);
+    }
+
+    #side-panel.collapsed {
+      transform: translateX(calc(100% - 30px));
     }
 
     .panel-header {
@@ -164,6 +168,29 @@
     }
 
     .panel-close:active {
+      background: #e0e0e0;
+    }
+
+    .panel-collapse {
+      position: absolute;
+      left: -30px;
+      top: 40%;
+      width: 30px;
+      height: 60px;
+      background: #f8f9fa;
+      border: 1px solid #dee2e6;
+      border-right: none;
+      border-radius: 4px 0 0 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      color: #666;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .panel-collapse:active {
       background: #e0e0e0;
     }
 
@@ -318,6 +345,7 @@
   <div id="drawing-overlay"></div>
   
   <div id="side-panel">
+    <div class="panel-collapse" id="panel-collapse">›</div>
     <div class="panel-header">
       <span>Selected Runs</span>
       <span class="panel-close" id="panel-close">×</span>
@@ -671,7 +699,10 @@
       try {
         const runs = window.spatialIndex.getRunsInPolygon(coordinates);
         displayRunsInPanel(runs);
-        document.getElementById('side-panel').classList.add('open');
+        const panel = document.getElementById('side-panel');
+        panel.classList.add('open');
+        panel.classList.remove('collapsed');
+        document.getElementById('panel-collapse').textContent = '›';
         sidebarOpen = true;
       } catch (error) {
         console.error('Error querying runs:', error);
@@ -780,7 +811,10 @@
       currentPolygon = null;
       polygonCoords = [];
       document.getElementById('clear-selection-btn').style.display = 'none';
-      document.getElementById('side-panel').classList.remove('open');
+      const panel = document.getElementById('side-panel');
+      panel.classList.remove('open');
+      panel.classList.remove('collapsed');
+      document.getElementById('panel-collapse').textContent = '›';
       sidebarOpen = false;
       selectedRuns.clear();
       updateMapDisplay();
@@ -904,6 +938,17 @@
 
       document.getElementById('clear-selection-btn').addEventListener('click', clearSelection);
       document.getElementById('panel-close').addEventListener('click', clearSelection);
+      document.getElementById('panel-collapse').addEventListener('click', () => {
+        const panel = document.getElementById('side-panel');
+        const collapseBtn = document.getElementById('panel-collapse');
+        if (panel.classList.contains('collapsed')) {
+          panel.classList.remove('collapsed');
+          collapseBtn.textContent = '›';
+        } else {
+          panel.classList.add('collapsed');
+          collapseBtn.textContent = '‹';
+        }
+      });
 
       // Panel controls
       document.getElementById('select-all').addEventListener('click', () => {

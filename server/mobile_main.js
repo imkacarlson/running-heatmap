@@ -260,12 +260,17 @@ class SpatialIndex {
             if (!intersects) {
               const geom = runData.geoms.high || runData.geoms.mid || runData.geoms.low;
               if (geom && geom.coordinates) {
-                // Check if any coordinate point is in the polygon
+                // First check if any coordinate is inside the polygon
                 for (const coord of geom.coordinates) {
                   if (this.pointInPolygon(coord, polygonCoords)) {
                     intersects = true;
                     break;
                   }
+                }
+
+                // If no point inside, check for segment intersection
+                if (!intersects && this.lineIntersectsPolygon(geom.coordinates, polygonCoords)) {
+                  intersects = true;
                 }
               }
             }
@@ -324,6 +329,48 @@ class SpatialIndex {
     }
     
     return inside;
+  }
+
+  lineIntersectsPolygon(lineCoords, polygonCoords) {
+    for (let i = 1; i < lineCoords.length; i++) {
+      const a1 = lineCoords[i - 1];
+      const a2 = lineCoords[i];
+      for (let j = 1; j < polygonCoords.length; j++) {
+        const b1 = polygonCoords[j - 1];
+        const b2 = polygonCoords[j];
+        if (this.segmentsIntersect(a1, a2, b1, b2)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  segmentsIntersect(p1, p2, p3, p4) {
+    function orientation(a, b, c) {
+      return (b[1] - a[1]) * (c[0] - b[0]) - (b[0] - a[0]) * (c[1] - b[1]);
+    }
+
+    function onSegment(a, b, c) {
+      return (
+        Math.min(a[0], c[0]) <= b[0] && b[0] <= Math.max(a[0], c[0]) &&
+        Math.min(a[1], c[1]) <= b[1] && b[1] <= Math.max(a[1], c[1])
+      );
+    }
+
+    const o1 = orientation(p1, p2, p3);
+    const o2 = orientation(p1, p2, p4);
+    const o3 = orientation(p3, p4, p1);
+    const o4 = orientation(p3, p4, p2);
+
+    if (o1 * o2 < 0 && o3 * o4 < 0) {
+      return true;
+    }
+    if (o1 === 0 && onSegment(p1, p3, p2)) return true;
+    if (o2 === 0 && onSegment(p1, p4, p2)) return true;
+    if (o3 === 0 && onSegment(p3, p1, p4)) return true;
+    if (o4 === 0 && onSegment(p3, p2, p4)) return true;
+    return false;
   }
 
 }

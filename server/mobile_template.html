@@ -527,17 +527,17 @@
       }, 150);
     }
 
-    function performFetch() {
+    async function performFetch() {
       const loadingIndicator = document.getElementById('loading-indicator');
       loadingIndicator.style.display = 'block';
       
       const { wrapper, bar } = createProgress();
       
-      setTimeout(() => {
+      setTimeout(async () => {
         try {
           const bounds = map.getBounds();
           const zoom = Math.floor(map.getZoom());
-          
+
           let data;
           if (sidebarOpen && selectedRuns.size > 0) {
             // Show only selected runs
@@ -552,7 +552,7 @@
             data = { type: 'FeatureCollection', features: [] };
           } else {
             // Show all runs
-            data = window.spatialIndex.getRunsForBounds(
+            data = await window.spatialIndex.getRunsForBoundsAsync(
               bounds.getSouth(), bounds.getWest(),
               bounds.getNorth(), bounds.getEast(),
               zoom

@@ -91,6 +91,7 @@ class SpatialIndex {
     const id = this.nextId++;
     const bbox = this.getPolygonBbox(coords);
     const geoms = {
+      full: { type: 'LineString', coordinates: coords },
       high: { type: 'LineString', coordinates: this.simplify(coords, 0.00005) },
       mid: { type: 'LineString', coordinates: this.simplify(coords, 0.0003) },
       low: { type: 'LineString', coordinates: this.simplify(coords, 0.0009) }
@@ -127,7 +128,7 @@ class SpatialIndex {
 
           // Fallback to other zoom levels if current one is invalid/empty
           if (!geom || !geom.coordinates || geom.coordinates.length === 0) {
-            geom = runData.geoms['mid'] || runData.geoms['low'] || runData.geoms['high'];
+            geom = runData.geoms['mid'] || runData.geoms['low'] || runData.geoms['high'] || runData.geoms['full'];
           }
           
           // Validate geometry before adding
@@ -156,6 +157,56 @@ class SpatialIndex {
     return {
       type: 'FeatureCollection',
       features: features
+    };
+  }
+
+  async getRunsForBoundsAsync(minLat, minLng, maxLat, maxLng, zoom, batchSize = 500) {
+    if (!this.loaded) {
+      return { type: 'FeatureCollection', features: [] };
+    }
+
+    const features = [];
+    const bbox = [minLng, minLat, maxLng, maxLat];
+
+    for (let i = 0; i < this.spatialIndex.length; i++) {
+      const indexEntry = this.spatialIndex[i];
+      const runBbox = indexEntry.bbox;
+
+      if (this.bboxIntersects(runBbox, bbox)) {
+        const runId = indexEntry.id.toString();
+        const runData = this.runsData[runId];
+
+        if (runData && runData.geoms) {
+          const zoomLevel = this.getZoomLevel(zoom);
+          let geom = runData.geoms[zoomLevel];
+
+          if (!geom || !geom.coordinates || geom.coordinates.length === 0) {
+            geom = runData.geoms['mid'] || runData.geoms['low'] || runData.geoms['high'] || runData.geoms['full'];
+          }
+
+          if (geom && geom.coordinates && geom.coordinates.length > 1) {
+            features.push({
+              type: 'Feature',
+              geometry: geom,
+              properties: {
+                id: runId,
+                zoom: zoom,
+                zoomLevel: zoomLevel,
+                ...runData.metadata
+              }
+            });
+          }
+        }
+      }
+
+      if ((i + 1) % batchSize === 0) {
+        await new Promise(r => setTimeout(r, 0));
+      }
+    }
+
+    return {
+      type: 'FeatureCollection',
+      features
     };
   }
 
@@ -258,7 +309,7 @@ class SpatialIndex {
             
             // If still no intersection, check if polygon intersects with run geometry
             if (!intersects) {
-              const geom = runData.geoms.high || runData.geoms.mid || runData.geoms.low;
+              const geom = runData.geoms.full || runData.geoms.high || runData.geoms.mid || runData.geoms.low;
               if (geom && geom.coordinates) {
                 // First check if any coordinate is inside the polygon
                 for (const coord of geom.coordinates) {
@@ -291,6 +342,7 @@ class SpatialIndex {
   }
 
   getZoomLevel(zoom) {
+    if (zoom >= 15) return 'full';
     if (zoom >= 13) return 'high';
     if (zoom >= 10) return 'mid';
     return 'low';

@@ -30,7 +30,7 @@ npm-debug.log*
 # Android build files (if using APK packaging)
 android/
 capacitor.config.json
-package.json
+# package.json is now tracked
 
 # Mobile app temporary files
 www/

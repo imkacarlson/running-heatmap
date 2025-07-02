@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>Run Heatmap Mobile</title>
   <script src="https://unpkg.com/maplibre-gl/dist/maplibre-gl.js"></script>
+  <script src="https://unpkg.com/pmtiles@3.0.0/dist/pmtiles.js"></script>
   <link href="https://unpkg.com/maplibre-gl/dist/maplibre-gl.css" rel="stylesheet" />
   <style>
     body, html, #map {
@@ -443,34 +444,23 @@
           source: 'osm-tiles'
         });
 
-        // Add runs layer
-        map.addSource('runs', {
-          type: 'geojson',
-          data: { type: 'FeatureCollection', features: [] }
-        });
-        
-        map.addLayer({
-          id: 'runs-layer',
-          type: 'line',
-          source: 'runs',
-          paint: {
-            'line-color': 'rgba(255,0,0,0.5)',
-            'line-width': [
-              'interpolate', ['linear'], ['zoom'],
-              0, 1,
-              14, 3
-            ]
+        const head = await fetch('data/runs.pmtiles', {method:'HEAD'});
+        if (head.ok) {
+          const protocol = new pmtiles.Protocol();
+          maplibregl.addProtocol('pmtiles', protocol.tile.bind(protocol));
+          map.addSource('runsVec', {type:'vector', url:'pmtiles://runs.pmtiles'});
+          map.addLayer({id:'runsVec', source:'runsVec', 'source-layer':'runs', type:'line', paint:{'line-color':'rgba(255,0,0,0.5)','line-width':['interpolate',['linear'],['zoom'],0,1,14,3]}});
+        } else {
+          map.addSource('runs', {type:'geojson', data:{type:'FeatureCollection',features:[]}});
+          map.addLayer({id:'runs-layer', type:'line', source:'runs', paint:{'line-color':'rgba(255,0,0,0.5)','line-width':['interpolate',['linear'],['zoom'],0,1,14,3]}});
+          try {
+            await window.spatialIndex.loadData();
+            showStatus('Data loaded successfully');
+            fetchAndUpdate();
+          } catch (error) {
+            showStatus('Failed to load data: ' + error.message);
+            console.error('Data loading failed:', error);
           }
-        });
-
-        // Load spatial data (handles localStorage merging internally)
-        try {
-          await window.spatialIndex.loadData();
-          showStatus('Data loaded successfully');
-          fetchAndUpdate();
-        } catch (error) {
-          showStatus('Failed to load data: ' + error.message);
-          console.error('Data loading failed:', error);
         }
       });
 
@@ -490,6 +480,8 @@
 
     // Make showStatus available globally for debugging
     window.showStatusForDebug = showStatus;
+
+    let currentIds = new Set();
 
     // Progress management
     function createProgress() {
@@ -541,7 +533,7 @@
           let data;
           if (sidebarOpen && selectedRuns.size > 0) {
             // Show only selected runs
-            data = window.spatialIndex.filterRunsByIds(
+            data = await window.spatialIndex.filterRunsByIds(
               Array.from(selectedRuns),
               bounds.getSouth(), bounds.getWest(),
               bounds.getNorth(), bounds.getEast(),
@@ -571,7 +563,24 @@
               showStatus(`Loaded ${data.features.length} runs`, 1000);
             }
             
-            map.getSource('runs').setData(data);
+            const newIds = new Set(data.features.map(f => f.id || f.properties.id));
+            let changed = false;
+            newIds.forEach(id => {
+              if (!currentIds.has(id)) {
+                map.setFeatureState({source:'runs', id}, {visible:true});
+                changed = true;
+              }
+            });
+            currentIds.forEach(id => {
+              if (!newIds.has(id)) {
+                map.setFeatureState({source:'runs', id}, {visible:false});
+                changed = true;
+              }
+            });
+            currentIds = newIds;
+            if (changed) {
+              map.getSource('runs').setData(data);
+            }
             
             setTimeout(() => {
               removeProgress(wrapper);

@@ -17,6 +17,7 @@ The build script will automatically check for the following. If anything is miss
 *   **Node.js and npm**: For building the mobile application package.
 *   **Java Development Kit (JDK)**: Required for building Android applications.
 *   **Android SDK**: The tools for building and packaging the Android app.
+*   **Tippecanoe**: Needed for generating PMTiles vector tiles (optional).
 
 If you are on a new system, you can try running the build script, and it will tell you exactly what you need to install. For manual setup, especially on WSL, see the "Manual Environment Setup" section below.
 
@@ -33,6 +34,7 @@ The entire process is now handled by one script.
     ```bash
     python build_mobile.py
     ```
+   *(Run `python make_pmtiles.py` beforehand if you want vector tiles packaged.)*
 
 The script will then:
 1.  ✅ **Check Prerequisites**: Verify that all required tools and files are present.

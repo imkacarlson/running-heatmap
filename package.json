@@ -1,0 +1,12 @@
+{
+  "name": "running-heatmap",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "echo build-complete"
+  },
+  "dependencies": {
+    "rbush": "^3.0.0",
+    "pmtiles": "^3.0.0"
+  }
+}

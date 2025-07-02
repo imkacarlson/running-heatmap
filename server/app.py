@@ -32,6 +32,11 @@ def root():
     return send_from_directory(app.static_folder, 'index.html')
 
 
+@app.route('/runs.pmtiles')
+def pmtiles():
+    return send_from_directory('.', 'runs.pmtiles')
+
+
 def quantize(val, digits=3):
     """Round coordinate for caching stability."""
     return round(val, digits)
@@ -108,10 +113,10 @@ def add_run(coords, metadata, source_name='upload'):
         'bbox': ls.bounds,
         'geoms': {
             'full': ls,
-            'high': ls.simplify(0.00005, preserve_topology=False),
-            'mid': ls.simplify(0.0001, preserve_topology=False),
-            'low': ls.simplify(0.0003, preserve_topology=False),
-            'coarse': ls.simplify(0.0005, preserve_topology=False),
+            'high': ls.simplify(0.0001, preserve_topology=False),
+            'mid': ls.simplify(0.0005, preserve_topology=False),
+            'low': ls.simplify(0.001, preserve_topology=False),
+            'coarse': ls.simplify(0.002, preserve_topology=False),
         },
         'metadata': {
             'start_time': metadata.get('start_time'),

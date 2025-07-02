@@ -5,6 +5,7 @@
   <meta charset="utf-8" />
   <title>Run Heatmap</title>
   <script src="https://unpkg.com/maplibre-gl/dist/maplibre-gl.js"></script>
+  <script src="https://unpkg.com/pmtiles@3.0.0/dist/pmtiles.js"></script>
   <link href="https://unpkg.com/maplibre-gl/dist/maplibre-gl.css" rel="stylesheet" />
   <style>
     body,
@@ -344,25 +345,18 @@
         source: 'osm-tiles'
       });
 
-      map.addSource('runs', {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] }
-      });
-      map.addLayer({
-        id: 'runs-layer',
-        type: 'line',
-        source: 'runs',
-        paint: {
-          'line-color': 'rgba(255,0,0,0.4)',
-          'line-width': [
-            'interpolate', ['linear'], ['zoom'],
-            0, 0.5,
-            14, 2
-          ]
+      fetch('runs.pmtiles', {method:'HEAD'}).then(r => {
+        if (r.ok) {
+          const protocol = new pmtiles.Protocol();
+          maplibregl.addProtocol('pmtiles', protocol.tile.bind(protocol));
+          map.addSource('runsVec', {type:'vector', url:'pmtiles://runs.pmtiles'});
+          map.addLayer({id:'runsVec', source:'runsVec', 'source-layer':'runs', type:'line', paint:{'line-color':'rgba(255,0,0,0.4)','line-width':['interpolate',['linear'],['zoom'],0,0.5,14,2]}});
+        } else {
+          map.addSource('runs', { type: 'geojson', data: {type:'FeatureCollection',features:[]} });
+          map.addLayer({ id:'runs-layer', type:'line', source:'runs', paint:{'line-color':'rgba(255,0,0,0.4)','line-width':['interpolate',['linear'],['zoom'],0,0.5,14,2]}});
+          fetchAndUpdate();
         }
       });
-
-      fetchAndUpdate();
     });
 
     const progressContainer = document.getElementById('progress-container');

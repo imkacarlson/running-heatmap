@@ -12,6 +12,7 @@ Key features to understand:
 
 - **Lasso/Selection tool**: Users draw a polygon on the map. Activities intersecting the area are listed in a sidebar. Each run can be toggled on or off to filter what is shown. Clearing the selection hides the sidebar and shows all runs again.
 - **Upload capability**: Users may upload GPX files which are added to the dataset and shown on the map.
+- **Persist uploads**: Uploaded runs must be stored locally so they remain visible after restarting the server or mobile app.
 - **Offline/mobile app**: `build_mobile.py` packages the mobile version as an Android APK with runs bundled locally.
 
 Project structure overview:

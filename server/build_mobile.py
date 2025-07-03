@@ -261,17 +261,29 @@ def build_mobile_data():
 
 def create_mobile_files(mobile_dir):
     """Create JavaScript library and copy HTML/SW templates."""
-    print("\n📄 Creating mobile helper files...")
+    print("\n📄 Updating mobile helper files...")
     
+    # Copy HTML template
     shutil.copy('mobile_template.html', os.path.join(mobile_dir, 'index.html'))
-    shutil.copy('sw_template.js', os.path.join(mobile_dir, 'sw.js'))
+    print("   - Updated index.html from mobile_template.html")
     
+    # Copy service worker
+    shutil.copy('sw_template.js', os.path.join(mobile_dir, 'sw.js'))
+    print("   - Updated sw.js from sw_template.js")
+    
+    # Copy main JS and dependencies
     mobile_main_js = os.path.join(os.path.dirname(__file__), 'mobile_main.js')
     if os.path.exists(mobile_main_js):
         shutil.copy(mobile_main_js, os.path.join(mobile_dir, 'main.js'))
+        print("   - Updated main.js from mobile_main.js")
+        
         shutil.copy('spatial.worker.js', os.path.join(mobile_dir, 'spatial.worker.js'))
-        shutil.copy(os.path.join('..', 'rbush.min.js'), os.path.join(mobile_dir, 'rbush.min.js'))
-        print("   - Copied index.html, sw.js, worker and main.js")
+        print("   - Updated spatial.worker.js")
+        
+        rbush_path = os.path.join('..', 'rbush.min.js')
+        if os.path.exists(rbush_path):
+            shutil.copy(rbush_path, os.path.join(mobile_dir, 'rbush.min.js'))
+            print("   - Updated rbush.min.js")
     else:
         print("   - Warning: mobile_main.js not found. The mobile app may not work correctly.")
 
@@ -435,19 +447,52 @@ def package_for_android(mobile_dir):
 
 def main():
     """Run the full mobile build and packaging process."""
+    import argparse
+    
+    parser = argparse.ArgumentParser(
+        description='Build mobile heatmap app',
+        epilog='Examples:\n'
+               '  python build_mobile.py           # Full build with data conversion\n'
+               '  python build_mobile.py --quick   # Quick build, only update templates/JS',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument('--quick', action='store_true', 
+                       help='Quick build: skip data conversion, only update templates and JS files')
+    args = parser.parse_args()
+    
     print("--- Running Heatmap Mobile Build Script ---")
+    if args.quick:
+        print("🚀 Quick mode: skipping data conversion")
 
     if not os.path.basename(os.getcwd()) == 'server':
         print("❌ This script must be run from the 'server/' directory.", file=sys.stderr)
         sys.exit(1)
 
-    if not check_runs_pkl() or not check_python_packages():
-        sys.exit(1)
+    mobile_dir = '../mobile'
+    
+    if args.quick:
+        # Quick mode: check if mobile directory exists and has data
+        if not os.path.exists(mobile_dir):
+            print("❌ Mobile directory doesn't exist. Run without --quick first.", file=sys.stderr)
+            sys.exit(1)
+        if not os.path.exists(os.path.join(mobile_dir, 'data')):
+            print("❌ Mobile data directory doesn't exist. Run without --quick first.", file=sys.stderr)
+            sys.exit(1)
+        print(f"✅ Using existing mobile directory: {mobile_dir}")
+    else:
+        # Full mode: check prerequisites and build data
+        if not check_runs_pkl() or not check_python_packages():
+            sys.exit(1)
+        
+        try:
+            mobile_dir = build_mobile_data()
+        except Exception as e:
+            print(f"❌ Build failed during data creation: {e}", file=sys.stderr)
+            sys.exit(1)
 
     try:
-        mobile_dir = build_mobile_data()
         create_mobile_files(mobile_dir)
-        print(f"\n🎉 Mobile web assets build complete!")
+        print(f"\n🎉 Mobile web assets {'updated' if args.quick else 'build complete'}!")
         print(f"   Output directory: {os.path.abspath(mobile_dir)}")
     except Exception as e:
         print(f"❌ Build failed during web asset creation: {e}", file=sys.stderr)

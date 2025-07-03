@@ -32,9 +32,11 @@ The entire process is now handled by one script.
 
 2.  **Run the build script:**
     ```bash
-    python build_mobile.py
+    python build_mobile.py [--quick]
     ```
    *(Run `python make_pmtiles.py` beforehand if you want vector tiles packaged.)*
+   
+   Use the `--quick` flag to skip data conversion when you only changed HTML or JavaScript. It reuses the existing `mobile/` directory to speed up the build.
 
 The script will then:
 1.  ✅ **Check Prerequisites**: Verify that all required tools and files are present.
@@ -44,6 +46,28 @@ The script will then:
 5.  ✅ **Build the APK**: Create the final `running-heatmap-*.apk` file.
 
 The final APK will be placed in the `mobile/` directory, ready to be installed on your device.
+
+## Testing in the Browser
+
+Before installing the APK you can quickly verify the mobile build in Chrome.
+
+1. **Run the build script** to generate the web bundle:
+   ```bash
+   python build_mobile.py [--quick]
+   ```
+   The output is placed in `../mobile/www/`.
+2. **Serve the files locally**:
+   ```bash
+   cd ../mobile/www
+   python3 -m http.server 8000
+   ```
+   This starts a static server at <http://localhost:8000>.
+3. **Open the app in Chrome** at `http://localhost:8000` and use DevTools to
+   debug JavaScript, inspect network requests and simulate mobile devices.
+
+Using a local server mirrors how the app loads files from the device. Keep your
+paths relative (e.g. `data/runs.json.gz`) so they work from both `http://` and
+`file://` locations.
 
 ## Installing the APK
 
@@ -73,7 +97,7 @@ When you add new runs using the PC version, you can update your mobile app by fo
 
 2.  **Re-run the mobile build script:**
     ```bash
-    python build_mobile.py
+    python build_mobile.py [--quick]
     ```
 The script will regenerate the data and build a new APK with your latest runs.
 

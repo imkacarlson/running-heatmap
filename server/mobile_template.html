@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>Run Heatmap Mobile</title>
   <script src="https://unpkg.com/maplibre-gl/dist/maplibre-gl.js"></script>
-  <script src="https://unpkg.com/pmtiles@3.0.0/dist/pmtiles.js"></script>
+  <script src="https://unpkg.com/pmtiles@3.2.0/dist/pmtiles.js"></script>
   <link href="https://unpkg.com/maplibre-gl/dist/maplibre-gl.css" rel="stylesheet" />
   <style>
     body, html, #map {
@@ -440,9 +440,20 @@
         
         map.addLayer({ id: 'osm-layer', type: 'raster', source: 'osm-tiles' });
 
-        // This source is for filtered runs or as a fallback if PMTiles don't exist.
-        map.addSource('runs', {type:'geojson', data:{type:'FeatureCollection',features:[]}});
-        map.addLayer({id:'runs-layer', type:'line', source:'runs', paint:{'line-color':'rgba(255,0,0,0.5)','line-width':['interpolate',['linear'],['zoom'],0,1,14,3]}});
+        // Layer for uploaded runs
+        map.addSource('uploadedRuns', {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [] }
+        });
+        map.addLayer({
+          id: 'uploadedRuns',
+          type: 'line',
+          source: 'uploadedRuns',
+          paint: {
+            'line-color': 'rgba(255,0,0,0.5)',
+            'line-width': ['interpolate', ['linear'], ['zoom'], 0, 1, 14, 3]
+          }
+        });
 
         let pmtilesLoaded = false;
         const head = await fetch('data/runs.pmtiles', {method:'HEAD'});
@@ -451,21 +462,19 @@
           maplibregl.addProtocol('pmtiles', protocol.tile.bind(protocol));
           map.addSource('runsVec', {type:'vector', url:'pmtiles://data/runs.pmtiles'});
           map.addLayer({id:'runsVec', source:'runsVec', 'source-layer':'runs', type:'line', paint:{'line-color':'rgba(255,0,0,0.5)','line-width':['interpolate',['linear'],['zoom'],0,1,14,3]}});
-          map.setLayoutProperty('runs-layer', 'visibility', 'none'); // Hide geojson layer if pmtiles are primary
           pmtilesLoaded = true;
         }
 
         try {
           await window.spatialIndex.loadData();
           showStatus('Interactive data loaded');
-          if (!pmtilesLoaded) fetchAndUpdate(); // Initial load only if no pmtiles
+          updateMapDisplay();
         } catch (error) {
           showStatus('Failed to load interactive data: ' + error.message);
           console.error('Data loading failed:', error);
         }
       });
 
-      map.on('moveend', fetchAndUpdate);
     }
 
     // Show status message
@@ -481,131 +490,7 @@
 
     // Make showStatus available globally for debugging
     window.showStatusForDebug = showStatus;
-
-    let currentIds = new Set();
-
-    // Progress management
-    function createProgress() {
-      const container = document.getElementById('progress-container');
-      const wrapper = document.createElement('div');
-      wrapper.className = 'progress';
-      const bar = document.createElement('div');
-      bar.className = 'progress-bar';
-      wrapper.appendChild(bar);
-      container.appendChild(wrapper);
-      container.style.display = 'block';
-      return { wrapper, bar };
-    }
-
-    function removeProgress(wrapper) {
-      const container = document.getElementById('progress-container');
-      if (container.contains(wrapper)) {
-        container.removeChild(wrapper);
-      }
-      if (container.children.length === 0) {
-        container.style.display = 'none';
-      }
-    }
-
-    // Fetch and update runs
-    function fetchAndUpdate() {
-      if (!window.spatialIndex.loaded) return;
-      
-      if (debounceTimeout) {
-        clearTimeout(debounceTimeout);
-      }
-      
-      debounceTimeout = setTimeout(() => {
-        performFetch();
-      }, 150);
-    }
-
-    async function performFetch() {
-      const loadingIndicator = document.getElementById('loading-indicator');
-      loadingIndicator.style.display = 'block';
-      
-      const { wrapper, bar } = createProgress();
-      
-      setTimeout(async () => {
-        try {
-          const bounds = map.getBounds();
-          const zoom = Math.floor(map.getZoom());
-
-          let data;
-          if (sidebarOpen && selectedRuns.size > 0) {
-            // Show only selected runs
-            data = await window.spatialIndex.filterRunsByIds(
-              Array.from(selectedRuns),
-              bounds.getSouth(), bounds.getWest(),
-              bounds.getNorth(), bounds.getEast(),
-              zoom
-            );
-          } else if (sidebarOpen && selectedRuns.size === 0) {
-            // Show no runs when sidebar open but none selected
-            data = { type: 'FeatureCollection', features: [] };
-          } else if (map.getSource('runsVec')) {
-            // If PMTiles are active and there's no selection, do nothing.
-            data = null;
-          } else {
-            // Show all runs
-            data = await window.spatialIndex.getRunsForBoundsAsync(
-              bounds.getSouth(), bounds.getWest(),
-              bounds.getNorth(), bounds.getEast(),
-              zoom
-            );
-          }
-
-          if (data === null) { // Abort if no data fetch is needed
-            loadingIndicator.style.display = 'none';
-            removeProgress(wrapper);
-            return;
-          }
-          
-          // Simulate progress
-          bar.style.width = '50%';
-          setTimeout(() => {
-            bar.style.width = '100%';
-            
-            // Show user feedback about what's being loaded
-            if (data.features.length === 0) {
-              if (sidebarOpen) showStatus(`No selected runs visible`, 2000);
-            } else {
-              showStatus(`Loaded ${data.features.length} runs`, 1000);
-            }
-            
-            const newIds = new Set(data.features.map(f => f.id || f.properties.id));
-            let changed = false;
-            newIds.forEach(id => {
-              if (!currentIds.has(id)) {
-                map.setFeatureState({source:'runs', id}, {visible:true});
-                changed = true;
-              }
-            });
-            currentIds.forEach(id => {
-              if (!newIds.has(id)) {
-                map.setFeatureState({source:'runs', id}, {visible:false});
-                changed = true;
-              }
-            });
-            currentIds = newIds;
-            if (changed) {
-              map.getSource('runs').setData(data);
-            }
-            
-            setTimeout(() => {
-              removeProgress(wrapper);
-              loadingIndicator.style.display = 'none';
-            }, 200);
-          }, 100);
-          
-        } catch (error) {
-          console.error('Fetch error:', error);
-          removeProgress(wrapper);
-          loadingIndicator.style.display = 'none';
-          showStatus(`Error loading runs: ${error.message}`, 3000);
-        }
-      }, 50);
-    }
+    let uploadedFeatures = [];
 
     // Touch-optimized drawing functions
     function setupDrawing() {
@@ -835,18 +720,24 @@
       }
     }
 
-    function updateMapDisplay() {
-      const pmtilesExists = !!map.getSource('runsVec');
-      if (pmtilesExists) {
-        // When a selection is active (sidebar open with items), hide PMTiles and show the GeoJSON layer.
-        // Otherwise, show PMTiles and hide the GeoJSON layer.
-        const showGeoJson = sidebarOpen && selectedRuns.size > 0;
-        map.setLayoutProperty('runsVec', 'visibility', showGeoJson ? 'none' : 'visible');
-        map.setLayoutProperty('runs-layer', 'visibility', showGeoJson ? 'visible' : 'none');
-      }
+      function updateMapDisplay() {
+        if (!map.getLayer('runsVec')) return;
 
-      fetchAndUpdate();
-    }
+        let filter = null;
+        if (sidebarOpen) {
+          if (selectedRuns.size === 0) {
+            filter = ['==', ['get', 'id'], -1];
+          } else {
+            const ids = Array.from(selectedRuns, id => Number(id));
+            filter = ['in', ['get', 'id'], ['literal', ids]];
+          }
+        }
+
+        map.setFilter('runsVec', filter);
+        if (map.getLayer('uploadedRuns')) {
+          map.setFilter('uploadedRuns', filter);
+        }
+      }
 
     function exitDrawingMode() {
       isDrawingMode = false;
@@ -937,20 +828,29 @@
       return { coords, metadata: meta };
     }
 
-    function handleFileUpload(files) {
-      const list = Array.from(files || []);
-      const promises = list.map(f => f.text().then(txt => {
-        const { coords, metadata } = parseGpxText(txt);
-        metadata.source_file = f.name;
-        window.spatialIndex.addRun(coords, metadata);
-      }));
-      Promise.all(promises).then(() => {
-        if (list.length) {
-          showStatus(`Added ${list.length} run(s)`);
-          fetchAndUpdate();
-        }
-      });
-    }
+      function handleFileUpload(files) {
+        const list = Array.from(files || []);
+        const promises = list.map(f => f.text().then(txt => {
+          const { coords, metadata } = parseGpxText(txt);
+          metadata.source_file = f.name;
+          const id = window.spatialIndex.addRun(coords, metadata);
+          uploadedFeatures.push({
+            type: 'Feature',
+            geometry: { type: 'LineString', coordinates: coords },
+            properties: { id }
+          });
+        }));
+        Promise.all(promises).then(() => {
+          if (list.length) {
+            map.getSource('uploadedRuns').setData({
+              type: 'FeatureCollection',
+              features: uploadedFeatures
+            });
+            showStatus(`Added ${list.length} run(s)`);
+            updateMapDisplay();
+          }
+        });
+      }
 
     // Event listeners
     document.addEventListener('DOMContentLoaded', () => {

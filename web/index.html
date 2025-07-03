@@ -299,6 +299,9 @@
       zoom: 4
     });
 
+    // Prefetch surrounding tiles for smoother panning
+    map.prefetchZoomDelta = 2;
+
     // Wait for PMTiles library to load
     function initializeMap() {
       map.addSource('osm-tiles', {

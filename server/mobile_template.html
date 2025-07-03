@@ -390,7 +390,7 @@
   <div id="progress-container"></div>
   <div id="loading-indicator">
     <div class="spinner"></div>
-    Loading runs...
+    Loading map...
   </div>
   
   <div id="status-message"></div>
@@ -485,9 +485,6 @@
           }
           showStatus('Interactive data loaded');
           updateMapDisplay();
-        } catch (error) {
-          showStatus('Failed to load interactive data: ' + error.message);
-          console.error('Data loading failed:', error);
         } finally {
           loader.style.display = 'none';
         }
@@ -641,9 +638,9 @@
       }
     }
 
-    function queryRunsInArea(coordinates) {
+    async function queryRunsInArea(coordinates) {
       try {
-        const runs = window.spatialIndex.getRunsInPolygon(coordinates);
+        const runs = await window.spatialIndex.queryPMTilesInPolygon(coordinates);
         displayRunsInPanel(runs);
         document.getElementById('side-panel').classList.add('open');
         sidebarOpen = true;

@@ -17,10 +17,26 @@ def main():
         # Use only one feature per run with the highest detail
         # Let tippecanoe handle the simplification automatically
         geom = run['geoms']['full']  # Always use full resolution
+        meta = run.get('metadata', {})
+        start = meta.get('start_time')
+        if hasattr(start, 'isoformat'):
+            start = start.isoformat()
+        elif start is None:
+            start = ''
+
+        props = {
+            'id': rid,
+            'start_time': start,
+            'distance': meta.get('distance', 0) or 0,
+            'duration': meta.get('duration', 0) or 0,
+            'activity_type': meta.get('activity_type', 'other') or 'other',
+            'activity_raw': meta.get('activity_raw', '') or ''
+        }
+
         feats.append({
             'type': 'Feature',
             'geometry': mapping(geom),
-            'properties': {'id': rid}  # Simple properties
+            'properties': props
         })
     
     print("💾 Writing GeoJSON file...")

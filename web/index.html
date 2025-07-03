@@ -887,19 +887,24 @@
       }
     }
 
-    // Update map display to show only selected runs
+    // Update map display to show only selected runs using vector tile filtering
     function updateMapDisplay() {
-      
-      // If sidebar is open and no runs selected, immediately clear the map
-      if (sidebarOpen && selectedRuns.size === 0) {
-        map.getSource('runs').setData({
-          type: 'FeatureCollection',
-          features: []
-        });
+      // If the sidebar is closed, show all runs
+      if (!sidebarOpen) {
+        map.setFilter('runsVec', null);
+        return;
       }
-      
-      // Trigger a refresh of the map data with current selection
-      // fetchAndUpdate(); // Disabled - using PMTiles now
+
+      // When sidebar is open and no runs are selected, hide all runs
+      if (selectedRuns.size === 0) {
+        map.setFilter('runsVec', ['==', ['get', 'id'], -1]);
+        return;
+      }
+
+      // Show only the runs that are currently selected
+      const ids = Array.from(selectedRuns, id => parseInt(id));
+      const filter = ['match', ['get', 'id'], ['literal', ids], true, false];
+      map.setFilter('runsVec', filter);
     }
   </script>
 </body>

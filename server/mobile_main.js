@@ -78,6 +78,68 @@ class SpatialIndex {
     }
   }
 
+  async updateServerData(newRuns) {
+    const response = await fetch('/update_runs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ runs: newRuns })
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to update server data');
+    }
+
+    return response.json();
+  }
+
+  async reloadPMTiles() {
+    // Remove existing layers and sources
+    if (map.getLayer('runsVec')) {
+      map.removeLayer('runsVec');
+    }
+    if (map.getSource('runsVec')) {
+      map.removeSource('runsVec');
+    }
+
+    // Clear PMTiles protocol to force cache refresh
+    if (maplibregl.removeProtocol) {
+      maplibregl.removeProtocol('pmtiles');
+    }
+
+    // Wait a moment for cleanup
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Re-register protocol
+    const protocol = new pmtiles.Protocol();
+    maplibregl.addProtocol('pmtiles', protocol.tile.bind(protocol));
+
+    const timestamp = Date.now();
+    map.addSource('runsVec', {
+      type: 'vector',
+      url: `pmtiles://data/runs.pmtiles?t=${timestamp}`,
+      buffer: 128,
+      maxzoom: 16,
+      minzoom: 5
+    });
+
+    map.addLayer({
+      id: 'runsVec',
+      source: 'runsVec',
+      'source-layer': 'runs',
+      type: 'line',
+      paint: {
+        'line-color': 'rgba(255,0,0,0.5)',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 0, 1, 14, 3]
+      },
+      maxzoom: 24
+    });
+
+    // Force map refresh by triggering a small pan to reload tiles
+    const center = map.getCenter();
+    map.panBy([1, 1]);
+    setTimeout(() => map.panBy([-1, -1]), 200);
+  }
+
 
   simplify(coords, tolerance) {
     if (coords.length <= 2) return coords;
@@ -96,7 +158,7 @@ class SpatialIndex {
     return simplified;
   }
 
-  addRun(coords, metadata) {
+  async addRun(coords, metadata) {
     const id = this.nextId++;
     const bbox = this.getPolygonBbox(coords);
     const geoms = {
@@ -105,13 +167,25 @@ class SpatialIndex {
       mid: { type: 'LineString', coordinates: this.simplify(coords, 0.0005) },
       low: { type: 'LineString', coordinates: this.simplify(coords, 0.001) }
     };
-    this.spatialIndex.push({ id, bbox });
+
     const run = { id: id.toString(), geoms, bbox, metadata };
     this.userRuns.push(run);
-    if (this.worker) {
-      this.worker.postMessage({type:'add', run:{id, geoms, bbox}});
+
+    try {
+      await this.updateServerData([
+        { id: id, coords: coords, metadata: metadata }
+      ]);
+
+      localStorage.removeItem('userRuns');
+      this.userRuns = [];
+
+      await this.reloadPMTiles();
+
+    } catch (error) {
+      console.error('Failed to sync with server, keeping local:', error);
+      this.saveUserRuns();
     }
-    this.saveUserRuns();
+
     return id;
   }
 

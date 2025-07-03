@@ -266,6 +266,11 @@ def create_mobile_files(mobile_dir):
         if os.path.exists(rbush_path):
             shutil.copy(rbush_path, os.path.join(mobile_dir, 'rbush.min.js'))
             print("   - Updated rbush.min.js")
+
+        server_script = os.path.join(SCRIPT_DIR, 'app.py')
+        if os.path.exists(server_script):
+            shutil.copy(server_script, os.path.join(mobile_dir, 'app.py'))
+            print("   - Updated app.py for upload handling")
     else:
         print("   - Warning: mobile_main.js not found. The mobile app may not work correctly.")
 

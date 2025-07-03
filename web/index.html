@@ -34,6 +34,20 @@
       z-index: 1000;
     }
 
+    #status-message {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.8);
+      color: white;
+      padding: 12px 20px;
+      border-radius: 6px;
+      font-size: 14px;
+      display: none;
+      z-index: 1000;
+    }
+
     .spinner {
       border: 2px solid #f3f3f3;
       border-top: 2px solid #007bff;
@@ -286,6 +300,7 @@
     <div class="spinner"></div>
     Loading runs...
   </div>
+  <div id="status-message"></div>
 
   <script>
     const map = new maplibregl.Map({
@@ -341,20 +356,7 @@
         maxzoom: 24  // Allow overzoom for smooth transitions (higher than source maxzoom)
       });
 
-      // Layer for newly uploaded runs
-      map.addSource('uploadedRuns', {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] }
-      });
-      map.addLayer({
-        id: 'uploadedRuns',
-        type: 'line',
-        source: 'uploadedRuns',
-        paint: {
-          'line-color': 'rgba(255,0,0,0.4)',
-          'line-width': ['interpolate', ['linear'], ['zoom'], 5, 0.5, 10, 1, 14, 2, 16, 3]
-        }
-      });
+
     }
 
     map.on('load', () => {
@@ -374,18 +376,111 @@
     });
 
     const loadingIndicator = document.getElementById('loading-indicator');
-    let uploadedFeatures = [];
-    const stored = localStorage.getItem('uploadedFeatures');
-    if (stored) {
-      try {
-        uploadedFeatures = JSON.parse(stored);
-        map.getSource('uploadedRuns').setData({
-          type: 'FeatureCollection',
-          features: uploadedFeatures
-        });
-      } catch (e) {
-        console.error('Failed to load stored uploads', e);
+
+    function haversine(a, b) {
+      const R = 6371000;
+      const toRad = d => d * Math.PI / 180;
+      const dLat = toRad(b[1] - a[1]);
+      const dLon = toRad(b[0] - a[0]);
+      const lat1 = toRad(a[1]);
+      const lat2 = toRad(b[1]);
+      const s = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+      return 2 * R * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
+    }
+
+    function computeDistance(coords) {
+      let d = 0;
+      for (let i = 1; i < coords.length; i++) {
+        d += haversine(coords[i - 1], coords[i]);
       }
+      return d;
+    }
+
+    function normalizeActivityType(raw) {
+      if (!raw) return 'other';
+      const t = raw.toLowerCase();
+      if (t.includes('run') || t.includes('jog')) return 'run';
+      if (t.includes('bike') || t.includes('ride') || t.includes('cycl')) return 'bike';
+      if (t.includes('walk')) return 'walk';
+      if (t.includes('hike')) return 'hike';
+      return 'other';
+    }
+
+    function parseGpxText(text) {
+      const doc = new DOMParser().parseFromString(text, 'application/xml');
+      const trkpts = Array.from(doc.getElementsByTagName('trkpt'));
+      const coords = [];
+      const times = [];
+      trkpts.forEach(pt => {
+        const lat = parseFloat(pt.getAttribute('lat'));
+        const lon = parseFloat(pt.getAttribute('lon'));
+        coords.push([lon, lat]);
+        const timeEl = pt.getElementsByTagName('time')[0];
+        if (timeEl) times.push(new Date(timeEl.textContent));
+      });
+      const typeEl = doc.querySelector('trk > type');
+      const rawType = typeEl ? typeEl.textContent.trim() : null;
+      const meta = {
+        start_time: times.length ? times[0].toISOString() : null,
+        end_time: times.length ? times[times.length - 1].toISOString() : null,
+        duration: times.length ? (times[times.length - 1] - times[0]) / 1000 : 0,
+        distance: computeDistance(coords),
+        activity_type: normalizeActivityType(rawType),
+        activity_raw: rawType
+      };
+      return { coords, metadata: meta };
+    }
+
+    async function updateServerData(newRuns) {
+      const resp = await fetch('/update_runs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ runs: newRuns })
+      });
+      if (!resp.ok) throw new Error('Failed to update server data');
+      return resp.json();
+    }
+
+    async function reloadPMTiles() {
+      if (map.getLayer('runsVec')) {
+        map.removeLayer('runsVec');
+      }
+      if (map.getSource('runsVec')) {
+        map.removeSource('runsVec');
+      }
+
+      const protocol = new pmtiles.Protocol();
+      maplibregl.addProtocol('pmtiles', protocol.tile.bind(protocol));
+
+      const timestamp = Date.now();
+      map.addSource('runsVec', {
+        type: 'vector',
+        url: `pmtiles://runs.pmtiles?t=${timestamp}`,
+        buffer: 128,
+        maxzoom: 16,
+        minzoom: 5
+      });
+
+      map.addLayer({
+        id: 'runsVec',
+        source: 'runsVec',
+        'source-layer': 'runs',
+        type: 'line',
+        paint: {
+          'line-color': 'rgba(255,0,0,0.4)',
+          'line-width': ['interpolate', ['linear'], ['zoom'], 5, 0.5, 10, 1, 14, 2, 16, 3]
+        },
+        maxzoom: 24
+      });
+    }
+
+    function showStatus(message, duration = 3000) {
+      const el = document.getElementById('status-message');
+      el.textContent = message;
+      el.style.display = 'block';
+      setTimeout(() => {
+        el.style.display = 'none';
+      }, duration);
     }
 
     // Map control button event listeners
@@ -408,32 +503,23 @@
     document.getElementById('gpx-files').addEventListener('change', async (e) => {
       const files = e.target.files;
       if (!files.length) return;
-      const form = new FormData();
-      for (const file of files) {
-        form.append('files', file);
-      }
+
+      showStatus('Uploading and processing runs...', 10000);
+
       try {
-        loadingIndicator.style.display = 'block';
-        const resp = await fetch('/api/upload', { method: 'POST', body: form });
-        if (!resp.ok) {
-          const txt = await resp.text();
-          alert('Upload failed: ' + txt);
-        } else {
-          const data = await resp.json();
-            if (data.features && data.features.length) {
-              uploadedFeatures = uploadedFeatures.concat(data.features);
-              map.getSource('uploadedRuns').setData({
-                type: 'FeatureCollection',
-                features: uploadedFeatures
-              });
-              localStorage.setItem('uploadedFeatures', JSON.stringify(uploadedFeatures));
-              updateMapDisplay();
-            }
+        for (const file of files) {
+          const text = await file.text();
+          const { coords, metadata } = parseGpxText(text);
+          metadata.source_file = file.name;
+          await updateServerData([{ id: Date.now(), coords, metadata }]);
         }
+
+        await reloadPMTiles();
+        showStatus(`Successfully added ${files.length} run(s) to map`);
+
       } catch (err) {
         alert('Upload error: ' + err.message);
       } finally {
-        loadingIndicator.style.display = 'none';
         e.target.value = '';
       }
     });
@@ -813,9 +899,6 @@
         }
 
         map.setFilter('runsVec', filter);
-        if (map.getLayer('uploadedRuns')) {
-          map.setFilter('uploadedRuns', filter);
-        }
     }
   </script>
 </body>

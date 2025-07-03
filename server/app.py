@@ -9,6 +9,8 @@ from flask import (
 from shapely.geometry import mapping, Polygon, LineString
 import gpxpy
 from rtree import index
+import os
+import subprocess
 
 
 # Load runs and build spatial index
@@ -231,6 +233,53 @@ def upload_gpx():
             })
 
     return jsonify({'added': added, 'features': features})
+
+
+@app.route('/update_runs', methods=['POST'])
+def update_runs():
+    try:
+        data = request.get_json()
+        new_runs = data['runs']
+
+        pkl_path = 'runs.pkl'
+        if os.path.exists(pkl_path):
+            with open(pkl_path, 'rb') as f:
+                existing = pickle.load(f)
+        else:
+            existing = {}
+
+        for run_data in new_runs:
+            run_id = run_data['id']
+            coords = run_data['coords']
+            metadata = run_data['metadata']
+
+            line = LineString(coords)
+            geoms = {
+                'full': line,
+                'high': line.simplify(0.0001, preserve_topology=True),
+                'mid': line.simplify(0.0005, preserve_topology=True),
+                'low': line.simplify(0.001, preserve_topology=True)
+            }
+
+            bbox = list(line.bounds)
+
+            existing[run_id] = {
+                'geoms': geoms,
+                'bbox': bbox,
+                'metadata': metadata
+            }
+
+        with open(pkl_path, 'wb') as f:
+            pickle.dump(existing, f)
+
+        result = subprocess.run(['python', 'make_pmtiles.py'], capture_output=True, text=True)
+        if result.returncode != 0:
+            return jsonify({'error': 'PMTiles regeneration failed'}), 500
+
+        return jsonify({'success': True, 'message': f'Added {len(new_runs)} runs'})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':

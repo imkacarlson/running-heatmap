@@ -445,22 +445,8 @@
         
         map.addLayer({ id: 'osm-layer', type: 'raster', source: 'osm-tiles' });
 
-        // Layer for uploaded runs
-        map.addSource('uploadedRuns', {
-          type: 'geojson',
-          data: { type: 'FeatureCollection', features: [] }
-        });
-        map.addLayer({
-          id: 'uploadedRuns',
-          type: 'line',
-          source: 'uploadedRuns',
-          paint: {
-            'line-color': 'rgba(255,0,0,0.5)',
-            'line-width': ['interpolate', ['linear'], ['zoom'], 0, 1, 14, 3]
-          }
-        });
 
-        let pmtilesLoaded = false;
+
         const head = await fetch('data/runs.pmtiles', {method:'HEAD'});
         if (head.ok) {
           const protocol = new pmtiles.Protocol();
@@ -483,22 +469,11 @@
             },
             maxzoom: 24  // Allow overzoom for smooth transitions (higher than source maxzoom)
           });
-          pmtilesLoaded = true;
         }
 
         try {
           await window.spatialIndex.loadData();
-          uploadedFeatures = window.spatialIndex.userRuns.map(run => ({
-            type: 'Feature',
-            geometry: run.geoms.full,
-            properties: { id: run.id }
-          }));
-          if (uploadedFeatures.length) {
-            map.getSource('uploadedRuns').setData({
-              type: 'FeatureCollection',
-              features: uploadedFeatures
-            });
-          }
+          // Local runs are now uploaded to the server; nothing to load locally
           showStatus('Interactive data loaded');
           updateMapDisplay();
         } finally {
@@ -521,7 +496,6 @@
 
     // Make showStatus available globally for debugging
     window.showStatusForDebug = showStatus;
-    let uploadedFeatures = [];
 
     // Touch-optimized drawing functions
     function setupDrawing() {
@@ -765,9 +739,6 @@
         }
 
         map.setFilter('runsVec', filter);
-        if (map.getLayer('uploadedRuns')) {
-          map.setFilter('uploadedRuns', filter);
-        }
       }
 
     function exitDrawingMode() {
@@ -859,28 +830,27 @@
       return { coords, metadata: meta };
     }
 
-      function handleFileUpload(files) {
+      async function handleFileUpload(files) {
         const list = Array.from(files || []);
-        const promises = list.map(f => f.text().then(txt => {
-          const { coords, metadata } = parseGpxText(txt);
-          metadata.source_file = f.name;
-          const id = window.spatialIndex.addRun(coords, metadata);
-          uploadedFeatures.push({
-            type: 'Feature',
-            geometry: { type: 'LineString', coordinates: coords },
-            properties: { id }
-          });
-        }));
-        Promise.all(promises).then(() => {
-          if (list.length) {
-            map.getSource('uploadedRuns').setData({
-              type: 'FeatureCollection',
-              features: uploadedFeatures
-            });
-            showStatus(`Added ${list.length} run(s)`);
-            updateMapDisplay();
+
+        showStatus('Uploading and processing runs...', 10000);
+
+        try {
+          for (const file of list) {
+            const text = await file.text();
+            const { coords, metadata } = parseGpxText(text);
+            metadata.source_file = file.name;
+
+            await window.spatialIndex.addRun(coords, metadata);
           }
-        });
+
+          showStatus(`Successfully added ${list.length} run(s) to map`);
+          updateMapDisplay();
+
+        } catch (error) {
+          console.error('Upload failed:', error);
+          showStatus('Upload failed: ' + error.message);
+        }
       }
 
     // Event listeners

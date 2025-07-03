@@ -56,12 +56,13 @@ Before installing the APK you can quickly verify the mobile build in Chrome.
    python build_mobile.py [--quick]
    ```
    The output is placed in `../mobile/www/`.
-2. **Serve the files locally**:
+2. **Serve the files locally** (with byte-range support for PMTiles):
    ```bash
-   cd ../mobile/www
-   python3 -m http.server 8000
+   cd ../..  # project root
+   python range_http_server.py 8000 -d mobile/www
    ```
-   This starts a static server at <http://localhost:8000>.
+   This starts a static server at <http://localhost:8000> that supports HTTP
+   range requests used by the PMTiles library.
 3. **Open the app in Chrome** at `http://localhost:8000` and use DevTools to
    debug JavaScript, inspect network requests and simulate mobile devices.
 

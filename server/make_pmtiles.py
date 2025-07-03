@@ -58,7 +58,6 @@ def main():
         '-l', 'runs',
         '-Z', '5',          # Min zoom
         '-z', '16',         # Max zoom (higher for more detail)
-        '--tile-size=1024', # Larger tiles = fewer network requests
         '--buffer=16',      # Extra geometry around tile edges
         '--simplification=2',  # Aggressive simplification for speed
         '--no-tile-size-limit',

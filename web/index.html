@@ -303,6 +303,11 @@
   <div id="status-message"></div>
 
   <script>
+    // Load spatial data on mobile
+    if (window.spatialIndex) {
+      window.spatialIndex.loadData();
+    }
+
     const map = new maplibregl.Map({
       container: 'map',
       style: {

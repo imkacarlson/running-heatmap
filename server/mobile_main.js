@@ -211,7 +211,7 @@ class SpatialIndex {
   async queryPMTilesInPolygon(polygonCoords) {
     if (!this.loaded) return [];
 
-    const features = map.queryRenderedFeatures([], {
+    const features = map.queryRenderedFeatures(null, {
       layers: ['runsVec']
     });
 

@@ -5,6 +5,8 @@ data/raw/*
 # Ignore intermediate processed data
 data/processed/*
 !data/processed/.gitkeep
+*.pmtiles
+*.geojson
 
 # Ignore processed run data (contains personal GPS data)
 runs.pkl

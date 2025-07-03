@@ -95,12 +95,13 @@ Run `python build_mobile.py` inside the `server/` directory to generate an
 Android APK with your activities bundled for offline viewing. The script will verify
 prerequisites, build the assets and optionally package the app using Capacitor.
 For a faster rebuild when only templates or JavaScript change, pass
-`--quick` to reuse the existing data and skip the conversion step. You can
-then serve the contents of `mobile/www` locally with:
+`--quick` to reuse the existing data and skip the conversion step.
+
+After the build finishes you can install the APK directly from WSL:
 ```
-python range_http_server.py 8000 -d mobile/www
+APK=mobile/android/app/build/outputs/apk/debug/app-debug.apk
+adb install -r $(wslpath -w "$APK")
 ```
-and debug the app in your browser at <http://localhost:8000> before
-installing it. See **MOBILE_SETUP.md** for a detailed guide.
+See **MOBILE_SETUP.md** for a detailed guide on setting up the Windows `adb` server and debugging with Chrome DevTools.
 
 Enjoy exploring your activity history!

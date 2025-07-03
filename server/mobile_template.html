@@ -435,32 +435,33 @@
             'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png'
           ],
           tileSize: 256,
-          attribution: '© OpenStreetMap contributors'
+          attribution: '© OpenStreetMap contributors',
         });
         
-        map.addLayer({
-          id: 'osm-layer',
-          type: 'raster',
-          source: 'osm-tiles'
-        });
+        map.addLayer({ id: 'osm-layer', type: 'raster', source: 'osm-tiles' });
 
+        // This source is for filtered runs or as a fallback if PMTiles don't exist.
+        map.addSource('runs', {type:'geojson', data:{type:'FeatureCollection',features:[]}});
+        map.addLayer({id:'runs-layer', type:'line', source:'runs', paint:{'line-color':'rgba(255,0,0,0.5)','line-width':['interpolate',['linear'],['zoom'],0,1,14,3]}});
+
+        let pmtilesLoaded = false;
         const head = await fetch('data/runs.pmtiles', {method:'HEAD'});
         if (head.ok) {
           const protocol = new pmtiles.Protocol();
           maplibregl.addProtocol('pmtiles', protocol.tile.bind(protocol));
-          map.addSource('runsVec', {type:'vector', url:'pmtiles://runs.pmtiles'});
+          map.addSource('runsVec', {type:'vector', url:'pmtiles://data/runs.pmtiles'});
           map.addLayer({id:'runsVec', source:'runsVec', 'source-layer':'runs', type:'line', paint:{'line-color':'rgba(255,0,0,0.5)','line-width':['interpolate',['linear'],['zoom'],0,1,14,3]}});
-        } else {
-          map.addSource('runs', {type:'geojson', data:{type:'FeatureCollection',features:[]}});
-          map.addLayer({id:'runs-layer', type:'line', source:'runs', paint:{'line-color':'rgba(255,0,0,0.5)','line-width':['interpolate',['linear'],['zoom'],0,1,14,3]}});
-          try {
-            await window.spatialIndex.loadData();
-            showStatus('Data loaded successfully');
-            fetchAndUpdate();
-          } catch (error) {
-            showStatus('Failed to load data: ' + error.message);
-            console.error('Data loading failed:', error);
-          }
+          map.setLayoutProperty('runs-layer', 'visibility', 'none'); // Hide geojson layer if pmtiles are primary
+          pmtilesLoaded = true;
+        }
+
+        try {
+          await window.spatialIndex.loadData();
+          showStatus('Interactive data loaded');
+          if (!pmtilesLoaded) fetchAndUpdate(); // Initial load only if no pmtiles
+        } catch (error) {
+          showStatus('Failed to load interactive data: ' + error.message);
+          console.error('Data loading failed:', error);
         }
       });
 
@@ -542,6 +543,9 @@
           } else if (sidebarOpen && selectedRuns.size === 0) {
             // Show no runs when sidebar open but none selected
             data = { type: 'FeatureCollection', features: [] };
+          } else if (map.getSource('runsVec')) {
+            // If PMTiles are active and there's no selection, do nothing.
+            data = null;
           } else {
             // Show all runs
             data = await window.spatialIndex.getRunsForBoundsAsync(
@@ -549,6 +553,12 @@
               bounds.getNorth(), bounds.getEast(),
               zoom
             );
+          }
+
+          if (data === null) { // Abort if no data fetch is needed
+            loadingIndicator.style.display = 'none';
+            removeProgress(wrapper);
+            return;
           }
           
           // Simulate progress
@@ -558,7 +568,7 @@
             
             // Show user feedback about what's being loaded
             if (data.features.length === 0) {
-              showStatus(`No runs visible at zoom level ${zoom}`, 2000);
+              if (sidebarOpen) showStatus(`No selected runs visible`, 2000);
             } else {
               showStatus(`Loaded ${data.features.length} runs`, 1000);
             }
@@ -826,6 +836,15 @@
     }
 
     function updateMapDisplay() {
+      const pmtilesExists = !!map.getSource('runsVec');
+      if (pmtilesExists) {
+        // When a selection is active (sidebar open with items), hide PMTiles and show the GeoJSON layer.
+        // Otherwise, show PMTiles and hide the GeoJSON layer.
+        const showGeoJson = sidebarOpen && selectedRuns.size > 0;
+        map.setLayoutProperty('runsVec', 'visibility', showGeoJson ? 'none' : 'visible');
+        map.setLayoutProperty('runs-layer', 'visibility', showGeoJson ? 'visible' : 'none');
+      }
+
       fetchAndUpdate();
     }
 

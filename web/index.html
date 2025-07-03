@@ -365,6 +365,18 @@
 
     const loadingIndicator = document.getElementById('loading-indicator');
     let uploadedFeatures = [];
+    const stored = localStorage.getItem('uploadedFeatures');
+    if (stored) {
+      try {
+        uploadedFeatures = JSON.parse(stored);
+        map.getSource('uploadedRuns').setData({
+          type: 'FeatureCollection',
+          features: uploadedFeatures
+        });
+      } catch (e) {
+        console.error('Failed to load stored uploads', e);
+      }
+    }
 
     // Map control button event listeners
     document.getElementById('zoom-in-btn').addEventListener('click', () => {
@@ -398,14 +410,15 @@
           alert('Upload failed: ' + txt);
         } else {
           const data = await resp.json();
-          if (data.features && data.features.length) {
-            uploadedFeatures = uploadedFeatures.concat(data.features);
-            map.getSource('uploadedRuns').setData({
-              type: 'FeatureCollection',
-              features: uploadedFeatures
-            });
-            updateMapDisplay();
-          }
+            if (data.features && data.features.length) {
+              uploadedFeatures = uploadedFeatures.concat(data.features);
+              map.getSource('uploadedRuns').setData({
+                type: 'FeatureCollection',
+                features: uploadedFeatures
+              });
+              localStorage.setItem('uploadedFeatures', JSON.stringify(uploadedFeatures));
+              updateMapDisplay();
+            }
         }
       } catch (err) {
         alert('Upload error: ' + err.message);

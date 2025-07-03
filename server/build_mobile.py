@@ -16,6 +16,12 @@ import gzip
 import time
 from shapely.geometry import mapping
 
+# --- Path Configuration ---
+# Make the script runnable from any directory
+SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
+PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
+MOBILE_DIR = os.path.join(PROJECT_ROOT, 'mobile')
+
 # --- Utility Functions ---
 
 def ask_yes_no(question):
@@ -202,25 +208,25 @@ def check_android_sdk():
 def check_runs_pkl():
     """Check if the runs.pkl data file exists."""
     print("\n🔍 Checking for runs.pkl data file...")
-    if os.path.exists('runs.pkl'):
+    runs_pkl_path = os.path.join(SCRIPT_DIR, 'runs.pkl')
+    if os.path.exists(runs_pkl_path):
         print("✅ runs.pkl found.")
         return True
 
-    print("❌ Error: runs.pkl not found in the current directory.", file=sys.stderr)
-    print("Please run 'python import_runs.py' to generate it.", file=sys.stderr)
+    print(f"❌ Error: runs.pkl not found in '{SCRIPT_DIR}'.", file=sys.stderr)
+    print(f"Please run 'python {os.path.join(SCRIPT_DIR, 'import_runs.py')}' to generate it.", file=sys.stderr)
     return False
 
 # --- Build Steps ---
 
-def build_mobile_data():
+def build_mobile_data(mobile_dir):
     """Converts runs.pkl to static JSON files for the mobile app."""
     print("\n🚀 Building mobile data assets...")
-    with open('runs.pkl', 'rb') as f:
+    with open(os.path.join(SCRIPT_DIR, 'runs.pkl'), 'rb') as f:
         runs = pickle.load(f)
     total_runs = len(runs)
     print(f"✅ Loaded {total_runs} runs")
 
-    mobile_dir = '../mobile'
     if os.path.exists(mobile_dir):
         print(f"   - Removing existing directory: {mobile_dir}")
         shutil.rmtree(mobile_dir)
@@ -253,34 +259,33 @@ def build_mobile_data():
         json.dump(spatial_index, f, separators=(',', ':'))
     print(f"   - Wrote spatial index to {index_file}")
 
-    pmtiles_src = 'runs.pmtiles'
+    pmtiles_src = os.path.join(SCRIPT_DIR, 'runs.pmtiles')
     if os.path.exists(pmtiles_src):
         shutil.copy(pmtiles_src, os.path.join(mobile_dir, 'data', 'runs.pmtiles'))
         print("   - Copied runs.pmtiles")
-    return mobile_dir
 
 def create_mobile_files(mobile_dir):
     """Create JavaScript library and copy HTML/SW templates."""
     print("\n📄 Updating mobile helper files...")
     
     # Copy HTML template
-    shutil.copy('mobile_template.html', os.path.join(mobile_dir, 'index.html'))
+    shutil.copy(os.path.join(SCRIPT_DIR, 'mobile_template.html'), os.path.join(mobile_dir, 'index.html'))
     print("   - Updated index.html from mobile_template.html")
     
     # Copy service worker
-    shutil.copy('sw_template.js', os.path.join(mobile_dir, 'sw.js'))
+    shutil.copy(os.path.join(SCRIPT_DIR, 'sw_template.js'), os.path.join(mobile_dir, 'sw.js'))
     print("   - Updated sw.js from sw_template.js")
     
     # Copy main JS and dependencies
-    mobile_main_js = os.path.join(os.path.dirname(__file__), 'mobile_main.js')
+    mobile_main_js = os.path.join(SCRIPT_DIR, 'mobile_main.js')
     if os.path.exists(mobile_main_js):
         shutil.copy(mobile_main_js, os.path.join(mobile_dir, 'main.js'))
         print("   - Updated main.js from mobile_main.js")
         
-        shutil.copy('spatial.worker.js', os.path.join(mobile_dir, 'spatial.worker.js'))
+        shutil.copy(os.path.join(SCRIPT_DIR, 'spatial.worker.js'), os.path.join(mobile_dir, 'spatial.worker.js'))
         print("   - Updated spatial.worker.js")
         
-        rbush_path = os.path.join('..', 'rbush.min.js')
+        rbush_path = os.path.join(PROJECT_ROOT, 'rbush.min.js')
         if os.path.exists(rbush_path):
             shutil.copy(rbush_path, os.path.join(mobile_dir, 'rbush.min.js'))
             print("   - Updated rbush.min.js")
@@ -307,27 +312,39 @@ def create_capacitor_project(mobile_dir):
     print(f"   - Created capacitor.config.json")
     return True
 
-def setup_www_directory(mobile_dir):
-    """Create the 'www' directory and move web assets into it."""
+def setup_www_directory(mobile_dir, quick_build):
+    """Create or update the 'www' directory without losing existing data."""
     print("\n🏗 Setting up 'www' directory for Capacitor...")
-    www_dir = os.path.join(mobile_dir, 'www')
-    if os.path.exists(www_dir):
-        shutil.rmtree(www_dir)
-    os.makedirs(www_dir)
 
-    assets = ['index.html', 'main.js', 'sw.js', 'data']
-    
+    www_dir = os.path.join(mobile_dir, 'www')
+
+    if not os.path.exists(www_dir):
+        os.makedirs(www_dir)
+    elif not quick_build:
+        # Fresh build: start with a clean directory
+        shutil.rmtree(www_dir)
+        os.makedirs(www_dir)
+
+    # Move freshly built data on full builds
+    data_src = os.path.join(mobile_dir, 'data')
+    if not quick_build and os.path.exists(data_src):
+        shutil.move(data_src, os.path.join(www_dir, 'data'))
+        print(f"   - Moved data directory to {www_dir}")
+
+    assets = ['index.html', 'main.js', 'sw.js', 'spatial.worker.js', 'rbush.min.js']
+
     all_moved = True
     for asset in assets:
         src = os.path.join(mobile_dir, asset)
         dst = os.path.join(www_dir, asset)
         if os.path.exists(src):
             shutil.move(src, dst)
-            print(f"   - Moved {asset} to {www_dir}")
+            print(f"   - Updated {asset}")
         else:
-            print(f"   - Warning: Asset not found to move: {asset}")
+            if not quick_build:  # warn only on full build
+                print(f"   - Warning: Asset not found: {asset}")
             all_moved = False
-    
+
     return all_moved
 
 def fix_java_compatibility(mobile_dir):
@@ -361,20 +378,7 @@ def fix_java_compatibility(mobile_dir):
         
         if 'subprojects {' not in content:
             # Add subprojects configuration before the clean task
-            subprojects_config = '''
-subprojects {
-    afterEvaluate { project ->
-        if (project.hasProperty('android')) {
-            project.android {
-                compileOptions {
-                    sourceCompatibility JavaVersion.VERSION_17
-                    targetCompatibility JavaVersion.VERSION_17
-                }
-            }
-        }
-    }
-}
-'''
+            subprojects_config = '''\nsubprojects {\n    afterEvaluate { project ->\n        if (project.hasProperty('android')) {\n            project.android {\n                compileOptions {\n                    sourceCompatibility JavaVersion.VERSION_17\n                    targetCompatibility JavaVersion.VERSION_17\n                }\n            }\n        }\n    }\n}\n'''
             # Insert before the clean task
             pattern = r'(task clean\(type: Delete\))'
             replacement = subprojects_config + r'\n\1'
@@ -415,10 +419,6 @@ def package_for_android(mobile_dir):
     print("\nAdding Android platform to Capacitor project...")
     if not run_command(['npx', 'cap', 'add', 'android'], cwd=mobile_dir):
         print("❌ Failed to add Android platform.", file=sys.stderr)
-        return
-
-    if not setup_www_directory(mobile_dir):
-        print("❌ Could not set up 'www' directory. Aborting.", file=sys.stderr)
         return
 
     print("\nSyncing web assets with Capacitor...")
@@ -464,43 +464,41 @@ def main():
     if args.quick:
         print("🚀 Quick mode: skipping data conversion")
 
-    if not os.path.basename(os.getcwd()) == 'server':
-        print("❌ This script must be run from the 'server/' directory.", file=sys.stderr)
-        sys.exit(1)
-
-    mobile_dir = '../mobile'
-    
     if args.quick:
         # Quick mode: check if mobile directory exists and has data
-        if not os.path.exists(mobile_dir):
+        if not os.path.exists(MOBILE_DIR):
             print("❌ Mobile directory doesn't exist. Run without --quick first.", file=sys.stderr)
             sys.exit(1)
-        if not os.path.exists(os.path.join(mobile_dir, 'data')):
+        if not os.path.exists(os.path.join(MOBILE_DIR, 'www', 'data')):
             print("❌ Mobile data directory doesn't exist. Run without --quick first.", file=sys.stderr)
             sys.exit(1)
-        print(f"✅ Using existing mobile directory: {mobile_dir}")
+        print(f"✅ Using existing mobile directory: {MOBILE_DIR}")
     else:
         # Full mode: check prerequisites and build data
         if not check_runs_pkl() or not check_python_packages():
             sys.exit(1)
         
         try:
-            mobile_dir = build_mobile_data()
+            build_mobile_data(MOBILE_DIR)
         except Exception as e:
             print(f"❌ Build failed during data creation: {e}", file=sys.stderr)
             sys.exit(1)
 
     try:
-        create_mobile_files(mobile_dir)
+        create_mobile_files(MOBILE_DIR)
+        www_dir = os.path.join(MOBILE_DIR, 'www')
         print(f"\n🎉 Mobile web assets {'updated' if args.quick else 'build complete'}!")
-        print(f"   Output directory: {os.path.abspath(mobile_dir)}")
+        print(f"   Output directory: {os.path.abspath(www_dir)}")
     except Exception as e:
         print(f"❌ Build failed during web asset creation: {e}", file=sys.stderr)
         sys.exit(1)
 
+    # Always set up the www directory after creating files
+    setup_www_directory(MOBILE_DIR, args.quick)
+
     print()
     if ask_yes_no("Do you want to package the app for Android now?"):
-        package_for_android(mobile_dir)
+        package_for_android(MOBILE_DIR)
     else:
         print("\nSkipping Android packaging.")
         print("You can package it later by running this script again.")

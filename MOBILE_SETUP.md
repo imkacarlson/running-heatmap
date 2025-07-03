@@ -34,9 +34,10 @@ The entire process is now handled by one script.
     ```bash
     python build_mobile.py [--quick]
     ```
-   *(Run `python make_pmtiles.py` beforehand if you want vector tiles packaged.)*
-   
-   Use the `--quick` flag to skip data conversion when you only changed HTML or JavaScript. It reuses the existing `mobile/` directory to speed up the build.
+
+   Run the first build **without** `--quick` so the `mobile/www/data` directory is created.
+   Subsequent builds can pass `--quick` to rebuild only the HTML and JavaScript.
+   If you want vector tiles bundled for faster map rendering, run `python make_pmtiles.py` beforehand.
 
 The script will then:
 1.  ✅ **Check Prerequisites**: Verify that all required tools and files are present.
@@ -46,6 +47,12 @@ The script will then:
 5.  ✅ **Build the APK**: Create the final `running-heatmap-*.apk` file.
 
 The final APK will be placed in the `mobile/` directory, ready to be installed on your device.
+
+### Optional: PMTiles Vector Tiles
+
+Running `python make_pmtiles.py` (from the `server` directory) will create
+`runs.pmtiles` for faster map loading. Execute this after importing new runs and
+before building the mobile app if you want the tiles packaged.
 
 ## Testing in the Browser
 
@@ -68,7 +75,8 @@ Before installing the APK you can quickly verify the mobile build in Chrome.
 
 Using a local server mirrors how the app loads files from the device. Keep your
 paths relative (e.g. `data/runs.json.gz`) so they work from both `http://` and
-`file://` locations.
+`file://` locations. This approach is the easiest way to debug the mobile UI
+before packaging the APK.
 
 ## Installing the APK
 

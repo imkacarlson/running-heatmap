@@ -237,6 +237,7 @@ def upload_gpx():
 
 @app.route('/update_runs', methods=['POST'])
 def update_runs():
+    global runs, idx
     try:
         data = request.get_json()
         new_runs = data['runs']
@@ -275,6 +276,14 @@ def update_runs():
         result = subprocess.run(['python', 'make_pmtiles.py'], capture_output=True, text=True)
         if result.returncode != 0:
             return jsonify({'error': 'PMTiles regeneration failed'}), 500
+
+        # Reload the runs data and rebuild spatial index
+        with open(pkl_path, 'rb') as f:
+            runs = pickle.load(f)
+        
+        idx = index.Index()
+        for rid, run in runs.items():
+            idx.insert(rid, run['bbox'])
 
         return jsonify({'success': True, 'message': f'Added {len(new_runs)} runs'})
 

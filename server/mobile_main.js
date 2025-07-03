@@ -93,6 +93,7 @@ class SpatialIndex {
   }
 
   async reloadPMTiles() {
+    // Remove existing layers and sources
     if (map.getLayer('runsVec')) {
       map.removeLayer('runsVec');
     }
@@ -100,6 +101,15 @@ class SpatialIndex {
       map.removeSource('runsVec');
     }
 
+    // Clear PMTiles protocol to force cache refresh
+    if (maplibregl.removeProtocol) {
+      maplibregl.removeProtocol('pmtiles');
+    }
+
+    // Wait a moment for cleanup
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Re-register protocol
     const protocol = new pmtiles.Protocol();
     maplibregl.addProtocol('pmtiles', protocol.tile.bind(protocol));
 
@@ -123,6 +133,11 @@ class SpatialIndex {
       },
       maxzoom: 24
     });
+
+    // Force map refresh by triggering a small pan to reload tiles
+    const center = map.getCenter();
+    map.panBy([1, 1]);
+    setTimeout(() => map.panBy([-1, -1]), 200);
   }
 
 

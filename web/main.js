@@ -24,6 +24,13 @@ map.on('load', () => {
 function fetchAndUpdate() {
   const b = map.getBounds();
   const z = Math.floor(map.getZoom());
+
+  if (window.spatialIndex) {
+    const data = window.spatialIndex.getRunsForBounds(b.getSouth(), b.getWest(), b.getNorth(), b.getEast(), z);
+    map.getSource('runs').setData(data);
+    return;
+  }
+
   const url = `/api/runs?minLat=${b.getSouth()}&minLng=${b.getWest()}&maxLat=${b.getNorth()}&maxLng=${b.getEast()}&zoom=${z}`;
 
   if (activeController) {

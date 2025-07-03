@@ -313,26 +313,38 @@ def create_capacitor_project(mobile_dir):
     return True
 
 def setup_www_directory(mobile_dir, quick_build):
-    """Create the 'www' directory and move web assets into it."""
+    """Create or update the 'www' directory without losing existing data."""
     print("\n🏗 Setting up 'www' directory for Capacitor...")
-    www_dir = os.path.join(mobile_dir, 'www')
-    if os.path.exists(www_dir):
-        shutil.rmtree(www_dir)
-    os.makedirs(www_dir)
 
-    assets = ['index.html', 'main.js', 'sw.js', 'data', 'spatial.worker.js', 'rbush.min.js']
-    
+    www_dir = os.path.join(mobile_dir, 'www')
+
+    if not os.path.exists(www_dir):
+        os.makedirs(www_dir)
+    elif not quick_build:
+        # Fresh build: start with a clean directory
+        shutil.rmtree(www_dir)
+        os.makedirs(www_dir)
+
+    # Move freshly built data on full builds
+    data_src = os.path.join(mobile_dir, 'data')
+    if not quick_build and os.path.exists(data_src):
+        shutil.move(data_src, os.path.join(www_dir, 'data'))
+        print(f"   - Moved data directory to {www_dir}")
+
+    assets = ['index.html', 'main.js', 'sw.js', 'spatial.worker.js', 'rbush.min.js']
+
     all_moved = True
     for asset in assets:
         src = os.path.join(mobile_dir, asset)
         dst = os.path.join(www_dir, asset)
         if os.path.exists(src):
             shutil.move(src, dst)
-            print(f"   - Moved {asset} to {www_dir}")
+            print(f"   - Updated {asset}")
         else:
-            print(f"   - Warning: Asset not found to move: {asset}")
+            if not quick_build:  # warn only on full build
+                print(f"   - Warning: Asset not found: {asset}")
             all_moved = False
-    
+
     return all_moved
 
 def fix_java_compatibility(mobile_dir):

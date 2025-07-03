@@ -447,49 +447,39 @@
 
 
 
-        // Try direct PMTiles loading for mobile - test HTTP access first
+        // Load the bundled PMTiles archive
         try {
           console.log('Window location:', window.location.href);
           console.log('Protocol:', window.location.protocol);
           console.log('Origin:', window.location.origin);
-          
-          // Test if PMTiles file is accessible via HTTP
-          const pmtilesPath = './data/runs.pmtiles';
-          console.log('Testing PMTiles file access at:', pmtilesPath);
-          
-          const testResponse = await fetch(pmtilesPath, { method: 'HEAD' });
-          console.log('PMTiles file test response:', testResponse.status, testResponse.ok);
-          
-          if (testResponse.ok) {
-            // PMTiles is accessible via HTTP - use protocol handler
-            const protocol = new pmtiles.Protocol();
-            maplibregl.addProtocol('pmtiles', protocol.tile.bind(protocol));
-            
-            map.addSource('runsVec', {
-              type: 'vector',
-              url: 'pmtiles://./data/runs.pmtiles',
-              buffer: 128,
-              maxzoom: 16,
-              minzoom: 5
-            });
-            
-            map.addLayer({
-              id: 'runsVec',
-              source: 'runsVec',
-              'source-layer': 'runs',
-              type: 'line',
-              paint: {
-                'line-color': 'rgba(255,0,0,0.5)',
-                'line-width': ['interpolate', ['linear'], ['zoom'], 0, 1, 14, 3]
-              },
-              maxzoom: 24
-            });
-            
-            console.log('PMTiles loaded via protocol handler');
-          } else {
-            console.log('PMTiles file not accessible via HTTP, skipping PMTiles layer');
-            showStatus('Run data not available - using local storage only');
-          }
+
+          const pmtilesUrl = 'pmtiles://data/runs.pmtiles';
+          console.log('Loading PMTiles from:', pmtilesUrl);
+
+          const protocol = new pmtiles.Protocol();
+          maplibregl.addProtocol('pmtiles', protocol.tile.bind(protocol));
+
+          map.addSource('runsVec', {
+            type: 'vector',
+            url: pmtilesUrl,
+            buffer: 128,
+            maxzoom: 16,
+            minzoom: 5
+          });
+
+          map.addLayer({
+            id: 'runsVec',
+            source: 'runsVec',
+            'source-layer': 'runs',
+            type: 'line',
+            paint: {
+              'line-color': 'rgba(255,0,0,0.5)',
+              'line-width': ['interpolate', ['linear'], ['zoom'], 0, 1, 14, 3]
+            },
+            maxzoom: 24
+          });
+
+          console.log('PMTiles source and layer added successfully');
         } catch (error) {
           console.error('Failed to load PMTiles:', error);
           showStatus('Failed to load run data - using local storage only');

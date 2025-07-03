@@ -114,16 +114,8 @@ class SpatialIndex {
     maplibregl.addProtocol('pmtiles', protocol.tile.bind(protocol));
 
     const timestamp = Date.now();
-    // Use consistent PMTiles URL format for mobile
-    let pmtilesUrl;
-    if (window.location.origin === 'https://localhost' || window.location.origin.includes('localhost')) {
-      // Capacitor environment - use relative path to bundled assets
-      pmtilesUrl = `pmtiles://data/runs.pmtiles?t=${timestamp}`;
-    } else if (window.location.protocol === 'file:') {
-      pmtilesUrl = `pmtiles://./data/runs.pmtiles?t=${timestamp}`;
-    } else {
-      pmtilesUrl = `pmtiles:///data/runs.pmtiles?t=${timestamp}`;
-    }
+    // Use a consistent relative path for the bundled tiles
+    const pmtilesUrl = `pmtiles://data/runs.pmtiles?t=${timestamp}`;
     
     map.addSource('runsVec', {
       type: 'vector',

@@ -425,7 +425,12 @@
         touchPitch: false
       });
 
+      // Prefetch surrounding tiles to avoid blank squares when panning
+      map.prefetchZoomDelta = 2;
+
       map.on('load', async () => {
+        const loader = document.getElementById('loading-indicator');
+        loader.style.display = 'block';
         // Add OSM tiles
         map.addSource('osm-tiles', {
           type: 'raster',
@@ -483,6 +488,8 @@
         } catch (error) {
           showStatus('Failed to load interactive data: ' + error.message);
           console.error('Data loading failed:', error);
+        } finally {
+          loader.style.display = 'none';
         }
       });
 

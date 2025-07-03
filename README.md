@@ -94,6 +94,8 @@ Increase the opacity or adjust the width stops for a bolder heatmap.
 Run `python build_mobile.py` inside the `server/` directory to generate an
 Android APK with your activities bundled for offline viewing. The script will verify
 prerequisites, build the assets and optionally package the app using Capacitor.
+For a faster rebuild when only templates or JavaScript change, you can pass
+`--quick` to reuse the existing data and skip the conversion step.
 See **MOBILE_SETUP.md** for a detailed guide.
 
 Enjoy exploring your activity history!

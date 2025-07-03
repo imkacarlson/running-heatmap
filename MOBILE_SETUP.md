@@ -74,7 +74,7 @@ Before installing the APK you can quickly verify the mobile build in Chrome.
    debug JavaScript, inspect network requests and simulate mobile devices.
 
 Using a local server mirrors how the app loads files from the device. Keep your
-paths relative (e.g. `data/runs.json.gz`) so they work from both `http://` and
+paths relative (e.g. `data/runs.pmtiles`) so they work from both `http://` and
 `file://` locations. This approach is the easiest way to debug the mobile UI
 before packaging the APK.
 

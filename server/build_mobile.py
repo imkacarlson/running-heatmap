@@ -220,7 +220,7 @@ def check_runs_pkl():
 # --- Build Steps ---
 
 def build_mobile_data(mobile_dir):
-    """Converts runs.pkl to static JSON files for the mobile app."""
+    """Prepare PMTiles data for the mobile app."""
     print("\n🚀 Building mobile data assets...")
     with open(os.path.join(SCRIPT_DIR, 'runs.pkl'), 'rb') as f:
         runs = pickle.load(f)
@@ -233,31 +233,8 @@ def build_mobile_data(mobile_dir):
     os.makedirs(os.path.join(mobile_dir, 'data'))
     print(f"📂 Created output directory: {mobile_dir}")
 
-    print("\n🔄 Converting run data to JSON. This may take a moment...")
-    runs_data, spatial_index = {}, []
-    start_time = time.time()
-    for i, (rid, run) in enumerate(runs.items()):
-        geoms = {level: mapping(geom) for level, geom in run['geoms'].items()}
-        metadata = run.get('metadata', {})
-        json_metadata = {k: v.isoformat() if hasattr(v, 'isoformat') else v for k, v in metadata.items()}
-        runs_data[str(rid)] = {'geoms': geoms, 'bbox': run['bbox'], 'metadata': json_metadata}
-        spatial_index.append({'id': rid, 'bbox': run['bbox']})
-        
-        if (i + 1) % 250 == 0 or (i + 1) == total_runs:
-            elapsed = time.time() - start_time
-            print(f"   ...processed {i + 1}/{total_runs} runs ({elapsed:.1f}s)", end='\r')
-    print(f"\n✅ Data conversion complete. ({time.time() - start_time:.1f}s)")
-
-    print("\n💾 Writing data files...")
-    runs_file = os.path.join(mobile_dir, 'data', 'runs.json.gz')
-    with gzip.open(runs_file, 'wt') as f:
-        json.dump(runs_data, f, separators=(',', ':'))
-    print(f"   - Wrote runs data to {runs_file}")
-
-    index_file = os.path.join(mobile_dir, 'data', 'spatial_index.json.gz')
-    with gzip.open(index_file, 'wt') as f:
-        json.dump(spatial_index, f, separators=(',', ':'))
-    print(f"   - Wrote spatial index to {index_file}")
+    print("📦 PMTiles-only build: Skipping JSON generation for faster loading")
+    print("   - PMTiles file provides all data for map display and lasso queries")
 
     pmtiles_src = os.path.join(SCRIPT_DIR, 'runs.pmtiles')
     if os.path.exists(pmtiles_src):

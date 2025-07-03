@@ -2,8 +2,7 @@
 class SpatialIndex {
   constructor() {
     this.loaded = false;
-    this.runsData = null;
-    this.spatialIndex = null;
+    this.spatialIndex = [];
     this.userRuns = [];
     this.nextId = 1;
     this.worker = null;
@@ -34,33 +33,19 @@ class SpatialIndex {
   async loadData() {
     try {
       console.log('Loading mobile spatial data...');
-
-      // Load bundled data only
-      this.runsData = await this.fetchJson('data/runs.json');
-      this.spatialIndex = await this.fetchJson('data/spatial_index.json');
-
-      this.worker = new Worker('spatial.worker.js');
-      await new Promise(res => {
-        this.worker.onmessage = (e) => {
-          if (e.data.type === 'ready') {
-            this.worker.onmessage = this._handleWorkerMessage.bind(this);
-            res();
-          }
-        };
-      });
-
-      this.nextId = Math.max(0, ...Object.keys(this.runsData).map(id => parseInt(id))) + 1;
-
+      this.spatialIndex = [];
       this.loadUserRuns();
 
+      this.nextId = this.userRuns.reduce((m, r) => Math.max(m, parseInt(r.id)), 0) + 1;
+
       this.loaded = true;
-      console.log(`Loaded ${Object.keys(this.runsData).length} runs with spatial index`);
-      
+      console.log(`Loaded ${this.userRuns.length} user runs`);
+
       // Show user feedback
       if (window.showStatusForDebug) {
-        window.showStatusForDebug(`Loaded ${Object.keys(this.runsData).length} runs`, 1500);
+        window.showStatusForDebug(`Loaded ${this.userRuns.length} runs`, 1500);
       }
-      
+
     } catch (error) {
       console.error('Failed to load spatial data:', error);
       throw error;
@@ -74,7 +59,6 @@ class SpatialIndex {
       const arr = JSON.parse(stored);
       arr.forEach(run => {
         const id = run.id.toString();
-        this.runsData[id] = { geoms: run.geoms, bbox: run.bbox, metadata: run.metadata };
         this.spatialIndex.push({ id: parseInt(id), bbox: run.bbox });
         this.userRuns.push(run);
         const num = parseInt(id);
@@ -94,26 +78,6 @@ class SpatialIndex {
     }
   }
 
-  async fetchJson(base) {
-    const gzUrl = base + '.gz';
-    try {
-      const resp = await fetch(gzUrl);
-      if (resp.ok) {
-        if (resp.headers.get('content-encoding') === 'gzip') {
-          return resp.json();
-        }
-        const ds = new DecompressionStream('gzip');
-        const decompressed = resp.body.pipeThrough(ds);
-        const text = await new Response(decompressed).text();
-        return JSON.parse(text);
-      }
-    } catch (_) {
-      // ignore and fallback
-    }
-    const resp = await fetch(base);
-    if (!resp.ok) throw new Error(`Failed to load ${base}`);
-    return resp.json();
-  }
 
   simplify(coords, tolerance) {
     if (coords.length <= 2) return coords;
@@ -141,7 +105,6 @@ class SpatialIndex {
       mid: { type: 'LineString', coordinates: this.simplify(coords, 0.0005) },
       low: { type: 'LineString', coordinates: this.simplify(coords, 0.001) }
     };
-    this.runsData[id.toString()] = { geoms, bbox, metadata };
     this.spatialIndex.push({ id, bbox });
     const run = { id: id.toString(), geoms, bbox, metadata };
     this.userRuns.push(run);
@@ -163,11 +126,13 @@ class SpatialIndex {
     // Use spatial index to find runs that intersect with bounds
     for (const indexEntry of this.spatialIndex) {
       const runBbox = indexEntry.bbox;
-      
+
       // Check if run bbox intersects with query bbox
       if (this.bboxIntersects(runBbox, bbox)) {
+        const run = this.userRuns.find(r => r.id.toString() === indexEntry.id.toString());
+        const runData = run;
         const runId = indexEntry.id.toString();
-        const runData = this.runsData[runId];
+        if (!runData) continue;
         
         if (runData && runData.geoms) {
           // Choose appropriate zoom level with fallback
@@ -224,82 +189,50 @@ class SpatialIndex {
     return this._queryWorker(bbox, zoom, runIds, progressCb);
   }
 
+  // Query uploaded runs using the spatial index (legacy support)
   getRunsInPolygon(polygonCoords) {
-    if (!this.loaded) {
-      return [];
-    }
+    if (!this.loaded) return [];
 
     const runs = [];
-    
-    // Get polygon bounding box for initial filtering
     const polyBbox = this.getPolygonBbox(polygonCoords);
-    
-    for (const indexEntry of this.spatialIndex) {
-      const runBbox = indexEntry.bbox;
-      
-      // First check bbox intersection for performance
-      if (this.bboxIntersects(runBbox, polyBbox)) {
-        const runId = indexEntry.id.toString();
-        const runData = this.runsData[runId];
-        
-        if (runData && runData.geoms) {
-          // More precise check: see if any part of the run intersects the polygon
-          let intersects = false;
-          
-          // Check if bounding box center is in polygon
-          const runCenter = [
-            (runBbox[0] + runBbox[2]) / 2,
-            (runBbox[1] + runBbox[3]) / 2
-          ];
-          
-          if (this.pointInPolygon(runCenter, polygonCoords)) {
-            intersects = true;
-          } else {
-            // Also check if any corner of the bounding box is in the polygon
-            const corners = [
-              [runBbox[0], runBbox[1]], // bottom-left
-              [runBbox[2], runBbox[1]], // bottom-right
-              [runBbox[2], runBbox[3]], // top-right
-              [runBbox[0], runBbox[3]]  // top-left
-            ];
-            
-            for (const corner of corners) {
-              if (this.pointInPolygon(corner, polygonCoords)) {
-                intersects = true;
-                break;
-              }
-            }
-            
-            // If still no intersection, check if polygon intersects with run geometry
-            if (!intersects) {
-              const geom = runData.geoms.full || runData.geoms.high || runData.geoms.mid || runData.geoms.low;
-              if (geom && geom.coordinates) {
-                // First check if any coordinate is inside the polygon
-                for (const coord of geom.coordinates) {
-                  if (this.pointInPolygon(coord, polygonCoords)) {
-                    intersects = true;
-                    break;
-                  }
-                }
 
-                // If no point inside, check for segment intersection
-                if (!intersects && this.lineIntersectsPolygon(geom.coordinates, polygonCoords)) {
-                  intersects = true;
-                }
-              }
-            }
-          }
-          
-          if (intersects) {
-            runs.push({
-              id: parseInt(runId),
-              metadata: runData.metadata,
-              bbox: runData.bbox
-            });
-          }
+    for (const entry of this.spatialIndex) {
+      if (this.bboxIntersects(entry.bbox, polyBbox)) {
+        const run = this.userRuns.find(r => r.id.toString() === entry.id.toString());
+        if (run && this.geometryIntersectsPolygon(run.geoms.full, polygonCoords)) {
+          runs.push({ id: parseInt(run.id), metadata: run.metadata, bbox: run.bbox });
         }
       }
     }
+
+    return runs;
+  }
+
+  async queryPMTilesInPolygon(polygonCoords) {
+    if (!this.loaded) return [];
+
+    const features = map.queryRenderedFeatures(null, {
+      layers: ['runsVec']
+    });
+
+    const runs = [];
+    features.forEach(feature => {
+      const props = feature.properties;
+      const runBbox = feature.bbox || this.getGeometryBbox(feature.geometry);
+      if (this.geometryIntersectsPolygon(feature.geometry, polygonCoords)) {
+        runs.push({
+          id: props.id,
+          metadata: {
+            start_time: props.start_time,
+            distance: props.distance,
+            duration: props.duration,
+            activity_type: props.activity_type,
+            activity_raw: props.activity_raw
+          },
+          bbox: runBbox
+        });
+      }
+    });
 
     return runs;
   }
@@ -328,6 +261,31 @@ class SpatialIndex {
     }
     
     return [minLng, minLat, maxLng, maxLat];
+  }
+
+  getGeometryBbox(geometry) {
+    const coords = geometry.coordinates;
+    let minLng = Infinity, minLat = Infinity;
+    let maxLng = -Infinity, maxLat = -Infinity;
+
+    coords.forEach(([lng, lat]) => {
+      minLng = Math.min(minLng, lng);
+      maxLng = Math.max(maxLng, lng);
+      minLat = Math.min(minLat, lat);
+      maxLat = Math.max(maxLat, lat);
+    });
+
+    return [minLng, minLat, maxLng, maxLat];
+  }
+
+  geometryIntersectsPolygon(geometry, polygonCoords) {
+    const lineCoords = geometry.coordinates;
+    for (const coord of lineCoords) {
+      if (this.pointInPolygon(coord, polygonCoords)) {
+        return true;
+      }
+    }
+    return this.lineIntersectsPolygon(lineCoords, polygonCoords);
   }
 
   pointInPolygon(point, polygon) {

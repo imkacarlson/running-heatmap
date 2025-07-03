@@ -18,8 +18,6 @@ const STATIC_FILES = [
 
 // Data files to cache
 const DATA_FILES = [
-  './data/runs.json.gz',
-  './data/spatial_index.json.gz',
   './data/runs.pmtiles'
 ];
 
@@ -75,7 +73,7 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const requestUrl = new URL(event.request.url);
   
-  // Handle data files (runs.json, spatial_index.json)
+  // Handle data files (PMTiles)
   if (requestUrl.pathname.includes('/data/')) {
     event.respondWith(
       caches.open(DATA_CACHE_NAME).then((cache) => {

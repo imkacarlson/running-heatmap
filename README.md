@@ -87,7 +87,7 @@ Increase the opacity or adjust the width stops for a bolder heatmap.
 - The server streams GeoJSON on demand—no tile generation step.
 - Activities are cached using `lru_cache` and responses include caching headers.
 - For even faster loading, run `python make_pmtiles.py` to generate `runs.pmtiles` (requires Tippecanoe). The mobile and web apps automatically use this file and prefetch nearby map tiles for smoother panning.
-- A dataset of ~5k runs results in `runs.json.gz` around 2&nbsp;MB and cold-start under a second on recent phones.
+- A dataset of ~5k runs fits in a `runs.pmtiles` file around 40&nbsp;MB while keeping lasso queries fast offline.
 
 ## Mobile app
 

@@ -248,20 +248,10 @@ def build_mobile_data():
         json.dump(runs_data, f, separators=(',', ':'))
     print(f"   - Wrote runs data to {runs_file}")
 
-    runs_plain = os.path.join(mobile_dir, 'data', 'runs.json')
-    with open(runs_plain, 'w') as f:
-        json.dump(runs_data, f, separators=(',', ':'))
-    print(f"   - Wrote runs data to {runs_plain}")
-
     index_file = os.path.join(mobile_dir, 'data', 'spatial_index.json.gz')
     with gzip.open(index_file, 'wt') as f:
         json.dump(spatial_index, f, separators=(',', ':'))
     print(f"   - Wrote spatial index to {index_file}")
-
-    index_plain = os.path.join(mobile_dir, 'data', 'spatial_index.json')
-    with open(index_plain, 'w') as f:
-        json.dump(spatial_index, f, separators=(',', ':'))
-    print(f"   - Wrote spatial index to {index_plain}")
 
     pmtiles_src = 'runs.pmtiles'
     if os.path.exists(pmtiles_src):

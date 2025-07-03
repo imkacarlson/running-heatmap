@@ -425,8 +425,8 @@
         touchPitch: false
       });
 
-      // Prefetch surrounding tiles to avoid blank squares when panning
-      map.prefetchZoomDelta = 2;
+      // Aggressive tile prefetching for seamless zoom transitions
+      map.prefetchZoomDelta = 4;
 
       map.on('load', async () => {
         const loader = document.getElementById('loading-indicator');
@@ -465,8 +465,24 @@
         if (head.ok) {
           const protocol = new pmtiles.Protocol();
           maplibregl.addProtocol('pmtiles', protocol.tile.bind(protocol));
-          map.addSource('runsVec', {type:'vector', url:'pmtiles://data/runs.pmtiles'});
-          map.addLayer({id:'runsVec', source:'runsVec', 'source-layer':'runs', type:'line', paint:{'line-color':'rgba(255,0,0,0.5)','line-width':['interpolate',['linear'],['zoom'],0,1,14,3]}});
+          map.addSource('runsVec', {
+            type: 'vector',
+            url: 'pmtiles://data/runs.pmtiles',
+            buffer: 128,        // Extra pixels around each tile edge
+            maxzoom: 16,        // Match PMTiles max zoom for better caching
+            minzoom: 5          // Match PMTiles min zoom
+          });
+          map.addLayer({
+            id: 'runsVec',
+            source: 'runsVec',
+            'source-layer': 'runs',
+            type: 'line',
+            paint: {
+              'line-color': 'rgba(255,0,0,0.5)',
+              'line-width': ['interpolate', ['linear'], ['zoom'], 0, 1, 14, 3]
+            },
+            maxzoom: 24  // Allow overzoom for smooth transitions (higher than source maxzoom)
+          });
           pmtilesLoaded = true;
         }
 

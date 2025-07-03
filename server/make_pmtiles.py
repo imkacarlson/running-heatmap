@@ -58,10 +58,13 @@ def main():
         '-l', 'runs',
         '-Z', '5',          # Min zoom
         '-z', '16',         # Max zoom (higher for more detail)
+        '--tile-size=1024', # Larger tiles = fewer network requests
+        '--buffer=16',      # Extra geometry around tile edges
         '--simplification=2',  # Aggressive simplification for speed
         '--no-tile-size-limit',
         '--drop-densest-as-needed',  # Auto-drop features when too dense
         '--extend-zooms-if-still-dropping',  # Keep trying to fit data
+        '--simplify-only-low-zooms',  # Keep detail at high zooms
         '--progress-interval=1',  # Show progress every second
         'runs.geojson'
     ], check=True)

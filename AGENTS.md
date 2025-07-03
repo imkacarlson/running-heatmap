@@ -25,5 +25,5 @@ When adding new features or modifying existing ones, follow these guidelines:
 
 1. Update both web and mobile implementations if applicable.
 2. Run the application locally (``flask run`` inside `server/`) to verify behavior.
-3. After committing changes, review this `AGENTS.md` and update it if the repository’s behavior or instructions change.
+3. After committing changes, review this `AGENTS.md`, `README.md`, and `MOBILE_SETUP.md` to ensure all instructions remain accurate, updating them if necessary.
 

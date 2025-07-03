@@ -312,7 +312,7 @@ def create_capacitor_project(mobile_dir):
     print(f"   - Created capacitor.config.json")
     return True
 
-def setup_www_directory(mobile_dir):
+def setup_www_directory(mobile_dir, quick_build):
     """Create the 'www' directory and move web assets into it."""
     print("\n🏗 Setting up 'www' directory for Capacitor...")
     www_dir = os.path.join(mobile_dir, 'www')
@@ -482,9 +482,7 @@ def main():
         sys.exit(1)
 
     # Always set up the www directory after creating files
-    if not setup_www_directory(MOBILE_DIR):
-        print("❌ Could not set up 'www' directory. Aborting.", file=sys.stderr)
-        sys.exit(1)
+    setup_www_directory(MOBILE_DIR, args.quick)
 
     print()
     if ask_yes_no("Do you want to package the app for Android now?"):

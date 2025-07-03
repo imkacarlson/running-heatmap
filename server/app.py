@@ -12,7 +12,6 @@ from flask import (
 )
 from shapely.geometry import mapping, Polygon, LineString
 from shapely import clip_by_rect
-from tqdm import tqdm
 import gpxpy
 from rtree import index
 
@@ -30,6 +29,11 @@ app = Flask(__name__, static_folder='../web', static_url_path='')
 @app.route('/')
 def root():
     return send_from_directory(app.static_folder, 'index.html')
+
+
+@app.route('/runs.pmtiles')
+def pmtiles():
+    return send_from_directory('.', 'runs.pmtiles')
 
 
 def quantize(val, digits=3):
@@ -108,10 +112,10 @@ def add_run(coords, metadata, source_name='upload'):
         'bbox': ls.bounds,
         'geoms': {
             'full': ls,
-            'high': ls.simplify(0.00005, preserve_topology=False),
-            'mid': ls.simplify(0.0001, preserve_topology=False),
-            'low': ls.simplify(0.0003, preserve_topology=False),
-            'coarse': ls.simplify(0.0005, preserve_topology=False),
+            'high': ls.simplify(0.0001, preserve_topology=False),
+            'mid': ls.simplify(0.0005, preserve_topology=False),
+            'low': ls.simplify(0.001, preserve_topology=False),
+            'coarse': ls.simplify(0.002, preserve_topology=False),
         },
         'metadata': {
             'start_time': metadata.get('start_time'),
@@ -133,11 +137,6 @@ def add_run(coords, metadata, source_name='upload'):
 def _compute_runs(minLat, minLng, maxLat, maxLng, zoom, progress_cb=None):
     ids = list(idx.intersection((minLng, minLat, maxLng, maxLat)))
 
-    print(
-        f"🔍 Candidate run IDs for bbox ({minLat:.3f},{minLng:.3f})→({maxLat:.3f},{maxLng:.3f}): {ids}"
-    )
-    print(f"↪ Processing {len(ids)} runs at zoom {zoom}")
-
     # choose pre-simplified geometry based on zoom level - more granular tiers
     if zoom >= 15:
         key = 'full'
@@ -153,7 +152,7 @@ def _compute_runs(minLat, minLng, maxLat, maxLng, zoom, progress_cb=None):
     features = []
     minx, miny, maxx, maxy = minLng, minLat, maxLng, maxLat
     total = len(ids)
-    for i, rid in enumerate(tqdm(ids, desc="runs", unit="run"), 1):
+    for i, rid in enumerate(ids, 1):
         run = runs[rid]
         line = run['geoms'][key]
         rb = run['bbox']
@@ -172,7 +171,6 @@ def _compute_runs(minLat, minLng, maxLat, maxLng, zoom, progress_cb=None):
         if progress_cb:
             progress_cb(int(i * 100 / total))
 
-    print(f"→ Returning {len(features)} features")
     return {'type': 'FeatureCollection', 'features': features}
 
 
@@ -230,13 +228,6 @@ def stream_runs():
             else:
                 ids = [rid for rid in ids if rid in selected_run_ids]
 
-        print(
-            f"🔍 Candidate run IDs for bbox ({minLat:.3f},{minLng:.3f})→({maxLat:.3f},{maxLng:.3f}): {len(ids)} runs"
-        )
-        if selected_run_ids:
-            print(f"↪ Filtered to {len(ids)} selected runs")
-        print(f"↪ Processing {len(ids)} runs at zoom {zoom}, chunk_size={chunk_size}")
-
         if zoom >= 15:
             key = 'full'
         elif zoom >= 12:
@@ -252,7 +243,7 @@ def stream_runs():
         minx, miny, maxx, maxy = minLng, minLat, maxLng, maxLat
         total = len(ids)
         
-        for i, rid in enumerate(tqdm(ids, desc="runs", unit="run"), 1):
+        for i, rid in enumerate(ids, 1):
             run = runs[rid]
             line = run['geoms'][key]
             rb = run['bbox']
@@ -282,7 +273,6 @@ def stream_runs():
             chunk_data = {'type': 'FeatureCollection', 'features': features}
             yield f"event: chunk\ndata: {json.dumps(chunk_data)}\n\n"
 
-        print(f"→ Finished streaming features in chunks")
         yield f"event: complete\ndata: done\n\n"
 
     headers = {'Cache-Control': 'no-cache'}
@@ -294,57 +284,42 @@ def get_runs_in_area():
     """Find runs that intersect with a user-drawn polygon."""
     try:
         data = request.get_json()
-        print(f"Received data: {data}")
         
         if not data or 'polygon' not in data:
-            print("Missing polygon data in request")
             return jsonify({'error': 'Missing polygon data'}), 400
         
         # Create polygon from coordinates
         polygon_coords = data['polygon']
-        print(f"Polygon coordinates: {len(polygon_coords)} points")
-        print(f"First coord: {polygon_coords[0] if polygon_coords else 'None'}")
-        print(f"Last coord: {polygon_coords[-1] if polygon_coords else 'None'}")
         
         if len(polygon_coords) < 3:
-            print(f"Polygon too small: {len(polygon_coords)} points")
             return jsonify({'error': 'Polygon must have at least 3 points'}), 400
         
         # Ensure polygon is closed
         if polygon_coords[0] != polygon_coords[-1]:
             polygon_coords.append(polygon_coords[0])
-            print("Closed polygon by adding first point to end")
         
         # Validate coordinate format
         for i, coord in enumerate(polygon_coords):
             if not isinstance(coord, list) or len(coord) != 2:
-                print(f"Invalid coordinate at index {i}: {coord}")
                 return jsonify({'error': f'Invalid coordinate format at index {i}'}), 400
             if not all(isinstance(x, (int, float)) for x in coord):
-                print(f"Non-numeric coordinate at index {i}: {coord}")
                 return jsonify({'error': f'Non-numeric coordinate at index {i}'}), 400
         
         selection_polygon = Polygon(polygon_coords)
         if not selection_polygon.is_valid:
-            print(f"Invalid polygon geometry, attempting to fix...")
             # Try to fix the polygon using buffer(0) which can resolve self-intersections
             try:
                 fixed_polygon = selection_polygon.buffer(0)
                 if fixed_polygon.is_valid and not fixed_polygon.is_empty:
                     selection_polygon = fixed_polygon
-                    print("Successfully fixed polygon geometry")
                 else:
-                    print(f"Could not fix polygon geometry")
                     return jsonify({'error': 'Invalid polygon geometry - please try drawing again'}), 400
             except Exception as e:
-                print(f"Error fixing polygon: {e}")
                 return jsonify({'error': 'Invalid polygon geometry - please try drawing again'}), 400
         
         # Get polygon bounding box for initial filtering
         minx, miny, maxx, maxy = selection_polygon.bounds
         candidate_ids = list(idx.intersection((minx, miny, maxx, maxy)))
-        
-        print(f"🔍 Checking {len(candidate_ids)} candidate runs for polygon intersection")
         
         intersecting_runs = []
         
@@ -369,7 +344,6 @@ def get_runs_in_area():
                 }
                 intersecting_runs.append(run_data)
         
-        print(f"→ Found {len(intersecting_runs)} runs intersecting with selection")
         
         return jsonify({
             'runs': intersecting_runs,
@@ -377,7 +351,6 @@ def get_runs_in_area():
         })
         
     except Exception as e:
-        print(f"Error in runs_in_area: {e}")
         return jsonify({'error': 'Internal server error'}), 500
 
 

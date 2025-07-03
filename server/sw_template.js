@@ -10,14 +10,17 @@ const STATIC_FILES = [
   './',
   './index.html',
   './main.js',
+  './spatial.worker.js',
+  './rbush.min.js',
   'https://unpkg.com/maplibre-gl/dist/maplibre-gl.js',
   'https://unpkg.com/maplibre-gl/dist/maplibre-gl.css'
 ];
 
 // Data files to cache
 const DATA_FILES = [
-  './data/runs.json',
-  './data/spatial_index.json'
+  './data/runs.json.gz',
+  './data/spatial_index.json.gz',
+  './data/runs.pmtiles'
 ];
 
 // Install event - cache static files

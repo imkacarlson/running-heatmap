@@ -9,6 +9,7 @@ This project processes raw GPS files (Strava export, Garmin Connect, etc.) and s
 - Imports **FIT**, **GPX**, and **TCX** files as well as zipped Garmin exports
 - Precomputes simplified geometries at multiple zoom levels for fast display
 - R-tree spatial index and on-the-fly clipping for responsive panning/zooming
+- Optional PMTiles vector tile export for fast rendering
 - Heatmap style polyline rendering on an OpenStreetMap basemap
 - **Server–sent events** for progressive GeoJSON streaming with progress bars
 - Draw a polygon to select an area and list all activities intersecting it
@@ -24,6 +25,7 @@ This project processes raw GPS files (Strava export, Garmin Connect, etc.) and s
   ```bash
   sudo apt update
   sudo apt install python3-venv libspatialindex-dev
+  sudo apt install tippecanoe
   ```
 
 ## Import your activities
@@ -84,6 +86,8 @@ Increase the opacity or adjust the width stops for a bolder heatmap.
 - Drop new GPS files into `data/raw/` and rerun `python import_runs.py`.
 - The server streams GeoJSON on demand—no tile generation step.
 - Activities are cached using `lru_cache` and responses include caching headers.
+- For even faster loading, run `python make_pmtiles.py` to generate `runs.pmtiles` (requires Tippecanoe).
+- A dataset of ~5k runs results in `runs.json.gz` around 2&nbsp;MB and cold-start under a second on recent phones.
 
 ## Mobile app
 

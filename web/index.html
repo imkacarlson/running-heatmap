@@ -4,8 +4,9 @@
 <head>
   <meta charset="utf-8" />
   <title>Run Heatmap</title>
-  <script src="https://unpkg.com/maplibre-gl/dist/maplibre-gl.js"></script>
-  <link href="https://unpkg.com/maplibre-gl/dist/maplibre-gl.css" rel="stylesheet" />
+  <link rel='stylesheet' href='https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.css' />
+  <script src='https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.js'></script>
+  <script src="https://unpkg.com/pmtiles@3.2.0/dist/pmtiles.js"></script>
   <style>
     body,
     html,
@@ -327,7 +328,8 @@
       zoom: 4
     });
 
-    map.on('load', () => {
+    // Wait for PMTiles library to load
+    function initializeMap() {
       map.addSource('osm-tiles', {
         type: 'raster',
         tiles: [
@@ -344,25 +346,35 @@
         source: 'osm-tiles'
       });
 
-      map.addSource('runs', {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] }
-      });
+      const protocol = new pmtiles.Protocol();
+      maplibregl.addProtocol('pmtiles', protocol.tile);
+      map.addSource('runsVec', {type:'vector', url:'pmtiles://runs.pmtiles'});
       map.addLayer({
-        id: 'runs-layer',
-        type: 'line',
-        source: 'runs',
-        paint: {
-          'line-color': 'rgba(255,0,0,0.4)',
-          'line-width': [
-            'interpolate', ['linear'], ['zoom'],
-            0, 0.5,
-            14, 2
-          ]
+        id:'runsVec', 
+        source:'runsVec', 
+        'source-layer':'runs', 
+        type:'line', 
+        paint:{
+          'line-color':'rgba(255,0,0,0.4)',
+          'line-width':['interpolate',['linear'],['zoom'],5,0.5,10,1,14,2,16,3]
         }
       });
+    }
 
-      fetchAndUpdate();
+    map.on('load', () => {
+      // Ensure PMTiles is loaded before initializing
+      if (typeof pmtiles !== 'undefined') {
+        initializeMap();
+      } else {
+        // Wait a bit for the script to load
+        setTimeout(() => {
+          if (typeof pmtiles !== 'undefined') {
+            initializeMap();
+          } else {
+            console.error('PMTiles library failed to load!');
+          }
+        }, 100);
+      }
     });
 
     const progressContainer = document.getElementById('progress-container');
@@ -472,7 +484,7 @@
       es.onerror = finalize;
     }
 
-    map.on('moveend', fetchAndUpdate);
+    // map.on('moveend', fetchAndUpdate); // Disabled - using PMTiles now
 
     // Map control button event listeners
     document.getElementById('zoom-in-btn').addEventListener('click', () => {
@@ -505,7 +517,7 @@
           const txt = await resp.text();
           alert('Upload failed: ' + txt);
         } else {
-          fetchAndUpdate();
+          // fetchAndUpdate(); // Disabled - using PMTiles now
         }
       } catch (err) {
         alert('Upload error: ' + err.message);
@@ -753,10 +765,6 @@
     // Query runs in selected area
     async function queryRunsInArea(coordinates) {
       try {
-        console.log('Sending polygon coordinates:', coordinates);
-        console.log('Polygon length:', coordinates.length);
-        console.log('First coord:', coordinates[0]);
-        console.log('Last coord:', coordinates[coordinates.length - 1]);
         
         const response = await fetch('/api/runs_in_area', {
           method: 'POST',
@@ -879,20 +887,27 @@
       }
     }
 
-    // Update map display to show only selected runs
+    // Update map display to show only selected runs using vector tile filtering
     function updateMapDisplay() {
-      console.log('Selected runs:', Array.from(selectedRuns), 'Sidebar open:', sidebarOpen);
-      
-      // If sidebar is open and no runs selected, immediately clear the map
-      if (sidebarOpen && selectedRuns.size === 0) {
-        map.getSource('runs').setData({
-          type: 'FeatureCollection',
-          features: []
-        });
-      }
-      
-      // Trigger a refresh of the map data with current selection
-      fetchAndUpdate();
+        // Make sure the vector layer exists
+        if (!map.getLayer('runsVec')) return;
+
+        // If the sidebar is closed, show all runs
+        if (!sidebarOpen) {
+          map.setFilter('runsVec', null);
+          return;
+        }
+
+        // When sidebar is open and no runs are selected, hide all runs
+        if (selectedRuns.size === 0) {
+          map.setFilter('runsVec', ['==', ['get', 'id'], -1]);
+          return;
+        }
+
+        // Show only the runs that are currently selected
+        const ids = Array.from(selectedRuns, id => Number(id));
+        const filter = ['in', ['get', 'id'], ['literal', ids]];
+        map.setFilter('runsVec', filter);
     }
   </script>
 </body>

@@ -6,24 +6,48 @@ class SpatialIndex {
     this.spatialIndex = null;
     this.userRuns = [];
     this.nextId = 1;
+    this.worker = null;
+  }
+
+  _handleWorkerMessage(e) {
+    if (!this._pending) return;
+    if (e.data.type === 'chunk') {
+      this._features.push(...e.data.features);
+    } else if (e.data.type === 'progress') {
+      if (this._progress) this._progress(e.data.value);
+    } else if (e.data.type === 'complete') {
+      this._pending.resolve({type:'FeatureCollection', features:this._features});
+      this._pending = null;
+      this._features = [];
+    }
+  }
+
+  _queryWorker(bbox, zoom, ids, progress) {
+    return new Promise(resolve => {
+      this._pending = {resolve};
+      this._features = [];
+      this._progress = progress;
+      this.worker.postMessage({bbox, zoom, filterIds: ids, batch:500});
+    });
   }
 
   async loadData() {
     try {
       console.log('Loading mobile spatial data...');
-      
+
       // Load bundled data only
-      const runsResponse = await fetch('data/runs.json');
-      if (!runsResponse.ok) {
-        throw new Error(`Failed to load runs: ${runsResponse.status}`);
-      }
-      this.runsData = await runsResponse.json();
-      
-      const indexResponse = await fetch('data/spatial_index.json');
-      if (!indexResponse.ok) {
-        throw new Error(`Failed to load spatial index: ${indexResponse.status}`);
-      }
-      this.spatialIndex = await indexResponse.json();
+      this.runsData = await this.fetchJson('data/runs.json');
+      this.spatialIndex = await this.fetchJson('data/spatial_index.json');
+
+      this.worker = new Worker('spatial.worker.js');
+      await new Promise(res => {
+        this.worker.onmessage = (e) => {
+          if (e.data.type === 'ready') {
+            this.worker.onmessage = this._handleWorkerMessage.bind(this);
+            res();
+          }
+        };
+      });
 
       this.nextId = Math.max(0, ...Object.keys(this.runsData).map(id => parseInt(id))) + 1;
 
@@ -70,6 +94,27 @@ class SpatialIndex {
     }
   }
 
+  async fetchJson(base) {
+    const gzUrl = base + '.gz';
+    try {
+      const resp = await fetch(gzUrl);
+      if (resp.ok) {
+        if (resp.headers.get('content-encoding') === 'gzip') {
+          return resp.json();
+        }
+        const ds = new DecompressionStream('gzip');
+        const decompressed = resp.body.pipeThrough(ds);
+        const text = await new Response(decompressed).text();
+        return JSON.parse(text);
+      }
+    } catch (_) {
+      // ignore and fallback
+    }
+    const resp = await fetch(base);
+    if (!resp.ok) throw new Error(`Failed to load ${base}`);
+    return resp.json();
+  }
+
   simplify(coords, tolerance) {
     if (coords.length <= 2) return coords;
     const simplified = [coords[0]];
@@ -92,14 +137,17 @@ class SpatialIndex {
     const bbox = this.getPolygonBbox(coords);
     const geoms = {
       full: { type: 'LineString', coordinates: coords },
-      high: { type: 'LineString', coordinates: this.simplify(coords, 0.00005) },
-      mid: { type: 'LineString', coordinates: this.simplify(coords, 0.0003) },
-      low: { type: 'LineString', coordinates: this.simplify(coords, 0.0009) }
+      high: { type: 'LineString', coordinates: this.simplify(coords, 0.0001) },
+      mid: { type: 'LineString', coordinates: this.simplify(coords, 0.0005) },
+      low: { type: 'LineString', coordinates: this.simplify(coords, 0.001) }
     };
     this.runsData[id.toString()] = { geoms, bbox, metadata };
     this.spatialIndex.push({ id, bbox });
     const run = { id: id.toString(), geoms, bbox, metadata };
     this.userRuns.push(run);
+    if (this.worker) {
+      this.worker.postMessage({type:'add', run:{id, geoms, bbox}});
+    }
     this.saveUserRuns();
     return id;
   }
@@ -160,105 +208,20 @@ class SpatialIndex {
     };
   }
 
-  async getRunsForBoundsAsync(minLat, minLng, maxLat, maxLng, zoom, batchSize = 500) {
+  async getRunsForBoundsAsync(minLat, minLng, maxLat, maxLng, zoom) {
     if (!this.loaded) {
       return { type: 'FeatureCollection', features: [] };
     }
-
-    const features = [];
     const bbox = [minLng, minLat, maxLng, maxLat];
-
-    for (let i = 0; i < this.spatialIndex.length; i++) {
-      const indexEntry = this.spatialIndex[i];
-      const runBbox = indexEntry.bbox;
-
-      if (this.bboxIntersects(runBbox, bbox)) {
-        const runId = indexEntry.id.toString();
-        const runData = this.runsData[runId];
-
-        if (runData && runData.geoms) {
-          const zoomLevel = this.getZoomLevel(zoom);
-          let geom = runData.geoms[zoomLevel];
-
-          if (!geom || !geom.coordinates || geom.coordinates.length === 0) {
-            geom = runData.geoms['mid'] || runData.geoms['low'] || runData.geoms['high'] || runData.geoms['full'];
-          }
-
-          if (geom && geom.coordinates && geom.coordinates.length > 1) {
-            features.push({
-              type: 'Feature',
-              geometry: geom,
-              properties: {
-                id: runId,
-                zoom: zoom,
-                zoomLevel: zoomLevel,
-                ...runData.metadata
-              }
-            });
-          }
-        }
-      }
-
-      if ((i + 1) % batchSize === 0) {
-        await new Promise(r => setTimeout(r, 0));
-      }
-    }
-
-    return {
-      type: 'FeatureCollection',
-      features
-    };
+    return this._queryWorker(bbox, zoom, null, null);
   }
 
-  filterRunsByIds(runIds, minLat, minLng, maxLat, maxLng, zoom) {
+  filterRunsByIds(runIds, minLat, minLng, maxLat, maxLng, zoom, progressCb) {
     if (!this.loaded) {
-      return { type: 'FeatureCollection', features: [] };
+      return Promise.resolve({ type: 'FeatureCollection', features: [] });
     }
-
-    const features = [];
     const bbox = [minLng, minLat, maxLng, maxLat];
-    
-    for (const runId of runIds) {
-      const runData = this.runsData[runId.toString()];
-      
-      if (runData && runData.geoms) {
-        // Check if run bbox intersects with bounds
-        if (this.bboxIntersects(runData.bbox, bbox)) {
-          const zoomLevel = this.getZoomLevel(zoom);
-          let geom = runData.geoms[zoomLevel];
-          
-          // Fallback to other zoom levels if current one is invalid/empty
-          if (!geom || !geom.coordinates || geom.coordinates.length === 0) {
-            geom = runData.geoms['mid'] || runData.geoms['low'] || runData.geoms['high'];
-          }
-          
-          // Validate geometry before adding
-          if (geom && geom.coordinates && geom.coordinates.length > 1) {
-            features.push({
-              type: 'Feature',
-              geometry: geom,
-              properties: {
-                id: runId,
-                zoom: zoom,
-                zoomLevel: zoomLevel,
-                ...runData.metadata
-              }
-            });
-          } else {
-            console.warn(`Invalid geometry for run ${runId} at zoom ${zoom}:`, geom);
-            // Show user notification for debugging
-            if (window.showStatusForDebug) {
-              window.showStatusForDebug(`Run ${runId} has invalid geometry at zoom ${zoom}`, 2000);
-            }
-          }
-        }
-      }
-    }
-
-    return {
-      type: 'FeatureCollection',
-      features: features
-    };
+    return this._queryWorker(bbox, zoom, runIds, progressCb);
   }
 
   getRunsInPolygon(polygonCoords) {

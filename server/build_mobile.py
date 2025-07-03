@@ -12,6 +12,7 @@ import subprocess
 import importlib.util
 import pickle
 import json
+import gzip
 import time
 from shapely.geometry import mapping
 
@@ -242,15 +243,20 @@ def build_mobile_data():
     print(f"\n✅ Data conversion complete. ({time.time() - start_time:.1f}s)")
 
     print("\n💾 Writing data files...")
-    runs_file = os.path.join(mobile_dir, 'data', 'runs.json')
-    with open(runs_file, 'w') as f:
+    runs_file = os.path.join(mobile_dir, 'data', 'runs.json.gz')
+    with gzip.open(runs_file, 'wt') as f:
         json.dump(runs_data, f, separators=(',', ':'))
     print(f"   - Wrote runs data to {runs_file}")
 
-    index_file = os.path.join(mobile_dir, 'data', 'spatial_index.json')
-    with open(index_file, 'w') as f:
+    index_file = os.path.join(mobile_dir, 'data', 'spatial_index.json.gz')
+    with gzip.open(index_file, 'wt') as f:
         json.dump(spatial_index, f, separators=(',', ':'))
     print(f"   - Wrote spatial index to {index_file}")
+
+    pmtiles_src = 'runs.pmtiles'
+    if os.path.exists(pmtiles_src):
+        shutil.copy(pmtiles_src, os.path.join(mobile_dir, 'data', 'runs.pmtiles'))
+        print("   - Copied runs.pmtiles")
     return mobile_dir
 
 def create_mobile_files(mobile_dir):
@@ -263,7 +269,9 @@ def create_mobile_files(mobile_dir):
     mobile_main_js = os.path.join(os.path.dirname(__file__), 'mobile_main.js')
     if os.path.exists(mobile_main_js):
         shutil.copy(mobile_main_js, os.path.join(mobile_dir, 'main.js'))
-        print("   - Copied index.html, sw.js, and main.js")
+        shutil.copy('spatial.worker.js', os.path.join(mobile_dir, 'spatial.worker.js'))
+        shutil.copy(os.path.join('..', 'rbush.min.js'), os.path.join(mobile_dir, 'rbush.min.js'))
+        print("   - Copied index.html, sw.js, worker and main.js")
     else:
         print("   - Warning: mobile_main.js not found. The mobile app may not work correctly.")
 

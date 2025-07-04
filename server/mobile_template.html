@@ -412,6 +412,9 @@
 
     // Initialize map
     function initMap() {
+      const protocol = new pmtiles.Protocol();
+      maplibregl.addProtocol("pmtiles", protocol.tile.bind(protocol));
+
       map = new maplibregl.Map({
         container: 'map',
         style: {
@@ -451,28 +454,66 @@
         
         map.addLayer({ id: 'osm-layer', type: 'raster', source: 'osm-tiles' });
 
-
-
-        // Load the bundled PMTiles archive
+        // Load the bundled PMTiles archive by fetching it into memory first.
+        // This is the most robust method for Capacitor/WebView environments.
         try {
-          console.log('Window location:', window.location.href);
-          console.log('Protocol:', window.location.protocol);
-          console.log('Origin:', window.location.origin);
+          console.log('[HEATMAP-FINAL] Starting in-memory PMTiles load process...');
+          const pmtilesUrl = './data/runs.pmtiles';
+          const pmtilesKey = 'runs.pmtiles'; // Key for protocol handler
 
-          const pmtilesUrl = 'pmtiles://data/runs.pmtiles';
-          console.log('Loading PMTiles from:', pmtilesUrl);
+          // 1. Fetch the local file as a binary blob
+          console.log(`[HEATMAP-FINAL] Fetching PMTiles file from: ${pmtilesUrl}`);
+          const response = await fetch(pmtilesUrl);
+          if (!response.ok) {
+            console.error(`[HEATMAP-FINAL] Failed to fetch PMTiles file: ${response.status} ${response.statusText}`);
+            throw new Error(`Failed to fetch pmtiles file: ${response.statusText}`);
+          }
+          const arrayBuffer = await response.arrayBuffer();
+          console.log(`[HEATMAP-FINAL] Fetched .pmtiles file into memory (${(arrayBuffer.byteLength / 1024).toFixed(2)} KB).`);
 
-          const protocol = new pmtiles.Protocol();
-          maplibregl.addProtocol('pmtiles', protocol.tile.bind(protocol));
+          // 2. Create a PMTiles object from the in-memory data
+          console.log('[HEATMAP-FINAL] Creating PMTiles instance from ArrayBuffer...');
+          const pmtilesSource = new pmtiles.PMTiles(arrayBuffer);
+          console.log('[HEATMAP-FINAL] Created PMTiles instance from ArrayBuffer.');
+          
+          // Debug: Check if PMTiles instance has required methods
+          console.log('[HEATMAP-FINAL] PMTiles instance methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(pmtilesSource)));
+          console.log('[HEATMAP-FINAL] PMTiles instance has getKey method:', typeof pmtilesSource.getKey === 'function');
 
+          // 3. Create a wrapper that provides the getKey method expected by the protocol handler
+          console.log('[HEATMAP-FINAL] Creating PMTiles wrapper with getKey method...');
+          const pmtilesWrapper = {
+            ...pmtilesSource,
+            getKey: function() {
+              return pmtilesKey;
+            },
+            // Ensure all original methods are preserved
+            getHeader: pmtilesSource.getHeader.bind(pmtilesSource),
+            getMetadata: pmtilesSource.getMetadata.bind(pmtilesSource),
+            getZxy: pmtilesSource.getZxy.bind(pmtilesSource),
+            getDirectory: pmtilesSource.getDirectory ? pmtilesSource.getDirectory.bind(pmtilesSource) : undefined
+          };
+          
+          console.log('[HEATMAP-FINAL] PMTiles wrapper created with getKey method:', typeof pmtilesWrapper.getKey === 'function');
+
+          // 4. Add the wrapped source to the protocol handler
+          console.log(`[HEATMAP-FINAL] Adding PMTiles wrapper to protocol with key: ${pmtilesKey}`);
+          protocol.add(pmtilesWrapper);
+          console.log('[HEATMAP-FINAL] Successfully added PMTiles wrapper to protocol handler.');
+
+          // 5. Add the map source using the pmtiles protocol
+          // Use the key we registered with the protocol handler
+          const mapSourceUrl = `pmtiles://${pmtilesKey}`;
+          console.log(`[HEATMAP-FINAL] Adding map source with URL: ${mapSourceUrl}`);
           map.addSource('runsVec', {
             type: 'vector',
-            url: pmtilesUrl,
+            url: mapSourceUrl,
             buffer: 128,
             maxzoom: 16,
             minzoom: 5
           });
 
+          console.log('[HEATMAP-FINAL] Adding runsVec layer to map...');
           map.addLayer({
             id: 'runsVec',
             source: 'runsVec',
@@ -485,10 +526,14 @@
             maxzoom: 24
           });
 
-          console.log('PMTiles source and layer added successfully');
+          console.log('[HEATMAP-FINAL] Successfully added map source and layer.');
+
         } catch (error) {
-          console.error('Failed to load PMTiles:', error);
-          showStatus('Failed to load run data - using local storage only');
+          console.error('[HEATMAP-FINAL] A critical error occurred during the in-memory PMTiles load:', error);
+          console.error('[HEATMAP-FINAL] Error stack:', error.stack);
+          if (window.showStatusForDebug) {
+            window.showStatusForDebug(`Fatal error loading map tiles: ${error.message}`, 6000);
+          }
         }
 
         try {

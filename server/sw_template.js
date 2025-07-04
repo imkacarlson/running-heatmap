@@ -18,7 +18,9 @@ const STATIC_FILES = [
 
 // Data files to cache
 const DATA_FILES = [
-  './data/runs.pmtiles'
+  // PMTiles are loaded via range requests which are incompatible with
+  // service-worker precaching. Leave this array empty so the browser's
+  // normal fetch logic handles caching.
 ];
 
 // Install event - cache static files
@@ -71,6 +73,12 @@ self.addEventListener('activate', (event) => {
 
 // Fetch event - serve from cache when offline
 self.addEventListener('fetch', (event) => {
+  // Range requests (used by PMTiles) must bypass the cache entirely.
+  if (event.request.headers.has('range')) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
   const requestUrl = new URL(event.request.url);
   
   // Handle data files (PMTiles)

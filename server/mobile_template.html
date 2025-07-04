@@ -459,7 +459,7 @@
         try {
           console.log('[HEATMAP-FINAL] Starting in-memory PMTiles load process...');
           const pmtilesUrl = './data/runs.pmtiles';
-          const pmtilesKey = 'runs.pmtiles'; // Key for protocol handler
+          const pmtilesKey = 'runs'; // stable key for in-memory registration
 
           // 1. Fetch the local file as a binary blob
           console.log(`[HEATMAP-FINAL] Fetching PMTiles file from: ${pmtilesUrl}`);
@@ -480,28 +480,15 @@
           console.log('[HEATMAP-FINAL] PMTiles instance methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(pmtilesSource)));
           console.log('[HEATMAP-FINAL] PMTiles instance has getKey method:', typeof pmtilesSource.getKey === 'function');
 
-          // 3. Create a wrapper that provides the getKey method expected by the protocol handler
-          console.log('[HEATMAP-FINAL] Creating PMTiles wrapper with getKey method...');
-          const pmtilesWrapper = {
-            ...pmtilesSource,
-            getKey: function() {
-              return pmtilesKey;
-            },
-            // Ensure all original methods are preserved
-            getHeader: pmtilesSource.getHeader.bind(pmtilesSource),
-            getMetadata: pmtilesSource.getMetadata.bind(pmtilesSource),
-            getZxy: pmtilesSource.getZxy.bind(pmtilesSource),
-            getDirectory: pmtilesSource.getDirectory ? pmtilesSource.getDirectory.bind(pmtilesSource) : undefined
-          };
-          
-          console.log('[HEATMAP-FINAL] PMTiles wrapper created with getKey method:', typeof pmtilesWrapper.getKey === 'function');
+          // 3. Register this PMTiles instance with the protocol
+          // by providing the expected getKey() function
+          pmtilesSource.getKey = () => pmtilesKey;
+          pmtilesSource.key = pmtilesKey; // for backwards compatibility
+          console.log(`[HEATMAP-FINAL] Registering PMTiles instance under key: ${pmtilesKey}`);
+          protocol.add(pmtilesSource);
+          console.log('[HEATMAP-FINAL] Successfully registered PMTiles instance.');
 
-          // 4. Add the wrapped source to the protocol handler
-          console.log(`[HEATMAP-FINAL] Adding PMTiles wrapper to protocol with key: ${pmtilesKey}`);
-          protocol.add(pmtilesWrapper);
-          console.log('[HEATMAP-FINAL] Successfully added PMTiles wrapper to protocol handler.');
-
-          // 5. Add the map source using the pmtiles protocol
+          // 4. Add the map source using the pmtiles protocol
           // Use the key we registered with the protocol handler
           const mapSourceUrl = `pmtiles://${pmtilesKey}`;
           console.log(`[HEATMAP-FINAL] Adding map source with URL: ${mapSourceUrl}`);

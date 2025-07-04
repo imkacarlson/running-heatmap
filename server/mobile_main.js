@@ -93,6 +93,8 @@ class SpatialIndex {
   }
 
   async reloadPMTiles() {
+    console.log('Reloading PMTiles source');
+
     // Remove existing layers and sources
     if (map.getLayer('runsVec')) {
       map.removeLayer('runsVec');
@@ -112,10 +114,12 @@ class SpatialIndex {
     // Re-register protocol
     const protocol = new pmtiles.Protocol();
     maplibregl.addProtocol('pmtiles', protocol.tile.bind(protocol));
+    console.log('PMTiles protocol re-registered');
 
     const timestamp = Date.now();
     // Use a consistent relative path for the bundled tiles
     const pmtilesUrl = `pmtiles://data/runs.pmtiles?t=${timestamp}`;
+    console.log('Adding PMTiles source with URL', pmtilesUrl);
     
     map.addSource('runsVec', {
       type: 'vector',
@@ -136,6 +140,8 @@ class SpatialIndex {
       },
       maxzoom: 24
     });
+
+    console.log('PMTiles source and layer added');
 
     // Force map refresh by triggering a small pan to reload tiles
     const center = map.getCenter();

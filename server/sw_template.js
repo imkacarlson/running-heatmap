@@ -89,8 +89,8 @@ self.addEventListener('fetch', (event) => {
               cache.put(event.request, response.clone());
             }
             return response;
-          }).catch(() => {
-            console.log('Service Worker: Failed to fetch data, offline mode');
+          }).catch((err) => {
+            console.error('Service Worker: Failed to fetch data', event.request.url, err);
             return new Response('Offline - data not available', { status: 503 });
           });
         });

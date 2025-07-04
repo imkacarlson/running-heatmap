@@ -425,6 +425,12 @@
         touchPitch: false
       });
 
+      // Log any maplibre errors for debugging
+      map.on('error', (e) => {
+        console.error('Map error event:', e && e.error ? e.error : e);
+        console.log('Map error details:', e);
+      });
+
       // Aggressive tile prefetching for seamless zoom transitions
       map.prefetchZoomDelta = 4;
 

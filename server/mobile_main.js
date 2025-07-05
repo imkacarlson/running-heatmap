@@ -219,6 +219,9 @@ class SpatialIndex {
     };
 
     const run = { id: id.toString(), geoms, bbox, metadata };
+    
+    // Add to both spatial index and user runs for immediate display
+    this.spatialIndex.push({ id: parseInt(id), bbox: bbox });
     this.userRuns.push(run);
 
     try {
@@ -226,14 +229,40 @@ class SpatialIndex {
         { id: id, coords: coords, metadata: metadata }
       ]);
 
-      localStorage.removeItem('userRuns');
-      this.userRuns = [];
-
-      await this.reloadPMTiles();
+      // Try to reload PMTiles to show server-side data
+      try {
+        await this.reloadPMTiles();
+        
+        // Only clear local data if PMTiles reload succeeds
+        localStorage.removeItem('userRuns');
+        
+        // Remove the uploaded run from local storage since it's now in PMTiles
+        const indexToRemove = this.spatialIndex.findIndex(entry => entry.id === parseInt(id));
+        if (indexToRemove !== -1) {
+          this.spatialIndex.splice(indexToRemove, 1);
+        }
+        const runToRemove = this.userRuns.findIndex(r => r.id === id.toString());
+        if (runToRemove !== -1) {
+          this.userRuns.splice(runToRemove, 1);
+        }
+        
+        console.log('[HEATMAP-DEBUG] Successfully synced with server, run moved to PMTiles');
+        
+      } catch (pmtilesError) {
+        console.error('[HEATMAP-DEBUG] PMTiles reload failed, keeping run in local storage:', pmtilesError);
+        // Save to localStorage so run persists even if PMTiles reload failed
+        this.saveUserRuns();
+        if (window.showStatusForDebug) {
+          window.showStatusForDebug('Uploaded successfully, but map reload failed. Run saved locally.', 4000);
+        }
+      }
 
     } catch (error) {
       console.error('Failed to sync with server, keeping local:', error);
       this.saveUserRuns();
+      if (window.showStatusForDebug) {
+        window.showStatusForDebug('Upload failed, run saved locally: ' + error.message, 4000);
+      }
     }
 
     return id;

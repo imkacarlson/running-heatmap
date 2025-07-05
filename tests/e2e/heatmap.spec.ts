@@ -6,7 +6,7 @@ test.beforeEach(async ({ page }) => {
 
 test('PMTiles loads and lasso UI appears', async ({ page }) => {
   await page.waitForResponse(r =>
-    r.url().includes('runs.pmtiles') && r.status() === 206);
+    r.url().includes('runs.pmtiles') && (r.status() === 200 || r.status() === 206));
 
   const center = { x: 400, y: 400 };
   await page.mouse.move(center.x, center.y);

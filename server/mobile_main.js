@@ -32,14 +32,14 @@ class SpatialIndex {
 
   async loadData() {
     try {
-      console.log('Loading mobile spatial data...');
+      console.log('[HEATMAP-DEBUG] Initializing SpatialIndex.loadData');
       this.spatialIndex = [];
       this.loadUserRuns();
 
       this.nextId = this.userRuns.reduce((m, r) => Math.max(m, parseInt(r.id)), 0) + 1;
 
       this.loaded = true;
-      console.log(`Loaded ${this.userRuns.length} user runs`);
+      console.log(`[HEATMAP-DEBUG] SpatialIndex.loadData complete. Found ${this.userRuns.length} user runs.`);
 
       // Show user feedback
       if (window.showStatusForDebug) {
@@ -47,14 +47,21 @@ class SpatialIndex {
       }
 
     } catch (error) {
-      console.error('Failed to load spatial data:', error);
+      console.error('[HEATMAP-DEBUG] Fatal error in SpatialIndex.loadData:', error);
+      if (window.showStatusForDebug) {
+        window.showStatusForDebug(`Error loading data: ${error.message}`, 5000);
+      }
       throw error;
     }
   }
 
   loadUserRuns() {
+    console.log('[HEATMAP-DEBUG] Checking for locally stored runs...');
     const stored = localStorage.getItem('userRuns');
-    if (!stored) return;
+    if (!stored) {
+      console.log('[HEATMAP-DEBUG] No stored runs found.');
+      return;
+    }
     try {
       const arr = JSON.parse(stored);
       arr.forEach(run => {
@@ -64,9 +71,12 @@ class SpatialIndex {
         const num = parseInt(id);
         if (num >= this.nextId) this.nextId = num + 1;
       });
-      console.log(`Loaded ${arr.length} user runs from storage`);
+      console.log(`[HEATMAP-DEBUG] Loaded ${arr.length} user runs from localStorage.`);
     } catch (e) {
-      console.error('Failed to load stored runs', e);
+      console.error('[HEATMAP-DEBUG] Failed to parse stored runs:', e);
+      if (window.showStatusForDebug) {
+        window.showStatusForDebug(`Error parsing stored runs: ${e.message}`, 3000);
+      }
     }
   }
 
@@ -93,54 +103,68 @@ class SpatialIndex {
   }
 
   async reloadPMTiles() {
-    // Remove existing layers and sources
-    if (map.getLayer('runsVec')) {
-      map.removeLayer('runsVec');
+    console.log('[HEATMAP-DEBUG] Starting reloadPMTiles...');
+    try {
+      // Remove existing layers and sources
+      if (map.getLayer('runsVec')) {
+        console.log('[HEATMAP-DEBUG] Removing existing layer: runsVec');
+        map.removeLayer('runsVec');
+      }
+      if (map.getSource('runsVec')) {
+        console.log('[HEATMAP-DEBUG] Removing existing source: runsVec');
+        map.removeSource('runsVec');
+      }
+
+      // Clear PMTiles protocol to force cache refresh
+      if (maplibregl.removeProtocol) {
+        console.log('[HEATMAP-DEBUG] Clearing pmtiles protocol cache.');
+        maplibregl.removeProtocol('pmtiles');
+      }
+
+      // Wait a moment for cleanup
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Re-register protocol
+      console.log('[HEATMAP-DEBUG] Re-registering pmtiles protocol.');
+      const protocol = new pmtiles.Protocol();
+      maplibregl.addProtocol('pmtiles', protocol.tile.bind(protocol));
+      
+      const timestamp = Date.now();
+      const pmtilesUrl = `pmtiles://data/runs.pmtiles?t=${timestamp}`;
+      console.log(`[HEATMAP-DEBUG] Adding PMTiles source with URL: ${pmtilesUrl}`);
+      
+      map.addSource('runsVec', {
+        type: 'vector',
+        url: pmtilesUrl,
+        buffer: 128,
+        maxzoom: 16,
+        minzoom: 5
+      });
+
+      map.addLayer({
+        id: 'runsVec',
+        source: 'runsVec',
+        'source-layer': 'runs',
+        type: 'line',
+        paint: {
+          'line-color': 'rgba(255,0,0,0.5)',
+          'line-width': ['interpolate', ['linear'], ['zoom'], 0, 1, 14, 3]
+        },
+        maxzoom: 24
+      });
+
+      console.log('[HEATMAP-DEBUG] PMTiles source and layer added to map.');
+
+      // Force map refresh
+      map.panBy([1, 1]);
+      setTimeout(() => map.panBy([-1, -1]), 200);
+
+    } catch (error) {
+      console.error('[HEATMAP-DEBUG] Error in reloadPMTiles:', error);
+      if (window.showStatusForDebug) {
+        window.showStatusForDebug(`Error reloading tiles: ${error.message}`, 5000);
+      }
     }
-    if (map.getSource('runsVec')) {
-      map.removeSource('runsVec');
-    }
-
-    // Clear PMTiles protocol to force cache refresh
-    if (maplibregl.removeProtocol) {
-      maplibregl.removeProtocol('pmtiles');
-    }
-
-    // Wait a moment for cleanup
-    await new Promise(resolve => setTimeout(resolve, 100));
-
-    // Re-register protocol
-    const protocol = new pmtiles.Protocol();
-    maplibregl.addProtocol('pmtiles', protocol.tile.bind(protocol));
-
-    const timestamp = Date.now();
-    // Use a consistent relative path for the bundled tiles
-    const pmtilesUrl = `pmtiles://data/runs.pmtiles?t=${timestamp}`;
-    
-    map.addSource('runsVec', {
-      type: 'vector',
-      url: pmtilesUrl,
-      buffer: 128,
-      maxzoom: 16,
-      minzoom: 5
-    });
-
-    map.addLayer({
-      id: 'runsVec',
-      source: 'runsVec',
-      'source-layer': 'runs',
-      type: 'line',
-      paint: {
-        'line-color': 'rgba(255,0,0,0.5)',
-        'line-width': ['interpolate', ['linear'], ['zoom'], 0, 1, 14, 3]
-      },
-      maxzoom: 24
-    });
-
-    // Force map refresh by triggering a small pan to reload tiles
-    const center = map.getCenter();
-    map.panBy([1, 1]);
-    setTimeout(() => map.panBy([-1, -1]), 200);
   }
 
 

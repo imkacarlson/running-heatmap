@@ -478,8 +478,12 @@
         console.log('Map error details:', e);
       });
 
-      // Aggressive tile prefetching for seamless zoom transitions
-      map.prefetchZoomDelta = 4;
+      // Moderate prefetching to limit memory growth
+      map.prefetchZoomDelta = 3;
+      // Cap tile cache to avoid long-term memory buildup
+      if (map.setMaxTileCacheSize) {
+        map.setMaxTileCacheSize(512);
+      }
 
       map.on('load', async () => {
         const loader = document.getElementById('loading-indicator');

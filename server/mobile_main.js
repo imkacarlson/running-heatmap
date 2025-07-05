@@ -103,21 +103,21 @@ class SpatialIndex {
   }
 
   async reloadPMTiles() {
-    console.log('[HEATMAP-DEBUG] Starting reloadPMTiles...');
+    console.log('[HEATMAP-HTTP] Starting reloadPMTiles with HTTP Range Server...');
     try {
       // Remove existing layers and sources
       if (map.getLayer('runsVec')) {
-        console.log('[HEATMAP-DEBUG] Removing existing layer: runsVec');
+        console.log('[HEATMAP-HTTP] Removing existing layer: runsVec');
         map.removeLayer('runsVec');
       }
       if (map.getSource('runsVec')) {
-        console.log('[HEATMAP-DEBUG] Removing existing source: runsVec');
+        console.log('[HEATMAP-HTTP] Removing existing source: runsVec');
         map.removeSource('runsVec');
       }
 
       // Clear PMTiles protocol to force cache refresh
       if (maplibregl.removeProtocol) {
-        console.log('[HEATMAP-DEBUG] Clearing pmtiles protocol cache.');
+        console.log('[HEATMAP-HTTP] Clearing pmtiles protocol cache.');
         maplibregl.removeProtocol('pmtiles');
       }
 
@@ -125,17 +125,40 @@ class SpatialIndex {
       await new Promise(resolve => setTimeout(resolve, 100));
 
       // Re-register protocol
-      console.log('[HEATMAP-DEBUG] Re-registering pmtiles protocol.');
+      console.log('[HEATMAP-HTTP] Re-registering pmtiles protocol.');
       const protocol = new pmtiles.Protocol();
       maplibregl.addProtocol('pmtiles', protocol.tile.bind(protocol));
       
+      // Get server URL (should already be running)
+      let serverUrl = 'http://localhost:8080';
+      if (window.HttpRangeServer) {
+        try {
+          const serverStatus = await window.HttpRangeServer.getServerStatus();
+          if (serverStatus.running) {
+            serverUrl = `http://localhost:${serverStatus.port}`;
+          }
+        } catch (serverError) {
+          console.warn('[HEATMAP-HTTP] Could not get server status:', serverError);
+        }
+      }
+
+      // Configure PMTiles to use HTTP range requests  
       const timestamp = Date.now();
-      const pmtilesUrl = `pmtiles://data/runs.pmtiles?t=${timestamp}`;
-      console.log(`[HEATMAP-DEBUG] Adding PMTiles source with URL: ${pmtilesUrl}`);
+      const pmtilesUrl = `${serverUrl}/data/runs.pmtiles?t=${timestamp}`;
+      console.log(`[HEATMAP-HTTP] Using PMTiles URL: ${pmtilesUrl}`);
+
+      // Create PMTiles source from HTTP URL
+      const pmtilesSource = new pmtiles.PMTiles(pmtilesUrl);
+      protocol.add(pmtilesSource);
+      console.log('[HEATMAP-HTTP] Successfully registered PMTiles instance.');
+
+      // Add the map source using the pmtiles protocol
+      const mapSourceUrl = `pmtiles://${pmtilesUrl}`;
+      console.log(`[HEATMAP-HTTP] Adding map source with URL: ${mapSourceUrl}`);
       
       map.addSource('runsVec', {
         type: 'vector',
-        url: pmtilesUrl,
+        url: mapSourceUrl,
         buffer: 128,
         maxzoom: 16,
         minzoom: 5
@@ -153,14 +176,14 @@ class SpatialIndex {
         maxzoom: 24
       });
 
-      console.log('[HEATMAP-DEBUG] PMTiles source and layer added to map.');
+      console.log('[HEATMAP-HTTP] PMTiles source and layer added to map.');
 
       // Force map refresh
       map.panBy([1, 1]);
       setTimeout(() => map.panBy([-1, -1]), 200);
 
     } catch (error) {
-      console.error('[HEATMAP-DEBUG] Error in reloadPMTiles:', error);
+      console.error('[HEATMAP-HTTP] Error in reloadPMTiles:', error);
       if (window.showStatusForDebug) {
         window.showStatusForDebug(`Error reloading tiles: ${error.message}`, 5000);
       }

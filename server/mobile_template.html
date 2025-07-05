@@ -395,10 +395,49 @@
   
   <div id="status-message"></div>
 
+  <!-- Make the native HttpRangeServer plugin visible to JavaScript -->
+  <script type="module">
+    import { registerPlugin } from 'https://cdn.jsdelivr.net/npm/@capacitor/core@7/dist/index.js';
+    // this creates the JS proxy and puts it where the rest of your code expects it
+    window.HttpRangeServer = registerPlugin('HttpRangeServer');
+  </script>
+  
   <!-- Load spatial library -->
   <script src="main.js"></script>
   
   <script>
+    // Initialize Capacitor plugin interface
+    let initPromise = new Promise((resolve) => {
+      const initCapacitor = () => {
+        if (window.Capacitor && window.Capacitor.Plugins) {
+          window.HttpRangeServer = window.Capacitor.Plugins.HttpRangeServer;
+          console.log('[HEATMAP-HTTP] Capacitor HTTP Range Server plugin registered');
+          resolve();
+        } else if (window.Capacitor) {
+          // Capacitor is available but plugins not yet ready, wait a bit
+          setTimeout(() => {
+            if (window.Capacitor.Plugins) {
+              window.HttpRangeServer = window.Capacitor.Plugins.HttpRangeServer;
+              console.log('[HEATMAP-HTTP] Capacitor HTTP Range Server plugin registered (delayed)');
+              resolve();
+            } else {
+              console.warn('[HEATMAP-HTTP] Capacitor plugins not available, HTTP Range Server plugin not registered');
+              resolve();
+            }
+          }, 100);
+        } else {
+          console.warn('[HEATMAP-HTTP] Capacitor not available, HTTP Range Server plugin not registered');
+          resolve();
+        }
+      };
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initCapacitor);
+      } else {
+        initCapacitor();
+      }
+    });
+
     // Mobile-optimized heatmap application
     
     let map;
@@ -411,7 +450,10 @@
     let debounceTimeout = null;
 
     // Initialize map
-    function initMap() {
+    async function initMap() {
+      // Wait for Capacitor to be ready
+      await initPromise;
+      
       const protocol = new pmtiles.Protocol();
       maplibregl.addProtocol("pmtiles", protocol.tile.bind(protocol));
 
@@ -454,47 +496,127 @@
         
         map.addLayer({ id: 'osm-layer', type: 'raster', source: 'osm-tiles' });
 
-        // Load the bundled PMTiles archive by fetching it into memory first.
-        // This is the most robust method for Capacitor/WebView environments.
+        // Load PMTiles using HTTP range server for better performance
         try {
-          console.log('[HEATMAP-FINAL] Starting in-memory PMTiles load process...');
-          const pmtilesUrl = './data/runs.pmtiles';
-          const pmtilesKey = 'runs'; // stable key for in-memory registration
-
-          // 1. Fetch the local file as a binary blob
-          console.log(`[HEATMAP-FINAL] Fetching PMTiles file from: ${pmtilesUrl}`);
-          const response = await fetch(pmtilesUrl);
-          if (!response.ok) {
-            console.error(`[HEATMAP-FINAL] Failed to fetch PMTiles file: ${response.status} ${response.statusText}`);
-            throw new Error(`Failed to fetch pmtiles file: ${response.statusText}`);
-          }
-          const arrayBuffer = await response.arrayBuffer();
-          console.log(`[HEATMAP-FINAL] Fetched .pmtiles file into memory (${(arrayBuffer.byteLength / 1024).toFixed(2)} KB).`);
-
-          // 2. Create a PMTiles object from the in-memory data
-          console.log('[HEATMAP-FINAL] Creating PMTiles instance from ArrayBuffer...');
-          const pmtilesSource = new pmtiles.PMTiles(arrayBuffer);
-          console.log('[HEATMAP-FINAL] Created PMTiles instance from ArrayBuffer.');
+          console.log('[HEATMAP-HTTP] Starting HTTP Range Server PMTiles load process...');
           
-          // Debug: Check if PMTiles instance has required methods
-          console.log('[HEATMAP-FINAL] PMTiles instance methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(pmtilesSource)));
-          console.log('[HEATMAP-FINAL] PMTiles instance has getKey method:', typeof pmtilesSource.getKey === 'function');
+          // Start the HTTP range server
+          let serverUrl = 'http://localhost:8080';
+          let serverStarted = false;
+          
+          // Debug Capacitor state
+          console.log('[HEATMAP-HTTP] Debugging Capacitor state:');
+          console.log('[HEATMAP-HTTP] window.Capacitor exists:', !!window.Capacitor);
+          console.log('[HEATMAP-HTTP] window.Capacitor.Plugins exists:', !!(window.Capacitor && window.Capacitor.Plugins));
+          console.log('[HEATMAP-HTTP] Available plugins:', window.Capacitor && window.Capacitor.Plugins ? Object.keys(window.Capacitor.Plugins) : 'none');
+          console.log('[HEATMAP-HTTP] window.HttpRangeServer exists:', !!window.HttpRangeServer);
+          
+          // Try multiple ways to access the plugin
+          let httpRangeServer = null;
+          
+          if (window.Capacitor && window.Capacitor.Plugins) {
+            // Try direct access
+            httpRangeServer = window.Capacitor.Plugins.HttpRangeServerPlugin;
+            console.log('[HEATMAP-HTTP] Direct access to HttpRangeServerPlugin:', !!httpRangeServer);
+            
+            // Try case variations
+            if (!httpRangeServer) {
+              httpRangeServer = window.Capacitor.Plugins.httpRangeServerPlugin;
+              console.log('[HEATMAP-HTTP] Lowercase access to httpRangeServerPlugin:', !!httpRangeServer);
+            }
+            
+            if (!httpRangeServer) {
+              httpRangeServer = window.Capacitor.Plugins.HttpRangeServer;
+              console.log('[HEATMAP-HTTP] Legacy HttpRangeServer access:', !!httpRangeServer);
+            }
+            
+            // Try accessing by iterating through plugins
+            if (!httpRangeServer) {
+              const pluginKeys = Object.keys(window.Capacitor.Plugins);
+              console.log('[HEATMAP-HTTP] All plugin keys:', pluginKeys);
+              for (const key of pluginKeys) {
+                console.log(`[HEATMAP-HTTP] Checking plugin: ${key}`);
+                if (key.toLowerCase().includes('range')) {
+                  console.log(`[HEATMAP-HTTP] Found potential plugin: ${key}`);
+                  httpRangeServer = window.Capacitor.Plugins[key];
+                  break;
+                }
+              }
+            }
+          }
+          
+          if (httpRangeServer) {
+            window.HttpRangeServer = httpRangeServer;
+            console.log('[HEATMAP-HTTP] Successfully found and assigned HttpRangeServer plugin');
+            console.log('[HEATMAP-HTTP] Plugin methods:', Object.getOwnPropertyNames(httpRangeServer));
+            console.log('[HEATMAP-HTTP] Has startServer method:', typeof httpRangeServer.startServer === 'function');
+          } else {
+            // The plugin isn't available - let's see if we can access it directly via Capacitor
+            console.log('[HEATMAP-HTTP] Plugin not found. Trying direct Capacitor call...');
+            try {
+              const result = await window.Capacitor.Plugins.HttpRangeServer?.startServer?.();
+              console.log('[HEATMAP-HTTP] Direct call result:', result);
+            } catch (directError) {
+              console.log('[HEATMAP-HTTP] Direct call failed:', directError);
+            }
+          }
 
-          // 3. Monkey-patch the PMTiles instance itself with the two missing methods:
-          pmtilesSource.getKey   = () => pmtilesKey;
-          pmtilesSource.key      = pmtilesKey; // older code paths
-          pmtilesSource.getBytes = async (offset, length) => ({
-            data: arrayBuffer.slice(offset, offset + length)
-          });
+          if (window.HttpRangeServer) {
+            try {
+              console.log('[HEATMAP-HTTP] Starting HTTP Range Server...');
+              const serverResult = await window.HttpRangeServer.startServer();
+              console.log('[HEATMAP-HTTP] Server start result:', serverResult);
+              
+              if (serverResult.success) {
+                serverUrl = `http://localhost:${serverResult.port}`;
+                serverStarted = true;
+                console.log(`[HEATMAP-HTTP] HTTP Range Server started successfully at: ${serverUrl}`);
+                
+                // Wait a moment for server to be fully ready
+                await new Promise(resolve => setTimeout(resolve, 500));
+              } else {
+                console.error('[HEATMAP-HTTP] Failed to start HTTP Range Server:', serverResult);
+                throw new Error('Server failed to start: ' + JSON.stringify(serverResult));
+              }
+            } catch (serverError) {
+              console.error('[HEATMAP-HTTP] HTTP Range Server plugin error:', serverError);
+              throw serverError;
+            }
+          } else {
+            console.error('[HEATMAP-HTTP] HttpRangeServer plugin not available - cannot proceed without range server');
+            throw new Error('HttpRangeServer plugin not available');
+          }
+          
+          if (!serverStarted) {
+            throw new Error('Range server failed to start');
+          }
 
-          console.log(`[HEATMAP-FINAL] Registering PMTiles instance under key: ${pmtilesKey}`);
+          // Configure PMTiles to use HTTP range requests
+          const pmtilesUrl = `${serverUrl}/data/runs.pmtiles`;
+          console.log(`[HEATMAP-HTTP] Using PMTiles URL: ${pmtilesUrl}`);
+
+          // Test if the PMTiles file is accessible
+          try {
+            const testResponse = await fetch(pmtilesUrl, { 
+              method: 'HEAD',
+              headers: { 'Range': 'bytes=0-0' }
+            });
+            console.log(`[HEATMAP-HTTP] PMTiles file test response: ${testResponse.status}`);
+          } catch (testError) {
+            console.warn('[HEATMAP-HTTP] PMTiles file test failed:', testError);
+          }
+
+          // Create PMTiles source from HTTP URL
+          const pmtilesSource = new pmtiles.PMTiles(pmtilesUrl);
+          console.log('[HEATMAP-HTTP] Created PMTiles instance from URL.');
+
+          // Register with protocol
           protocol.add(pmtilesSource);
-          console.log('[HEATMAP-FINAL] Successfully registered PMTiles instance.');
+          console.log('[HEATMAP-HTTP] Successfully registered PMTiles instance.');
 
-          // 4. Add the map source using the pmtiles protocol
-          // Use the key we registered with the protocol handler
-          const mapSourceUrl = `pmtiles://${pmtilesKey}`;
-          console.log(`[HEATMAP-FINAL] Adding map source with URL: ${mapSourceUrl}`);
+          // Add the map source using the pmtiles protocol
+          const mapSourceUrl = `pmtiles://${pmtilesUrl}`;
+          console.log(`[HEATMAP-HTTP] Adding map source with URL: ${mapSourceUrl}`);
           map.addSource('runsVec', {
             type: 'vector',
             url: mapSourceUrl,
@@ -503,7 +625,7 @@
             minzoom: 5
           });
 
-          console.log('[HEATMAP-FINAL] Adding runsVec layer to map...');
+          console.log('[HEATMAP-HTTP] Adding runsVec layer to map...');
           map.addLayer({
             id: 'runsVec',
             source: 'runsVec',
@@ -516,11 +638,11 @@
             maxzoom: 24
           });
 
-          console.log('[HEATMAP-FINAL] Successfully added map source and layer.');
+          console.log('[HEATMAP-HTTP] Successfully added map source and layer.');
 
         } catch (error) {
-          console.error('[HEATMAP-FINAL] A critical error occurred during the in-memory PMTiles load:', error);
-          console.error('[HEATMAP-FINAL] Error stack:', error.stack);
+          console.error('[HEATMAP-HTTP] A critical error occurred during the HTTP Range PMTiles load:', error);
+          console.error('[HEATMAP-HTTP] Error stack:', error.stack);
           if (window.showStatusForDebug) {
             window.showStatusForDebug(`Fatal error loading map tiles: ${error.message}`, 6000);
           }

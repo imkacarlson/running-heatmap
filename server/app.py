@@ -13,9 +13,15 @@ import os
 import subprocess
 
 
-# Load runs and build spatial index
-with open('runs.pkl', 'rb') as f:
-    runs = pickle.load(f)
+# path to the serialized dataset
+RUNS_PKL_PATH = os.environ.get("RUNS_PKL_PATH", "runs.pkl")
+
+# Load runs and build spatial index if file exists
+if os.path.exists(RUNS_PKL_PATH):
+    with open(RUNS_PKL_PATH, "rb") as f:
+        runs = pickle.load(f)
+else:
+    runs = {}
 
 idx = index.Index()
 for rid, run in runs.items():
@@ -125,7 +131,7 @@ def add_run(coords, metadata, source_name='upload'):
         },
     }
     idx.insert(rid, runs[rid]['bbox'])
-    with open('runs.pkl', 'wb') as f:
+    with open(RUNS_PKL_PATH, 'wb') as f:
         pickle.dump(runs, f)
     return rid
 
@@ -242,7 +248,7 @@ def update_runs():
         data = request.get_json()
         new_runs = data['runs']
 
-        pkl_path = 'runs.pkl'
+        pkl_path = RUNS_PKL_PATH
         if os.path.exists(pkl_path):
             with open(pkl_path, 'rb') as f:
                 existing = pickle.load(f)

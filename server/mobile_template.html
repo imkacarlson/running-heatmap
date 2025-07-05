@@ -481,10 +481,10 @@
           console.log('[HEATMAP-FINAL] PMTiles instance has getKey method:', typeof pmtilesSource.getKey === 'function');
 
           // 3. Register this PMTiles instance with the protocol
-          // by providing the expected getKey() function
-          pmtilesSource.getKey = () => pmtilesKey;
-          pmtilesSource.key = pmtilesKey; // for backwards compatibility
-          console.log(`[HEATMAP-FINAL] Registering PMTiles instance under key: ${pmtilesKey}`);
+          // Patch the *underlying* source so Protocol.add() sees getKey()
+          pmtilesSource.source.getKey = () => pmtilesKey;
+          pmtilesSource.source.key    = pmtilesKey;
+          console.log(`[HEATMAP-FINAL] Registering PMTiles source under key: ${pmtilesKey}`);
           protocol.add(pmtilesSource);
           console.log('[HEATMAP-FINAL] Successfully registered PMTiles instance.');
 

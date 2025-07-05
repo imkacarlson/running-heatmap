@@ -286,12 +286,20 @@ def create_capacitor_project(mobile_dir):
         "appId": "com.run.heatmap",
         "appName": "Running Heatmap",
         "webDir": "www",
-        "bundledWebRuntime": False
+        "bundledWebRuntime": False,
+        "plugins": {
+            "HttpRangeServer": {
+                "port": 8080
+            }
+        },
+        "android": {
+            "allowMixedContent": True
+        }
     }
     config_path = os.path.join(mobile_dir, 'capacitor.config.json')
     with open(config_path, 'w') as f:
         json.dump(config, f, indent=2)
-    print(f"   - Created capacitor.config.json")
+    print(f"   - Created capacitor.config.json with HTTP Range Server plugin")
     return True
 
 def setup_www_directory(mobile_dir, quick_build):
@@ -380,6 +388,48 @@ def fix_java_compatibility(mobile_dir):
 
 # --- Android Packaging ---
 
+def setup_android_plugin_files(mobile_dir):
+    """Copy HTTP Range Server plugin files to Android project."""
+    print("\n🔧 Setting up HTTP Range Server plugin files...")
+    
+    android_dir = os.path.join(mobile_dir, 'android')
+    if not os.path.exists(android_dir):
+        print("   - Android directory not found, skipping plugin setup")
+        return False
+    
+    # Create the plugin directory structure
+    plugin_dir = os.path.join(android_dir, 'app', 'src', 'main', 'java', 'com', 'run', 'heatmap')
+    os.makedirs(plugin_dir, exist_ok=True)
+    
+    # Copy plugin files
+    plugin_template = os.path.join(SCRIPT_DIR, 'HttpRangeServerPlugin.java.template')
+    mainactivity_template = os.path.join(SCRIPT_DIR, 'MainActivity.java.template')
+    manifest_template = os.path.join(SCRIPT_DIR, 'AndroidManifest.xml.template')
+    network_config_template = os.path.join(SCRIPT_DIR, 'network_security_config.xml.template')
+    
+    if os.path.exists(plugin_template):
+        shutil.copy(plugin_template, os.path.join(plugin_dir, 'HttpRangeServerPlugin.java'))
+        print("   - Copied HttpRangeServerPlugin.java")
+    
+    if os.path.exists(mainactivity_template):
+        shutil.copy(mainactivity_template, os.path.join(plugin_dir, 'MainActivity.java'))
+        print("   - Copied MainActivity.java")
+    
+    # Copy AndroidManifest.xml
+    manifest_dir = os.path.join(android_dir, 'app', 'src', 'main')
+    if os.path.exists(manifest_template):
+        shutil.copy(manifest_template, os.path.join(manifest_dir, 'AndroidManifest.xml'))
+        print("   - Copied AndroidManifest.xml")
+    
+    # Copy network security config
+    xml_res_dir = os.path.join(android_dir, 'app', 'src', 'main', 'res', 'xml')
+    os.makedirs(xml_res_dir, exist_ok=True)
+    if os.path.exists(network_config_template):
+        shutil.copy(network_config_template, os.path.join(xml_res_dir, 'network_security_config.xml'))
+        print("   - Copied network_security_config.xml")
+    
+    return True
+
 def package_for_android(mobile_dir):
     """Run the full Android packaging process."""
     print("\n" + "-"*20)
@@ -402,6 +452,10 @@ def package_for_android(mobile_dir):
     if not run_command(['npx', 'cap', 'add', 'android'], cwd=mobile_dir):
         print("❌ Failed to add Android platform.", file=sys.stderr)
         return
+
+    # Setup HTTP Range Server plugin files
+    print("\nSetting up HTTP Range Server plugin files...")
+    setup_android_plugin_files(mobile_dir)
 
     print("\nSyncing web assets with Capacitor...")
     if not run_command(['npx', 'cap', 'sync'], cwd=mobile_dir):

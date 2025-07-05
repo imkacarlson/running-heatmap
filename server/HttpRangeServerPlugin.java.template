@@ -1,0 +1,285 @@
+package com.run.heatmap;
+
+import android.content.Context;
+import android.content.res.AssetManager;
+import android.os.Handler;
+import android.os.Looper;
+import android.util.Log;
+import com.getcapacitor.JSObject;
+import com.getcapacitor.Plugin;
+import com.getcapacitor.PluginCall;
+import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.CapacitorPlugin;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+@CapacitorPlugin(name = "HttpRangeServer")
+public class HttpRangeServerPlugin extends Plugin {
+    private static final String TAG = "HttpRangeServer";
+    private ServerSocket serverSocket;
+    private ExecutorService executorService;
+    private int port = 8080;
+    private boolean isRunning = false;
+
+    @Override
+    public void load() {
+        Log.d(TAG, "HttpRangeServerPlugin loaded!");
+        super.load();
+    }
+
+    @PluginMethod
+    public void startServer(PluginCall call) {
+        if (isRunning) {
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            ret.put("port", port);
+            ret.put("message", "Server already running");
+            call.resolve(ret);
+            return;
+        }
+
+        try {
+            serverSocket = new ServerSocket(port);
+            executorService = Executors.newCachedThreadPool();
+            isRunning = true;
+
+            // Start server in background thread
+            executorService.submit(() -> {
+                Log.d(TAG, "HTTP server thread started, listening on port " + port);
+                while (isRunning && !serverSocket.isClosed()) {
+                    try {
+                        Socket clientSocket = serverSocket.accept();
+                        Log.d(TAG, "Accepted connection from: " + clientSocket.getInetAddress());
+                        executorService.submit(new RequestHandler(clientSocket));
+                    } catch (IOException e) {
+                        if (isRunning) {
+                            Log.e(TAG, "Error accepting connection", e);
+                        }
+                        break;
+                    }
+                }
+                Log.d(TAG, "HTTP server thread stopped");
+            });
+
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            ret.put("port", port);
+            ret.put("message", "HTTP Range Server started successfully");
+            call.resolve(ret);
+        } catch (IOException e) {
+            JSObject ret = new JSObject();
+            ret.put("success", false);
+            ret.put("error", "Failed to start server: " + e.getMessage());
+            call.reject(ret.toString());
+        }
+    }
+
+    @PluginMethod
+    public void stopServer(PluginCall call) {
+        if (isRunning) {
+            try {
+                isRunning = false;
+                if (serverSocket != null && !serverSocket.isClosed()) {
+                    serverSocket.close();
+                }
+                if (executorService != null) {
+                    executorService.shutdown();
+                }
+                JSObject ret = new JSObject();
+                ret.put("success", true);
+                ret.put("message", "Server stopped");
+                call.resolve(ret);
+            } catch (IOException e) {
+                JSObject ret = new JSObject();
+                ret.put("success", false);
+                ret.put("error", "Error stopping server: " + e.getMessage());
+                call.reject(ret.toString());
+            }
+        } else {
+            JSObject ret = new JSObject();
+            ret.put("success", false);
+            ret.put("message", "Server not running");
+            call.resolve(ret);
+        }
+    }
+
+    @PluginMethod
+    public void getServerStatus(PluginCall call) {
+        JSObject ret = new JSObject();
+        ret.put("running", isRunning);
+        ret.put("port", port);
+        call.resolve(ret);
+    }
+
+    private class RequestHandler implements Runnable {
+        private Socket clientSocket;
+
+        public RequestHandler(Socket socket) {
+            this.clientSocket = socket;
+        }
+
+        @Override
+        public void run() {
+            try {
+                BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+                OutputStream out = clientSocket.getOutputStream();
+
+                // Read HTTP request
+                String requestLine = in.readLine();
+                if (requestLine == null) return;
+
+                String[] parts = requestLine.split(" ");
+                if (parts.length != 3) return;
+
+                String method = parts[0];
+                String path = parts[1];
+                String httpVersion = parts[2];
+
+                // Read headers
+                String rangeHeader = null;
+                String line;
+                while (!(line = in.readLine()).isEmpty()) {
+                    if (line.toLowerCase().startsWith("range:")) {
+                        rangeHeader = line.substring(6).trim();
+                    }
+                }
+
+                // Process request
+                handleRequest(out, method, path, rangeHeader);
+
+            } catch (IOException e) {
+                Log.e(TAG, "Error handling request", e);
+            } finally {
+                try {
+                    clientSocket.close();
+                } catch (IOException e) {
+                    Log.e(TAG, "Error closing socket", e);
+                }
+            }
+        }
+
+        private void handleRequest(OutputStream out, String method, String path, String rangeHeader) throws IOException {
+            Log.d(TAG, "Handling request: " + method + " " + path + " Range: " + rangeHeader);
+            
+            // Remove leading slash and handle root path
+            if (path.startsWith("/")) {
+                path = path.substring(1);
+            }
+            if (path.isEmpty()) {
+                path = "index.html";
+            }
+
+            Context context = getContext();
+            AssetManager assetManager = context.getAssets();
+
+            try {
+                String assetPath = "public/" + path;
+                Log.d(TAG, "Trying to open asset: " + assetPath);
+                InputStream inputStream = assetManager.open(assetPath);
+                byte[] fileBytes = readAllBytes(inputStream);
+                inputStream.close();
+                
+                Log.d(TAG, "Loaded file: " + path + " (" + fileBytes.length + " bytes)");
+
+                if (rangeHeader != null && rangeHeader.startsWith("bytes=")) {
+                    Log.d(TAG, "Handling range request for: " + path);
+                    handleRangeRequest(out, fileBytes, rangeHeader, path);
+                } else {
+                    Log.d(TAG, "Handling full request for: " + path);
+                    handleFullRequest(out, fileBytes, path);
+                }
+            } catch (IOException e) {
+                Log.w(TAG, "File not found: " + path, e);
+                sendError(out, 404, "Not Found");
+            }
+        }
+
+        private void handleFullRequest(OutputStream out, byte[] fileBytes, String path) throws IOException {
+            String response = "HTTP/1.1 200 OK\r\n" +
+                    "Content-Type: " + getContentType(path) + "\r\n" +
+                    "Content-Length: " + fileBytes.length + "\r\n" +
+                    "Accept-Ranges: bytes\r\n" +
+                    "Access-Control-Allow-Origin: *\r\n" +
+                    "\r\n";
+
+            out.write(response.getBytes());
+            out.write(fileBytes);
+            out.flush();
+        }
+
+        private void handleRangeRequest(OutputStream out, byte[] fileBytes, String rangeHeader, String path) throws IOException {
+            Pattern pattern = Pattern.compile("bytes=(\\d+)-(\\d*)");
+            Matcher matcher = pattern.matcher(rangeHeader);
+
+            if (!matcher.matches()) {
+                sendError(out, 400, "Bad Request");
+                return;
+            }
+
+            int start = Integer.parseInt(matcher.group(1));
+            int end = matcher.group(2).isEmpty() ? fileBytes.length - 1 : Integer.parseInt(matcher.group(2));
+
+            if (start >= fileBytes.length || end >= fileBytes.length || start > end) {
+                sendError(out, 416, "Range Not Satisfiable");
+                return;
+            }
+
+            int contentLength = end - start + 1;
+            String response = "HTTP/1.1 206 Partial Content\r\n" +
+                    "Content-Type: " + getContentType(path) + "\r\n" +
+                    "Content-Length: " + contentLength + "\r\n" +
+                    "Content-Range: bytes " + start + "-" + end + "/" + fileBytes.length + "\r\n" +
+                    "Accept-Ranges: bytes\r\n" +
+                    "Access-Control-Allow-Origin: *\r\n" +
+                    "\r\n";
+
+            out.write(response.getBytes());
+            out.write(fileBytes, start, contentLength);
+            out.flush();
+        }
+
+        private void sendError(OutputStream out, int code, String message) throws IOException {
+            String response = "HTTP/1.1 " + code + " " + message + "\r\n" +
+                    "Content-Length: 0\r\n" +
+                    "\r\n";
+            out.write(response.getBytes());
+            out.flush();
+        }
+
+        private String getContentType(String path) {
+            if (path.endsWith(".pmtiles")) {
+                return "application/octet-stream";
+            } else if (path.endsWith(".html")) {
+                return "text/html";
+            } else if (path.endsWith(".js")) {
+                return "application/javascript";
+            } else if (path.endsWith(".css")) {
+                return "text/css";
+            } else if (path.endsWith(".json")) {
+                return "application/json";
+            }
+            return "application/octet-stream";
+        }
+
+        private byte[] readAllBytes(InputStream inputStream) throws IOException {
+            byte[] buffer = new byte[8192];
+            java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream();
+            int bytesRead;
+            while ((bytesRead = inputStream.read(buffer)) != -1) {
+                output.write(buffer, 0, bytesRead);
+            }
+            return output.toByteArray();
+        }
+    }
+}

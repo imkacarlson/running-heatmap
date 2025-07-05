@@ -492,7 +492,10 @@
             getDirectory: pmtilesSource.getDirectory
                             ? pmtilesSource.getDirectory.bind(pmtilesSource)
                             : undefined,
-            getBytes:     pmtilesSource.getBytes.bind(pmtilesSource)
+            // Provide getBytes by slicing our full ArrayBuffer:
+            getBytes: async (offset, length) => ({
+              data: arrayBuffer.slice(offset, offset + length)
+            })
           };
           console.log(`[HEATMAP-FINAL] Registering PMTiles wrapper under key: ${pmtilesKey}`);
           protocol.add(wrapper);

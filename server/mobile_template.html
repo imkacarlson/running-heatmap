@@ -480,26 +480,16 @@
           console.log('[HEATMAP-FINAL] PMTiles instance methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(pmtilesSource)));
           console.log('[HEATMAP-FINAL] PMTiles instance has getKey method:', typeof pmtilesSource.getKey === 'function');
 
-          // 3. Build a small wrapper exposing every method Protocol will call:
-          const wrapper = {
-            // How Protocol identifies the archive
-            getKey:    () => pmtilesKey,
+          // 3. Monkey-patch the PMTiles instance itself with the two missing methods:
+          pmtilesSource.getKey   = () => pmtilesKey;
+          pmtilesSource.key      = pmtilesKey; // older code paths
+          pmtilesSource.getBytes = async (offset, length) => ({
+            data: arrayBuffer.slice(offset, offset + length)
+          });
 
-            // Core PMTiles methods, bound to the real instance
-            getHeader:    pmtilesSource.getHeader.bind(pmtilesSource),
-            getMetadata:  pmtilesSource.getMetadata.bind(pmtilesSource),
-            getZxy:       pmtilesSource.getZxy.bind(pmtilesSource),
-            getDirectory: pmtilesSource.getDirectory
-                            ? pmtilesSource.getDirectory.bind(pmtilesSource)
-                            : undefined,
-            // Provide getBytes by slicing our full ArrayBuffer:
-            getBytes: async (offset, length) => ({
-              data: arrayBuffer.slice(offset, offset + length)
-            })
-          };
-          console.log(`[HEATMAP-FINAL] Registering PMTiles wrapper under key: ${pmtilesKey}`);
-          protocol.add(wrapper);
-          console.log('[HEATMAP-FINAL] Successfully registered PMTiles wrapper.');
+          console.log(`[HEATMAP-FINAL] Registering PMTiles instance under key: ${pmtilesKey}`);
+          protocol.add(pmtilesSource);
+          console.log('[HEATMAP-FINAL] Successfully registered PMTiles instance.');
 
           // 4. Add the map source using the pmtiles protocol
           // Use the key we registered with the protocol handler

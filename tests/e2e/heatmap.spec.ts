@@ -1,12 +1,19 @@
 import { test, expect } from "@playwright/test";
 
-test.beforeEach(async ({ page }) => {
-  await page.goto('/');
-});
-
 test('PMTiles loads and lasso UI appears', async ({ page }) => {
-  await page.waitForResponse(r =>
-    r.url().includes('runs.pmtiles') && (r.status() === 200 || r.status() === 206));
+  await Promise.all([
+    page.waitForResponse(r =>
+      r.url().includes('runs.pmtiles') && (r.status() === 200 || r.status() === 206)),
+    page.goto('/')
+  ]);
+
+  // Focus map on the temporary dataset location
+  await page.evaluate(() => {
+    // @ts-ignore
+    map.setCenter([0.5, 0.5]);
+    // @ts-ignore
+    map.setZoom(12);
+  });
 
   const center = { x: 400, y: 400 };
   await page.mouse.move(center.x, center.y);

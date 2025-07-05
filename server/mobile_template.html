@@ -448,6 +448,8 @@
     let polygonCoords = [];
     let currentPolygon = null;
     let debounceTimeout = null;
+    let lastDrawTime = 0;
+    let drawThrottleMs = 16; // ~60fps
 
     // Initialize map
     async function initMap() {
@@ -678,22 +680,31 @@
     function setupDrawing() {
       const overlay = document.getElementById('drawing-overlay');
       
-      // Touch events for drawing
-      overlay.addEventListener('touchstart', startDrawing, { passive: false });
-      overlay.addEventListener('touchmove', continueDrawing, { passive: false });
-      overlay.addEventListener('touchend', finishDrawing, { passive: false });
+      // Touch events for drawing (primary for mobile)
+      overlay.addEventListener('touchstart', startDrawing, { passive: false, capture: true });
+      overlay.addEventListener('touchmove', continueDrawing, { passive: false, capture: true });
+      overlay.addEventListener('touchend', finishDrawing, { passive: false, capture: true });
+      overlay.addEventListener('touchcancel', finishDrawing, { passive: false, capture: true });
       
       // Mouse events for desktop testing
-      overlay.addEventListener('mousedown', startDrawing);
-      overlay.addEventListener('mousemove', continueDrawing);
-      overlay.addEventListener('mouseup', finishDrawing);
+      overlay.addEventListener('mousedown', startDrawing, { capture: true });
+      overlay.addEventListener('mousemove', continueDrawing, { capture: true });
+      overlay.addEventListener('mouseup', finishDrawing, { capture: true });
+      
+      // Prevent context menu on long touch
+      overlay.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        return false;
+      });
     }
 
     function startDrawing(e) {
       if (!isDrawingMode) return;
       
       e.preventDefault();
+      e.stopPropagation();
       isDrawing = true;
+      lastDrawTime = Date.now();
       
       const point = getEventPoint(e);
       const lngLat = map.unproject(point);
@@ -703,15 +714,43 @@
       if (currentPolygon) {
         clearPolygonDisplay();
       }
+      
+      // Provide immediate visual feedback
+      showStatus('Drawing selection area...', 1000);
     }
 
     function continueDrawing(e) {
       if (!isDrawing || !isDrawingMode) return;
       
       e.preventDefault();
+      e.stopPropagation();
+      
+      // Throttle drawing to improve performance and reduce coordinate density
+      const now = Date.now();
+      if (now - lastDrawTime < drawThrottleMs) {
+        return;
+      }
+      lastDrawTime = now;
       
       const point = getEventPoint(e);
       const lngLat = map.unproject(point);
+      
+      // Only add point if it's sufficiently different from the last point
+      // Scale minimum distance based on zoom level
+      const currentZoom = map.getZoom();
+      const minDistance = getMinimumDrawDistance(currentZoom);
+      
+      if (polygonCoords.length > 0) {
+        const lastCoord = polygonCoords[polygonCoords.length - 1];
+        const distance = Math.sqrt(
+          Math.pow(lngLat.lng - lastCoord[0], 2) + 
+          Math.pow(lngLat.lat - lastCoord[1], 2)
+        );
+        
+        if (distance < minDistance) {
+          return;
+        }
+      }
       
       polygonCoords.push([lngLat.lng, lngLat.lat]);
       updatePolygonDisplay();
@@ -721,13 +760,29 @@
       if (!isDrawing || !isDrawingMode) return;
       
       e.preventDefault();
+      e.stopPropagation();
       isDrawing = false;
       
       if (polygonCoords.length >= 3) {
+        // Validate polygon area before proceeding
+        const area = calculatePolygonArea(polygonCoords);
+        const currentZoom = map.getZoom();
+        const minArea = getMinimumPolygonArea(currentZoom);
+        
+        if (area < minArea) {
+          showStatus('Selection area too small. Try drawing a larger area or zooming out.', 4000);
+          clearPolygonDisplay();
+          exitDrawingMode();
+          return;
+        }
+        
         polygonCoords.push(polygonCoords[0]); // Close polygon
         updatePolygonDisplay();
         queryRunsInArea(polygonCoords);
         document.getElementById('clear-selection-btn').style.display = 'block';
+        showStatus('Searching for runs in selected area...', 2000);
+      } else {
+        showStatus('Draw a larger area to select runs', 2000);
       }
       
       exitDrawingMode();
@@ -738,6 +793,41 @@
         return [e.touches[0].clientX, e.touches[0].clientY];
       }
       return [e.clientX, e.clientY];
+    }
+
+    function getMinimumDrawDistance(zoom) {
+      // Scale minimum distance based on zoom level
+      // Higher zoom = smaller minimum distance needed
+      // Lower zoom = larger minimum distance needed
+      if (zoom >= 16) return 0.00001; // Very high zoom
+      if (zoom >= 14) return 0.00005; // High zoom
+      if (zoom >= 12) return 0.0001;  // Medium zoom
+      if (zoom >= 10) return 0.0005;  // Low zoom
+      return 0.001; // Very low zoom
+    }
+
+    function getMinimumPolygonArea(zoom) {
+      // Scale minimum area based on zoom level
+      // Higher zoom = smaller minimum area allowed
+      // Lower zoom = larger minimum area required
+      if (zoom >= 16) return 0.000000001; // Very high zoom
+      if (zoom >= 14) return 0.000000005; // High zoom
+      if (zoom >= 12) return 0.00000001;  // Medium zoom
+      if (zoom >= 10) return 0.00000005;  // Low zoom
+      return 0.0000001; // Very low zoom
+    }
+
+    function calculatePolygonArea(coords) {
+      // Calculate area using shoelace formula
+      if (coords.length < 3) return 0;
+      
+      let area = 0;
+      for (let i = 0; i < coords.length; i++) {
+        const j = (i + 1) % coords.length;
+        area += coords[i][0] * coords[j][1];
+        area -= coords[j][0] * coords[i][1];
+      }
+      return Math.abs(area) / 2;
     }
 
     function updatePolygonDisplay() {

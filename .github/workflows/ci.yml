@@ -1,0 +1,55 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r server/requirements.txt pytest pytest-flask
+      - run: pytest -q
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm i -D @playwright/test
+      - run: pip install -r server/requirements.txt
+      - name: Prepare test dataset
+        run: |
+          python - <<'EOF'
+          import pickle
+          from shapely.geometry import LineString
+          sample = {
+              1: {
+                  'bbox': (0, 0, 1, 1),
+                  'geoms': {
+                      'full': LineString([(0, 0), (1, 1)]),
+                      'high': LineString([(0, 0), (1, 1)]),
+                      'mid': LineString([(0, 0), (1, 1)]),
+                      'low': LineString([(0, 0), (1, 1)]),
+                      'coarse': LineString([(0, 0), (1, 1)])
+                  },
+                  'metadata': {}
+              }
+          }
+          with open('runs.pkl', 'wb') as f:
+              pickle.dump(sample, f)
+          open('runs.pmtiles', 'wb').close()
+          EOF
+      - run: npx playwright install --with-deps
+      - name: Launch Flask in background
+        run: |
+          python -m flask --app server.app run &
+          sleep 3
+      - run: npx playwright test

@@ -103,4 +103,15 @@ adb install -r $(wslpath -w "$APK")
 ```
 See **MOBILE_SETUP.md** for a detailed guide on setting up the Windows `adb` server and debugging with Chrome DevTools.
 
+## Testing
+
+Basic unit and browser tests are included. Install the dev requirements then run:
+
+```bash
+pytest            # Python unit tests
+npx playwright test  # end-to-end tests
+```
+
+The GitHub Actions workflow runs these automatically on every push and pull request.
+
 Enjoy exploring your activity history!

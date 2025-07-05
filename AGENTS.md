@@ -1,25 +1,26 @@
 # Repository Guide for Agents
 
 This project visualizes GPS activities as an interactive heatmap.
-It has two parallel front-end implementations:
+It has two parallel front-end implementations that must stay in sync:
 
 1. **Web version** – files under `web/`.
 2. **Mobile version** – template and scripts in `server/mobile_template.html` and `server/mobile_main.js`.
 
-Both versions provide similar features and must stay in sync. Whenever you change UI or behavior in one, mirror the change in the other.
+Whenever you change UI or behavior in one, mirror the change in the other.
 
 Key features to understand:
 
-- **Lasso/Selection tool**: Users draw a polygon on the map. Activities intersecting the area are listed in a sidebar. Each run can be toggled on or off to filter what is shown. Clearing the selection hides the sidebar and shows all runs again.
-- **Upload capability**: Users may upload GPX files which are added to the dataset and shown on the map.
-- **Persist uploads**: Uploaded runs must be stored locally so they remain visible after restarting the server or mobile app.
-- **Offline/mobile app**: `build_mobile.py` packages the mobile version as an Android APK with runs bundled locally.
+- **Lasso/Selection tool** – draw a polygon and list intersecting activities. Runs can be toggled individually.
+- **Upload capability** – GPX files added in the browser are parsed and stored locally.
+- **Persist uploads** – uploaded runs remain after restarting the server or app.
+- **PMTiles support** – optional vector tiles for smooth offline rendering.
+- **Mobile packaging** – `build_mobile.py` creates an Android APK with all data bundled.
 
 Project structure overview:
 
 ```
-server/  – Flask backend and mobile build scripts
-web/     – Web front-end assets
+server/  – Flask backend plus build scripts
+web/     – Web front‑end assets
 ```
 
 When adding new features or modifying existing ones, follow these guidelines:

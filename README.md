@@ -1,4 +1,4 @@
-# Activity Heatmap
+# Running Heatmap
 
 Visualize your entire GPS activity history on an interactive map.
 
@@ -6,16 +6,15 @@ This project processes raw GPS files (Strava export, Garmin Connect, etc.) and s
 
 ## Features
 
-- Imports **FIT**, **GPX**, and **TCX** files as well as zipped Garmin exports
-- Precomputes simplified geometries at multiple zoom levels for fast display
-- R-tree spatial index and on-the-fly clipping for responsive panning/zooming
-- Optional PMTiles vector tile export for fast rendering
-- Heatmap style polyline rendering on an OpenStreetMap basemap
-- **Server–sent events** for progressive GeoJSON streaming with progress bars
-- Draw a polygon to select an area and list all activities intersecting it
-- Sidebar with activity metadata (type, date, distance, duration) and controls to show/hide activities
-- Upload new **GPX** files directly from the browser
-- Optional script to build an offline Android app (see **MOBILE_SETUP.md**)
+- Import **FIT**, **GPX**, and **TCX** files (Garmin archives are handled automatically)
+- Precompute simplified geometries at several zoom levels for fast drawing
+- R-tree spatial index for quick bounding-box and lasso queries
+- Optional **PMTiles** vector tiles for smooth offline rendering
+- Heatmap style polylines on an OpenStreetMap basemap
+- Draw a polygon to select an area and list the intersecting activities
+- Sidebar shows metadata (type, date, distance, duration) and lets you toggle individual runs
+- Upload new **GPX** files right in the browser—they are stored locally and persist between sessions
+- `build_mobile.py` packages an offline Android app (see **MOBILE_SETUP.md**)
 
 ## Prerequisites
 

@@ -54,109 +54,113 @@ Running `python make_pmtiles.py` (from the `server` directory) will create
 `runs.pmtiles` for faster map loading. Execute this after importing new runs and
 before building the mobile app if you want the tiles packaged.
 
-## Build and install from WSL (no file copying)
+## Build and test from WSL
 
-Below is the same workflow **without** the "copy the APK to Windows" detour.
-You build inside WSL but call the Windows `adb.exe` directly from WSL using
-`wslpath -w`. The APK never leaves Linux.
+The APK can be built entirely inside WSL while talking to the Windows `adb` server. Follow this checklist whenever you need to rebuild the app or inspect logs.
 
-### 0  One-time Windows host prep
+### 0 — One‑time Windows host prep
 
-| Step | Action |
-| --- | --- |
-| **Install platform-tools** | Unzip *platform-tools-latest-windows.zip* to `C:\sdk\platform-tools\`. |
-| **Add to PATH** | System Settings → Environment Variables → append that folder to **Path** (or keep the full path handy). |
-| **Enable USB debugging on the phone** | Developer Options → USB debugging (+ accept the fingerprint prompt). |
-| **Verify** | Open **PowerShell** → `adb devices` ⇒ should show **one** device (`device`, not `unauthorized`). Leave this window open—it keeps the adb **server** running. |
+1. Download Google Platform‑Tools and unzip to `C:\sdk\platform-tools\`.
+2. Add that folder to your Windows **Path** (or remember it).
+3. Enable **USB debugging** on your phone and accept the RSA fingerprint.
+4. In **PowerShell** run `adb devices` and verify the device shows up as `device`. Leave this window open so the adb server keeps running.
 
-### 1  Make WSL talk to that adb server
-
-Add an alias to your shell startup file:
+### 1 — Make WSL use that same binary
 
 ```bash
-alias adb='/mnt/c/sdk/platform-tools/adb.exe'   # adjust the path if you unzipped elsewhere
+sudo ln -sf /mnt/c/sdk/platform-tools/adb.exe /usr/local/bin/adb
+adb version    # should match the version in PowerShell
 ```
 
-```bash
-source ~/.bashrc
-adb devices
-```
-
-WSL is now a thin client to the Windows adb server—no USB copy tricks needed.
-
-### 2  Build inside WSL
+### 2 — Import runs and (optionally) build PMTiles
 
 ```bash
 cd ~/projects/running-heatmap/server
-python3 -m venv .venv && source .venv/bin/activate     # first time
-pip install -r requirements.txt                        # first time
+python3 -m venv .venv && source .venv/bin/activate      # first time
+pip install -r requirements.txt                         # first time
 
-python import_runs.py      # whenever you add raw files
-python make_pmtiles.py     # regenerates runs.pmtiles
-
-python build_mobile.py     # first build (walks you through packaging)
-# later edits:
-python build_mobile.py --quick    # skips data conversion, just updates HTML/JS
+python import_runs.py                                   # whenever new raw files are added
+python make_pmtiles.py                                  # optional but speeds up map loading
 ```
 
-The script produces:
-`mobile/android/app/build/outputs/apk/debug/app-debug.apk` (Linux path).
+### 3 — First APK build (creates the mobile project)
 
-### 3  Install the APK directly from WSL
+```bash
+python build_mobile.py                                  # answer the prompts
+```
+
+Later edits can use `python build_mobile.py --quick` to skip data conversion.
+
+### 4 — Find the phone's LAN IP
+
+Check the Wi‑Fi details in Android settings or, while still on USB, run:
+
+```powershell
+adb shell ip route | findstr /R /C:"src .*"
+```
+
+Note the IP address that appears after `src`.
+
+### 5 — Switch the phone to ADB over Wi‑Fi
+
+```powershell
+adb tcpip 5555
+# unplug the cable now
+```
+
+```bash
+PHONE_IP=192.168.1.73       # replace with the IP you found
+adb connect $PHONE_IP:5555
+adb devices                 # should list $PHONE_IP:5555  device
+adb reverse tcp:9222 tcp:9222   # opens DevTools tunnel
+```
+
+### 6 — Install / update the APK
 
 ```bash
 APK=mobile/android/app/build/outputs/apk/debug/app-debug.apk
-adb install -r $(wslpath -w "$APK")       # -r = replace if already installed
+adb install -r $(wslpath -w "$APK")        # -r = replace if already installed
 ```
 
-`wslpath -w` converts the Linux path to `C:\Users\…\app-debug.apk`, which `adb.exe` understands. **No copying, no Explorer, nothing leaves WSL.**
-
-### 4  Hook up Chrome DevTools
-
-```bash
-adb reverse tcp:9222 tcp:9222
-```
+### 7 — Open Chrome DevTools
 
 1. Launch **Running Heatmap** on the phone.
-2. On Windows Chrome/Edge open **chrome://inspect/#devices** → click **inspect**.
+2. On desktop Chrome (or Edge) go to `chrome://inspect/#devices` and click **inspect** under the app.
 
-Watch **Console** + **Network** for errors (typical culprits: `runs.pmtiles` 404, `HEAD` not allowed).
+### 8 — Fast inner loop
 
-### 5  Logcat (optional but handy)
+```bash
+python build_mobile.py --quick
+adb install -r $(wslpath -w mobile/android/app/build/outputs/apk/debug/app-debug.apk)
+# phone auto-restarts the app; refresh the DevTools tab if needed
+```
+
+### 9 — Useful troubleshooting snippets
 
 ```bash
 adb logcat -s chromium AndroidRuntime CapacitorConsole
+adb shell run-as com.run.heatmap ls /data/user/0/com.run.heatmap/files/www/data
+scrcpy --tcpip=$PHONE_IP
 ```
 
-### 6  Fast inner loop
-
-```bash
-# WSL
-python build_mobile.py --quick
-adb install -r $(wslpath -w mobile/android/app/build/outputs/apk/debug/app-debug.apk)
-# phone restarts the app; check DevTools console
-```
-
-Round-trip ≈ 30 s; no file shuffling.
+Every build, install and debugging command can now be executed from the same Linux shell—the APK never leaves WSL.
 
 #### If you ever want hot-reload without reinstalling
 
 ```bash
 cd mobile
 npx cap serve android          # hosts the same files at http://10.0.2.2:3333
-adb reverse tcp:3333 tcp:3333   # forward that port
+adb reverse tcp:3333 tcp:3333
 ```
 
-The app on the phone will live-reload whenever you edit HTML/JS/CSS in `mobile/www/`.
+The app on the phone will live-reload whenever you edit files in `mobile/www/`.
 
-#### Common pitfalls checklist (unchanged)
+#### Common pitfalls checklist
 
 * **`HEAD` requests not supported** in Capacitor’s embedded server – remove the probe or use a single GET with a `Range` header.
 * **Confirm `runs.pmtiles`** actually landed in `mobile/www/data/` before Gradle runs.
 * **Use a relative PMTiles URL**: `pmtiles://data/runs.pmtiles`.
 * **Bundle MapLibre & PMTiles JS locally** if you need true offline behaviour.
-
-With this variant the APK never leaves WSL, and every command (build, install, dev-tools forwarding) is executed from the same Linux shell you use to edit the code.
 
 
 

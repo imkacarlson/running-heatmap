@@ -8,5 +8,8 @@
   "dependencies": {
     "rbush": "^3.0.0",
     "pmtiles": "^3.2.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.42.1"
   }
 }

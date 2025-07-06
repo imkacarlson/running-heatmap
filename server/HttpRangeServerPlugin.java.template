@@ -149,7 +149,7 @@ public class HttpRangeServerPlugin extends Plugin {
                 // Read headers
                 String rangeHeader = null;
                 String line;
-                while (!(line = in.readLine()).isEmpty()) {
+                while ((line = in.readLine()) != null && !line.isEmpty()) {
                     if (line.toLowerCase().startsWith("range:")) {
                         rangeHeader = line.substring(6).trim();
                     }
@@ -171,6 +171,12 @@ public class HttpRangeServerPlugin extends Plugin {
 
         private void handleRequest(OutputStream out, String method, String path, String rangeHeader) throws IOException {
             Log.d(TAG, "Handling request: " + method + " " + path + " Range: " + rangeHeader);
+            
+            // Handle CORS preflight requests
+            if ("OPTIONS".equals(method)) {
+                handleCORSPreflight(out);
+                return;
+            }
             
             // Remove leading slash and handle root path
             if (path.startsWith("/")) {
@@ -211,6 +217,9 @@ public class HttpRangeServerPlugin extends Plugin {
                     "Content-Length: " + fileBytes.length + "\r\n" +
                     "Accept-Ranges: bytes\r\n" +
                     "Access-Control-Allow-Origin: *\r\n" +
+                    "Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS\r\n" +
+                    "Access-Control-Allow-Headers: Origin, Content-Type, Accept, Authorization, X-Requested-With, Range\r\n" +
+                    "Access-Control-Expose-Headers: Content-Length, Content-Range, Accept-Ranges\r\n" +
                     "\r\n";
 
             out.write(response.getBytes());
@@ -219,29 +228,42 @@ public class HttpRangeServerPlugin extends Plugin {
         }
 
         private void handleRangeRequest(OutputStream out, byte[] fileBytes, String rangeHeader, String path) throws IOException {
+            Log.d(TAG, "Processing range request: " + rangeHeader + " for file: " + path + " (size: " + fileBytes.length + ")");
             Pattern pattern = Pattern.compile("bytes=(\\d+)-(\\d*)");
             Matcher matcher = pattern.matcher(rangeHeader);
 
             if (!matcher.matches()) {
+                Log.w(TAG, "Invalid range header format: " + rangeHeader);
                 sendError(out, 400, "Bad Request");
                 return;
             }
 
             int start = Integer.parseInt(matcher.group(1));
             int end = matcher.group(2).isEmpty() ? fileBytes.length - 1 : Integer.parseInt(matcher.group(2));
+            
+            // Clamp end to valid range
+            if (end >= fileBytes.length) {
+                end = fileBytes.length - 1;
+            }
 
-            if (start >= fileBytes.length || end >= fileBytes.length || start > end) {
-                sendError(out, 416, "Range Not Satisfiable");
+            if (start >= fileBytes.length || start < 0 || start > end || end < 0) {
+                Log.w(TAG, "Invalid range request: start=" + start + ", end=" + end + ", fileLength=" + fileBytes.length);
+                sendRangeNotSatisfiable(out, fileBytes.length);
                 return;
             }
 
             int contentLength = end - start + 1;
+            Log.d(TAG, "Serving range: " + start + "-" + end + " (" + contentLength + " bytes) of " + fileBytes.length);
+            
             String response = "HTTP/1.1 206 Partial Content\r\n" +
                     "Content-Type: " + getContentType(path) + "\r\n" +
                     "Content-Length: " + contentLength + "\r\n" +
                     "Content-Range: bytes " + start + "-" + end + "/" + fileBytes.length + "\r\n" +
                     "Accept-Ranges: bytes\r\n" +
                     "Access-Control-Allow-Origin: *\r\n" +
+                    "Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS\r\n" +
+                    "Access-Control-Allow-Headers: Origin, Content-Type, Accept, Authorization, X-Requested-With, Range\r\n" +
+                    "Access-Control-Expose-Headers: Content-Length, Content-Range, Accept-Ranges\r\n" +
                     "\r\n";
 
             out.write(response.getBytes());
@@ -252,9 +274,38 @@ public class HttpRangeServerPlugin extends Plugin {
         private void sendError(OutputStream out, int code, String message) throws IOException {
             String response = "HTTP/1.1 " + code + " " + message + "\r\n" +
                     "Content-Length: 0\r\n" +
+                    "Access-Control-Allow-Origin: *\r\n" +
                     "\r\n";
             out.write(response.getBytes());
             out.flush();
+        }
+
+        private void handleCORSPreflight(OutputStream out) throws IOException {
+            String response = "HTTP/1.1 200 OK\r\n" +
+                    "Access-Control-Allow-Origin: *\r\n" +
+                    "Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS\r\n" +
+                    "Access-Control-Allow-Headers: Origin, Content-Type, Accept, Authorization, X-Requested-With, Range\r\n" +
+                    "Access-Control-Expose-Headers: Content-Length, Content-Range, Accept-Ranges\r\n" +
+                    "Access-Control-Max-Age: 86400\r\n" +
+                    "Content-Length: 0\r\n" +
+                    "\r\n";
+            out.write(response.getBytes());
+            out.flush();
+            Log.d(TAG, "Sent CORS preflight response");
+        }
+
+        private void sendRangeNotSatisfiable(OutputStream out, int fileLength) throws IOException {
+            String response = "HTTP/1.1 416 Range Not Satisfiable\r\n" +
+                    "Content-Range: bytes */" + fileLength + "\r\n" +
+                    "Content-Length: 0\r\n" +
+                    "Access-Control-Allow-Origin: *\r\n" +
+                    "Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS\r\n" +
+                    "Access-Control-Allow-Headers: Origin, Content-Type, Accept, Authorization, X-Requested-With, Range\r\n" +
+                    "Access-Control-Expose-Headers: Content-Length, Content-Range, Accept-Ranges\r\n" +
+                    "\r\n";
+            out.write(response.getBytes());
+            out.flush();
+            Log.d(TAG, "Sent 416 Range Not Satisfiable response");
         }
 
         private String getContentType(String path) {

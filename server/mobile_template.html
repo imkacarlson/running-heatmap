@@ -478,11 +478,11 @@
         console.log('Map error details:', e);
       });
 
-      // Moderate prefetching to limit memory growth
-      map.prefetchZoomDelta = 3;
-      // Cap tile cache to avoid long-term memory buildup
+      // Optimize prefetching for better zoom performance
+      map.prefetchZoomDelta = 2;
+      // Increase tile cache for better zoom-out performance
       if (map.setMaxTileCacheSize) {
-        map.setMaxTileCacheSize(512);
+        map.setMaxTileCacheSize(1024);
       }
 
       map.on('load', async () => {
@@ -608,13 +608,22 @@
               headers: { 'Range': 'bytes=0-0' }
             });
             console.log(`[HEATMAP-HTTP] PMTiles file test response: ${testResponse.status}`);
+            
+            // Try a small range request to verify server is working
+            const rangeTestResponse = await fetch(pmtilesUrl, { 
+              method: 'GET',
+              headers: { 'Range': 'bytes=0-1023' }
+            });
+            console.log(`[HEATMAP-HTTP] PMTiles range test response: ${rangeTestResponse.status}`);
           } catch (testError) {
             console.warn('[HEATMAP-HTTP] PMTiles file test failed:', testError);
           }
 
-          // Create PMTiles source from HTTP URL
+          // Create PMTiles source normally (server is working fine)
+          console.log('[HEATMAP-HTTP] Creating PMTiles source.');
+          
           const pmtilesSource = new pmtiles.PMTiles(pmtilesUrl);
-          console.log('[HEATMAP-HTTP] Created PMTiles instance from URL.');
+          console.log('[HEATMAP-HTTP] Created PMTiles instance.');
 
           // Register with protocol
           protocol.add(pmtilesSource);
@@ -626,9 +635,9 @@
           map.addSource('runsVec', {
             type: 'vector',
             url: mapSourceUrl,
-            buffer: 128,
-            maxzoom: 16,
-            minzoom: 5
+            buffer: 64,
+            maxzoom: 18,
+            minzoom: 4
           });
 
           console.log('[HEATMAP-HTTP] Adding runsVec layer to map...');

@@ -31,6 +31,7 @@ public class HttpRangeServerPlugin extends Plugin {
     private ExecutorService executorService;
     private int port = 8080;
     private boolean isRunning = false;
+    private static final java.util.Map<String, byte[]> fileCache = new java.util.concurrent.ConcurrentHashMap<>();
 
     @Override
     public void load() {
@@ -148,15 +149,22 @@ public class HttpRangeServerPlugin extends Plugin {
 
                 // Read headers
                 String rangeHeader = null;
+                String connectionHeader = null;
                 String line;
                 while ((line = in.readLine()) != null && !line.isEmpty()) {
-                    if (line.toLowerCase().startsWith("range:")) {
+                    String lowerLine = line.toLowerCase();
+                    if (lowerLine.startsWith("range:")) {
                         rangeHeader = line.substring(6).trim();
+                    } else if (lowerLine.startsWith("connection:")) {
+                        connectionHeader = line.substring(11).trim();
                     }
                 }
 
                 // Process request
                 handleRequest(out, method, path, rangeHeader);
+
+                // Force close connection after each request to avoid issues
+                // PMTiles works fine with this approach as we can see from the logs
 
             } catch (IOException e) {
                 Log.e(TAG, "Error handling request", e);
@@ -171,6 +179,7 @@ public class HttpRangeServerPlugin extends Plugin {
 
         private void handleRequest(OutputStream out, String method, String path, String rangeHeader) throws IOException {
             Log.d(TAG, "Handling request: " + method + " " + path + " Range: " + rangeHeader);
+            Log.d(TAG, "Client socket: " + clientSocket.getRemoteSocketAddress());
             
             // Handle CORS preflight requests
             if ("OPTIONS".equals(method)) {
@@ -191,12 +200,21 @@ public class HttpRangeServerPlugin extends Plugin {
 
             try {
                 String assetPath = "public/" + path;
-                Log.d(TAG, "Trying to open asset: " + assetPath);
-                InputStream inputStream = assetManager.open(assetPath);
-                byte[] fileBytes = readAllBytes(inputStream);
-                inputStream.close();
                 
-                Log.d(TAG, "Loaded file: " + path + " (" + fileBytes.length + " bytes)");
+                // Check cache first
+                byte[] fileBytes = fileCache.get(assetPath);
+                if (fileBytes == null) {
+                    Log.d(TAG, "Loading asset from disk: " + assetPath);
+                    InputStream inputStream = assetManager.open(assetPath);
+                    fileBytes = readAllBytes(inputStream);
+                    inputStream.close();
+                    
+                    // Cache the file for future requests
+                    fileCache.put(assetPath, fileBytes);
+                    Log.d(TAG, "Cached file: " + path + " (" + fileBytes.length + " bytes)");
+                } else {
+                    Log.d(TAG, "Using cached file: " + path + " (" + fileBytes.length + " bytes)");
+                }
 
                 if (rangeHeader != null && rangeHeader.startsWith("bytes=")) {
                     Log.d(TAG, "Handling range request for: " + path);
@@ -225,6 +243,7 @@ public class HttpRangeServerPlugin extends Plugin {
             out.write(response.getBytes());
             out.write(fileBytes);
             out.flush();
+            Log.d(TAG, "Sent full response for: " + path + " (" + fileBytes.length + " bytes)");
         }
 
         private void handleRangeRequest(OutputStream out, byte[] fileBytes, String rangeHeader, String path) throws IOException {
@@ -269,6 +288,7 @@ public class HttpRangeServerPlugin extends Plugin {
             out.write(response.getBytes());
             out.write(fileBytes, start, contentLength);
             out.flush();
+            Log.d(TAG, "Sent range response for: " + path + " (" + contentLength + " bytes, " + start + "-" + end + ")");
         }
 
         private void sendError(OutputStream out, int code, String message) throws IOException {

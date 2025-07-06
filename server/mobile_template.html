@@ -468,6 +468,7 @@
         },
         center: [-98, 39],
         zoom: 4,
+        maxZoom: 16,
         touchZoomRotate: true,
         touchPitch: false
       });
@@ -636,7 +637,7 @@
             type: 'vector',
             url: mapSourceUrl,
             buffer: 64,
-            maxzoom: 18,
+            maxzoom: 16,
             minzoom: 4
           });
 
@@ -650,7 +651,7 @@
               'line-color': 'rgba(255,0,0,0.5)',
               'line-width': ['interpolate', ['linear'], ['zoom'], 0, 1, 14, 3]
             },
-            maxzoom: 24
+            maxzoom: 16
           });
 
           console.log('[HEATMAP-HTTP] Successfully added map source and layer.');

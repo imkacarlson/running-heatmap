@@ -29,3 +29,7 @@ When adding new features or modifying existing ones, follow these guidelines:
 2. Run the application locally (``flask run`` inside `server/`) to verify behavior.
 3. After committing changes, review this `AGENTS.md`, `README.md`, and `MOBILE_SETUP.md` to ensure all instructions remain accurate, updating them if necessary.
 
+## Development Environment Notes
+
+- Be sure to activate the venv before running any python stuff
+- The python venv is located at .venv

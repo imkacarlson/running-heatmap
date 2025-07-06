@@ -325,8 +325,12 @@
       console.log('Map error details:', e);
     });
 
-    // Aggressive tile prefetching for seamless zoom transitions
-    map.prefetchZoomDelta = 4;
+    // Moderate prefetching to reduce memory usage on mobile
+    map.prefetchZoomDelta = 3;
+    // Limit how many tiles are retained to avoid crashes after long panning
+    if (map.setMaxTileCacheSize) {
+      map.setMaxTileCacheSize(512);
+    }
 
     // Wait for PMTiles library to load
     function initializeMap() {

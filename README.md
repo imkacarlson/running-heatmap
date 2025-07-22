@@ -14,6 +14,7 @@ This project processes raw GPS files (Strava export, Garmin Connect, etc.) and s
 - Draw a polygon to select an area and list the intersecting activities
 - Sidebar shows metadata (type, date, distance, duration) and lets you toggle individual runs
 - Upload new **GPX** files right in the browser—they are stored locally and persist between sessions
+- Extras panel with last uploaded activity and more tools
 - `build_mobile.py` packages an offline Android app (see **MOBILE_SETUP.md**)
 
 ## Prerequisites

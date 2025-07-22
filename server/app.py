@@ -235,6 +235,27 @@ def upload_gpx():
     return jsonify({'added': added, 'features': features})
 
 
+@app.route('/api/last_activity')
+def last_activity():
+    if not runs:
+        return jsonify({})
+    latest_id = None
+    latest_time = None
+    for rid, run in runs.items():
+        t = run['metadata'].get('start_time')
+        if t and (latest_time is None or t > latest_time):
+            latest_time = t
+            latest_id = rid
+    if latest_id is None:
+        return jsonify({})
+    meta = runs[latest_id]['metadata'].copy()
+    if meta.get('start_time') and hasattr(meta['start_time'], 'isoformat'):
+        meta['start_time'] = meta['start_time'].isoformat()
+    if meta.get('end_time') and hasattr(meta['end_time'], 'isoformat'):
+        meta['end_time'] = meta['end_time'].isoformat()
+    return jsonify({'id': latest_id, 'metadata': meta})
+
+
 @app.route('/update_runs', methods=['POST'])
 def update_runs():
     global runs, idx

@@ -291,6 +291,35 @@
       background: #e3f2fd;
     }
 
+    /* Extras panel */
+    #extras-panel {
+      position: absolute;
+      top: env(safe-area-inset-top, 0px);
+      left: -100vw;
+      width: 85vw;
+      max-width: 360px;
+      height: calc(100vh - env(safe-area-inset-top, 0px));
+      background: white;
+      box-shadow: 2px 0 10px rgba(0,0,0,0.15);
+      transition: left 0.3s ease;
+      z-index: 1000;
+      overflow-y: auto;
+    }
+
+    #extras-panel.open {
+      left: 0;
+    }
+
+    .extras-header {
+      padding: 18px;
+      background: #f8f9fa;
+      border-bottom: 1px solid #dee2e6;
+      font-weight: bold;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
     /* Mobile-specific overlay for drawing */
     #drawing-overlay {
       position: absolute;
@@ -361,6 +390,7 @@
     <div class="control-btn" id="lasso-btn" title="Select Area">⊙</div>
     <div class="control-btn" id="clear-selection-btn" title="Clear Selection" style="display: none;">✕</div>
     <div class="control-btn" id="upload-btn" title="Upload GPX">⤴</div>
+    <div class="control-btn" id="extras-btn" title="More">⋯</div>
     <input type="file" id="file-input" accept=".gpx" multiple style="display:none;" />
   </div>
   
@@ -385,6 +415,11 @@
     <div class="panel-summary" id="panel-summary">
       <!-- Summary info will be shown here -->
     </div>
+  </div>
+
+  <div id="extras-panel">
+    <div class="extras-header">Extra Features<span id="extras-close" style="cursor:pointer">×</span></div>
+    <div id="extras-content" class="panel-content"></div>
   </div>
 
   <div id="progress-container"></div>
@@ -1047,6 +1082,38 @@
       }
     }
 
+    async function fetchLastActivity() {
+      try {
+        const resp = await fetch('/api/last_activity');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const container = document.getElementById('extras-content');
+        container.innerHTML = '';
+        if (!data || !data.id) {
+          container.textContent = 'No activities';
+          return;
+        }
+        const card = document.createElement('div');
+        card.className = 'run-card';
+        const startDate = new Date(data.metadata.start_time);
+        const distance = (data.metadata.distance * 0.000621371).toFixed(2);
+        const duration = formatDuration(data.metadata.duration);
+        const type = data.metadata.activity_type || 'other';
+        let icon = '❓';
+        if (type === 'run') icon = '🏃';
+        else if (type === 'bike' || type === 'biking') icon = '🚴';
+        else if (type === 'walk') icon = '🚶';
+        else if (type === 'hike') icon = '🥾';
+        card.innerHTML = `
+          <div class="run-date">${startDate.toLocaleDateString()} ${startDate.toLocaleTimeString()}</div>
+          <div class="run-stats"><span>📏 ${distance} mi</span><span>⏱️ ${duration}</span></div>
+          <div style="font-size:20px;margin-top:4px;">${icon}</div>`;
+        container.appendChild(card);
+      } catch (e) {
+        console.error('Failed to fetch last activity', e);
+      }
+    }
+
       function updateMapDisplay() {
         // Rebuild the unified runs layer to include both PMTiles and local runs
         updateUnifiedRunsLayer();
@@ -1336,6 +1403,20 @@
 
       document.getElementById('upload-btn').addEventListener('click', () => {
         document.getElementById('file-input').click();
+      });
+
+      document.getElementById('extras-btn').addEventListener('click', () => {
+        const panel = document.getElementById('extras-panel');
+        if (panel.classList.contains('open')) {
+          panel.classList.remove('open');
+        } else {
+          panel.classList.add('open');
+          fetchLastActivity();
+        }
+      });
+
+      document.getElementById('extras-close').addEventListener('click', () => {
+        document.getElementById('extras-panel').classList.remove('open');
       });
 
       document.getElementById('file-input').addEventListener('change', (e) => {

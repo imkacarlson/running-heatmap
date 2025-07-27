@@ -310,6 +310,43 @@
       left: 0;
     }
 
+    #extras-panel.open.collapsed {
+      width: 60px;
+    }
+
+    #extras-panel.collapsed .extras-header,
+    #extras-panel.collapsed .panel-content {
+      display: none;
+    }
+
+    #extras-panel.collapsed .extras-expand-btn {
+      display: flex;
+    }
+
+    #extras-panel:not(.collapsed) .extras-expand-btn {
+      display: none;
+    }
+
+    /* Mobile expand button for collapsed extras panel */
+    .extras-expand-btn {
+      display: none;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: #007bff;
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      cursor: pointer;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      z-index: 1001;
+    }
+
     .extras-header {
       padding: 18px;
       background: #f8f9fa;
@@ -418,7 +455,14 @@
   </div>
 
   <div id="extras-panel">
-    <div class="extras-header">Extra Features<span id="extras-close" style="cursor:pointer">×</span></div>
+    <div class="extras-expand-btn" id="extras-expand-btn">◄</div>
+    <div class="extras-header">
+      <span>Extra Features</span>
+      <div>
+        <span class="panel-collapse" id="extras-collapse">►</span>
+        <span id="extras-close" style="cursor:pointer">×</span>
+      </div>
+    </div>
     <div id="extras-content" class="panel-content"></div>
   </div>
 
@@ -1131,6 +1175,7 @@
         
         const card = document.createElement('div');
         card.className = 'run-card';
+        card.dataset.runId = latestRun.id;
         const startDate = new Date(latestRun.metadata.start_time);
         const distance = (latestRun.metadata.distance * 0.000621371).toFixed(2);
         const duration = formatDuration(latestRun.metadata.duration);
@@ -1143,7 +1188,30 @@
         card.innerHTML = `
           <div class="run-date">${startDate.toLocaleDateString()} ${startDate.toLocaleTimeString()}</div>
           <div class="run-stats"><span>📏 ${distance} mi</span><span>⏱️ ${duration}</span></div>
-          <div style="font-size:20px;margin-top:4px;">${icon}</div>`;
+          <div style="font-size:20px;margin-top:4px;">${icon}</div>
+          <div style="margin-top:8px;">
+            <label style="display:flex;align-items:center;font-size:12px;cursor:pointer;">
+              <input type="checkbox" class="last-activity-checkbox" style="margin-right:6px;">
+              Show only this activity
+            </label>
+          </div>`;
+        
+        // Add checkbox event listener
+        const checkbox = card.querySelector('.last-activity-checkbox');
+        checkbox.addEventListener('change', (e) => {
+          if (e.target.checked) {
+            // Show only this run
+            selectedRuns.clear();
+            selectedRuns.add(String(latestRun.id));
+            sidebarOpen = true; // Enable filtering
+          } else {
+            // Show all runs
+            selectedRuns.clear();
+            sidebarOpen = false; // Disable filtering
+          }
+          updateMapDisplay();
+        });
+        
         container.appendChild(card);
       } catch (e) {
         console.error('Failed to fetch last activity', e);
@@ -1453,6 +1521,22 @@
 
       document.getElementById('extras-close').addEventListener('click', () => {
         document.getElementById('extras-panel').classList.remove('open');
+        // Reset filtering to show all activities when closing the panel
+        selectedRuns.clear();
+        sidebarOpen = false;
+        updateMapDisplay();
+      });
+
+      // Extras panel collapse functionality
+      document.getElementById('extras-collapse').addEventListener('click', () => {
+        const panel = document.getElementById('extras-panel');
+        panel.classList.add('collapsed');
+      });
+
+      // Extras panel expand functionality
+      document.getElementById('extras-expand-btn').addEventListener('click', () => {
+        const panel = document.getElementById('extras-panel');
+        panel.classList.remove('collapsed');
       });
 
       document.getElementById('file-input').addEventListener('change', (e) => {

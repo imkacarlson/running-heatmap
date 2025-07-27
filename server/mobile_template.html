@@ -1173,6 +1173,8 @@
           return;
         }
         
+        console.log('[HEATMAP-DEBUG] Latest activity found - ID:', latestRun.id, 'Date:', latestRun.metadata.start_time, 'Source:', latestRun.metadata.source_file || 'PMTiles');
+        
         const card = document.createElement('div');
         card.className = 'run-card';
         card.dataset.runId = latestRun.id;
@@ -1201,11 +1203,13 @@
         checkbox.addEventListener('change', (e) => {
           if (e.target.checked) {
             // Show only this run
+            console.log('[HEATMAP-DEBUG] Filtering to show only run with ID:', latestRun.id);
             selectedRuns.clear();
             selectedRuns.add(String(latestRun.id));
             sidebarOpen = true; // Enable filtering
           } else {
             // Show all runs
+            console.log('[HEATMAP-DEBUG] Clearing filters to show all runs');
             selectedRuns.clear();
             sidebarOpen = false; // Disable filtering
           }
@@ -1213,8 +1217,77 @@
         });
         
         container.appendChild(card);
+        
+        // Add clear user uploads card
+        if (window.spatialIndex && window.spatialIndex.userRuns && window.spatialIndex.userRuns.length > 0) {
+          const clearCard = document.createElement('div');
+          clearCard.className = 'run-card';
+          clearCard.style.marginTop = '16px';
+          clearCard.style.borderColor = '#dc3545';
+          clearCard.innerHTML = `
+            <div style="text-align:center;padding:8px;">
+              <div style="font-weight:bold;margin-bottom:8px;">User Uploads</div>
+              <div style="font-size:12px;color:#666;margin-bottom:12px;">${window.spatialIndex.userRuns.length} uploaded activities</div>
+              <button id="clear-uploads-btn" style="
+                background:#dc3545;
+                color:white;
+                border:none;
+                padding:8px 16px;
+                border-radius:4px;
+                cursor:pointer;
+                font-size:14px;
+                width:100%;
+              ">Clear All Uploads</button>
+            </div>`;
+          
+          const clearBtn = clearCard.querySelector('#clear-uploads-btn');
+          clearBtn.addEventListener('click', () => {
+            if (confirm('Are you sure you want to clear all uploaded activities? This cannot be undone.')) {
+              clearUserUploads();
+            }
+          });
+          
+          container.appendChild(clearCard);
+        }
+        
       } catch (e) {
         console.error('Failed to fetch last activity', e);
+      }
+    }
+    
+    function clearUserUploads() {
+      try {
+        // Clear localStorage
+        localStorage.removeItem('userRuns');
+        
+        // Clear spatialIndex
+        if (window.spatialIndex) {
+          window.spatialIndex.userRuns = [];
+          window.spatialIndex.spatialIndex = window.spatialIndex.spatialIndex.filter(item => 
+            !window.spatialIndex.userRuns.some(run => run.id === item.id)
+          );
+          window.spatialIndex.nextId = 1;
+        }
+        
+        // Clear any filtering
+        selectedRuns.clear();
+        sidebarOpen = false;
+        
+        // Update map display
+        updateMapDisplay();
+        
+        // Close and reopen extras panel to refresh
+        const panel = document.getElementById('extras-panel');
+        panel.classList.remove('open');
+        setTimeout(() => {
+          panel.classList.add('open');
+          fetchLastActivity();
+        }, 100);
+        
+        console.log('[HEATMAP-DEBUG] Cleared all user uploads');
+        
+      } catch (e) {
+        console.error('Failed to clear user uploads', e);
       }
     }
 
@@ -1243,8 +1316,13 @@
             
             if (geom && geom.coordinates && geom.coordinates.length > 1) {
               // Apply sidebar filtering if active
-              if (sidebarOpen && selectedRuns.size > 0 && !selectedRuns.has(run.id)) {
+              if (sidebarOpen && selectedRuns.size > 0 && !selectedRuns.has(String(run.id))) {
+                console.log('[HEATMAP-DEBUG] Filtering out user run ID:', run.id, 'SelectedRuns:', Array.from(selectedRuns));
                 return; // Skip this run if it's not selected
+              }
+              
+              if (sidebarOpen && selectedRuns.size > 0) {
+                console.log('[HEATMAP-DEBUG] Including user run ID:', run.id, 'in filtered display');
               }
               
               allRunFeatures.push({
@@ -1298,6 +1376,9 @@
           if (sidebarOpen && selectedRuns.size > 0) {
             const ids = Array.from(selectedRuns, id => Number(id));
             filter = ['in', ['get', 'id'], ['literal', ids]];
+            console.log('[HEATMAP-DEBUG] Applying PMTiles filter for IDs:', ids);
+          } else {
+            console.log('[HEATMAP-DEBUG] Clearing PMTiles filter - showing all PMTiles runs');
           }
           map.setFilter('runsVec', filter);
         }

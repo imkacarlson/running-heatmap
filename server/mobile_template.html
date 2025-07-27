@@ -1250,6 +1250,34 @@
           container.appendChild(clearCard);
         }
         
+        // Add current location card
+        const locationCard = document.createElement('div');
+        locationCard.className = 'run-card';
+        locationCard.style.marginTop = '16px';
+        locationCard.style.borderColor = '#007bff';
+        locationCard.innerHTML = `
+          <div style="text-align:center;padding:8px;">
+            <div style="font-weight:bold;margin-bottom:8px;">📍 Current Location</div>
+            <div style="font-size:12px;color:#666;margin-bottom:12px;">Zoom to your current position</div>
+            <button id="location-btn" style="
+              background:#007bff;
+              color:white;
+              border:none;
+              padding:8px 16px;
+              border-radius:4px;
+              cursor:pointer;
+              font-size:14px;
+              width:100%;
+            ">Find My Location</button>
+          </div>`;
+        
+        const locationBtn = locationCard.querySelector('#location-btn');
+        locationBtn.addEventListener('click', () => {
+          zoomToCurrentLocation();
+        });
+        
+        container.appendChild(locationCard);
+        
       } catch (e) {
         console.error('Failed to fetch last activity', e);
       }
@@ -1288,6 +1316,98 @@
         
       } catch (e) {
         console.error('Failed to clear user uploads', e);
+      }
+    }
+    
+    async function zoomToCurrentLocation() {
+      const locationBtn = document.getElementById('location-btn');
+      
+      // Update button to show loading state
+      const originalText = locationBtn.textContent;
+      locationBtn.textContent = 'Getting location...';
+      locationBtn.disabled = true;
+      
+      try {
+        // Import Capacitor Geolocation
+        const { Geolocation } = Capacitor;
+        
+        // Request permissions first
+        const permissions = await Geolocation.requestPermissions();
+        console.log('[HEATMAP-DEBUG] Location permissions:', permissions);
+        
+        if (permissions.location !== 'granted') {
+          throw new Error('Location permission denied');
+        }
+        
+        // Get current position using Capacitor API
+        const position = await Geolocation.getCurrentPosition({
+          enableHighAccuracy: true,
+          timeout: 10000
+        });
+        
+        const { latitude, longitude } = position.coords;
+        console.log('[HEATMAP-DEBUG] Current location:', latitude, longitude);
+        
+        // Remove existing location marker if it exists
+        if (map.getSource('current-location')) {
+          if (map.getLayer('current-location-marker')) {
+            map.removeLayer('current-location-marker');
+          }
+          map.removeSource('current-location');
+        }
+        
+        // Add current location marker
+        map.addSource('current-location', {
+          type: 'geojson',
+          data: {
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              coordinates: [longitude, latitude]
+            }
+          }
+        });
+        
+        map.addLayer({
+          id: 'current-location-marker',
+          type: 'circle',
+          source: 'current-location',
+          paint: {
+            'circle-radius': 8,
+            'circle-color': '#007bff',
+            'circle-stroke-width': 3,
+            'circle-stroke-color': '#ffffff'
+          }
+        });
+        
+        // Zoom to location
+        map.flyTo({
+          center: [longitude, latitude],
+          zoom: 15,
+          duration: 2000
+        });
+        
+        // Restore button
+        locationBtn.textContent = originalText;
+        locationBtn.disabled = false;
+        
+      } catch (error) {
+        console.error('[HEATMAP-DEBUG] Geolocation error:', error);
+        
+        let errorMessage = 'Unable to get your location';
+        if (error.message.includes('denied') || error.message.includes('permission')) {
+          errorMessage = 'Location access denied. Please enable location permissions in your device settings.';
+        } else if (error.message.includes('unavailable')) {
+          errorMessage = 'Location information unavailable. Make sure GPS is enabled.';
+        } else if (error.message.includes('timeout')) {
+          errorMessage = 'Location request timed out. Please try again.';
+        }
+        
+        alert(errorMessage);
+        
+        // Restore button
+        locationBtn.textContent = originalText;
+        locationBtn.disabled = false;
       }
     }
 

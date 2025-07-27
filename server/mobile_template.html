@@ -1084,21 +1084,57 @@
 
     async function fetchLastActivity() {
       try {
-        const resp = await fetch('/api/last_activity');
-        if (!resp.ok) return;
-        const data = await resp.json();
         const container = document.getElementById('extras-content');
         container.innerHTML = '';
-        if (!data || !data.id) {
+        
+        let allRuns = [];
+        
+        // Get PMTiles runs (pre-packaged data) - query with large bbox to get all runs
+        try {
+          const worldBbox = [-180, -90, 180, 90]; // World coordinates
+          const pmtilesRuns = await window.spatialIndex.queryPMTilesInPolygon([
+            [-180, -90], [180, -90], [180, 90], [-180, 90], [-180, -90]
+          ]);
+          allRuns.push(...pmtilesRuns);
+        } catch (error) {
+          console.warn('Failed to query PMTiles runs:', error);
+        }
+        
+        // Get user uploaded runs
+        if (window.spatialIndex && window.spatialIndex.userRuns) {
+          allRuns.push(...window.spatialIndex.userRuns);
+        }
+        
+        if (allRuns.length === 0) {
           container.textContent = 'No activities';
           return;
         }
+        
+        // Find the most recent run by start_time from all sources
+        let latestRun = null;
+        let latestTime = null;
+        
+        for (const run of allRuns) {
+          if (run.metadata && run.metadata.start_time) {
+            const startTime = new Date(run.metadata.start_time);
+            if (!latestTime || startTime > latestTime) {
+              latestTime = startTime;
+              latestRun = run;
+            }
+          }
+        }
+        
+        if (!latestRun) {
+          container.textContent = 'No activities';
+          return;
+        }
+        
         const card = document.createElement('div');
         card.className = 'run-card';
-        const startDate = new Date(data.metadata.start_time);
-        const distance = (data.metadata.distance * 0.000621371).toFixed(2);
-        const duration = formatDuration(data.metadata.duration);
-        const type = data.metadata.activity_type || 'other';
+        const startDate = new Date(latestRun.metadata.start_time);
+        const distance = (latestRun.metadata.distance * 0.000621371).toFixed(2);
+        const duration = formatDuration(latestRun.metadata.duration);
+        const type = latestRun.metadata.activity_type || 'other';
         let icon = '❓';
         if (type === 'run') icon = '🏃';
         else if (type === 'bike' || type === 'biking') icon = '🚴';

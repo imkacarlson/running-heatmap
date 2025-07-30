@@ -50,6 +50,7 @@ testing/test_venv/
 testing/vetted-drivers/chromedriver-*
 testing/setup_emulator.sh
 testing/test.sh
+testing/emulator.log
 
 # Claude Code artifacts (but keep commands)
 .claude/*

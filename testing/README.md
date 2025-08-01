@@ -58,7 +58,7 @@ npm install
 emulator -list-avds
 
 # Start an emulator (replace with your AVD name)
-emulator -avd Pixel_4_API_30 &
+emulator -avd TestDevice -no-audio &
 ```
 
 **Option B: Physical Device**
@@ -113,14 +113,19 @@ Keep this running - you'll see Appium server logs here.
 cd testing  
 source test_venv/bin/activate
 
-# Run the complete end-to-end test suite
-python -m pytest test_mobile_with_fixtures.py -v -s
+# Run ALL mobile tests (using pytest markers - the expert way!)
+python -m pytest -m mobile
+
+# Run ALL tests (mobile + legacy)
+python -m pytest
+
+# Run individual test suites by marker
+python -m pytest -m mobile test_mobile_with_fixtures.py     # App functionality tests
+python -m pytest -m mobile test_lasso_with_uploads.py       # Lasso tool tests  
+python -m pytest -m mobile test_end_to_end_gpx_mobile.py    # End-to-end pipeline tests
 
 # Run specific test
-python -m pytest test_mobile_with_fixtures.py::TestMobileAppWithTestData::test_test_activity_visualization -v -s
-
-# Run all mobile tests
-python -m pytest test_mobile_with_fixtures.py test_end_to_end_gpx_mobile.py -v -s
+python -m pytest test_mobile_with_fixtures.py::TestMobileAppWithTestData::test_activity_definitely_visible
 ```
 
 ### Legacy Test Run (Old Framework)

@@ -45,6 +45,7 @@ def mobile_driver(test_emulator_with_apk):
     driver.quit()
 
 
+@pytest.mark.mobile
 class TestMobileAppWithTestData:
     """Mobile app tests using session-scoped fixtures"""
     
@@ -374,13 +375,7 @@ class TestMobileAppWithTestData:
             print("📊 Pixel verification: Not available in WebView (using viewport verification)")
         print(f"📊 Features in test area: {features['testAreaFeatures']}")
         
-        return {
-            'pixel_success_rate': pixels.get('successRate', 0),
-            'pixel_available': 'error' not in pixels,
-            'features_count': features['testAreaFeatures'],
-            'viewport_correct': features['viewportContainsRoute'],
-            'debug_state': debug_state
-        }
+        # Test completed successfully - all assertions passed
     
     def test_app_launches_with_test_data(self, mobile_driver):
         """Test that app launches successfully with test data"""

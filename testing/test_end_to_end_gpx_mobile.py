@@ -8,6 +8,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 
 
+@pytest.mark.mobile
 class TestDataPipeline:
     """Test data pipeline without Appium dependency"""
     
@@ -45,48 +46,119 @@ class TestDataPipeline:
         print(f"   📊 Size: {apk_path.stat().st_size / 1_000_000:.1f} MB")
 
 
+@pytest.mark.mobile
 class TestMobileApp:
     """Test mobile app functionality with test data - uses Appium"""
+    
+    def setup_mobile_driver(self, fresh_app_session):
+        """Setup mobile driver for testing"""
+        from appium import webdriver
+        from selenium.webdriver.support.ui import WebDriverWait
+        from pathlib import Path
+        
+        desired_caps = {
+            'platformName': 'Android',
+            'deviceName': 'TestDevice',
+            'appPackage': 'com.run.heatmap',
+            'appActivity': 'com.run.heatmap.MainActivity',
+            'automationName': 'UiAutomator2',
+            'newCommandTimeout': 300,
+            'noReset': True,
+            'fullReset': False,
+            'chromedriverExecutable': str(Path(__file__).parent / "vetted-drivers" / "chromedriver-101")
+        }
+        
+        self.driver = webdriver.Remote('http://localhost:4723/wd/hub', desired_caps)
+        self.wait = WebDriverWait(self.driver, 30)
+        return {'driver': self.driver, 'wait': self.wait}
+    
+    def switch_to_webview(self):
+        """Switch to WebView context"""
+        time.sleep(2)
+        contexts = self.driver.contexts
+        for context in contexts:
+            if 'WEBVIEW' in context:
+                self.driver.switch_to.context(context)
+                print(f"✅ Switched to context: {context}")
+                return True
+        return False
+    
+    def wait_for_map_load(self):
+        """Wait for map to load"""
+        from selenium.webdriver.support import expected_conditions as EC
+        from selenium.webdriver.common.by import By
+        
+        self.wait.until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "#map"))
+        )
+        time.sleep(3)
+    
+    def take_screenshot(self, name):
+        """Take screenshot"""
+        try:
+            from pathlib import Path
+            Path("screenshots").mkdir(exist_ok=True)
+            path = Path("screenshots") / f"{name}.png"
+            self.driver.save_screenshot(str(path))
+            return path
+        except Exception as e:
+            print(f"⚠️ Screenshot failed: {e}")
+            return None
     
     def test_app_launches_with_test_data(self, fresh_app_session):
         """Test that app launches successfully with test data"""
         print("🧪 Testing app launch with test data...")
         
-        # Give app time to load
-        time.sleep(8)
-        self.take_screenshot("01_test_data_app_launch")
+        # Setup mobile driver
+        mobile_info = self.setup_mobile_driver(fresh_app_session)
         
-        # Switch to WebView
-        webview_found = self.switch_to_webview()
-        assert webview_found, "Should be able to switch to WebView"
-        
-        # Wait for map to load
-        map_element = self.wait.until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "#map"))
-        )
-        assert map_element is not None, "Map should be present"
-        
-        # Verify map loads
-        time.sleep(5)
-        map_loaded = self.driver.execute_script("""
-            return typeof map !== 'undefined' && map.loaded && map.loaded();
-        """)
-        
-        self.take_screenshot("02_test_data_map_loaded")
-        print(f"📍 Map loaded: {map_loaded}")
-        print("✅ App launches successfully with test data")
+        try:
+            # Give app time to load
+            time.sleep(8)
+            self.take_screenshot("01_test_data_app_launch")
+            
+            # Switch to WebView
+            webview_found = self.switch_to_webview()
+            assert webview_found, "Should be able to switch to WebView"
+            
+            # Wait for map to load
+            from selenium.webdriver.support import expected_conditions as EC
+            from selenium.webdriver.common.by import By
+            
+            map_element = self.wait.until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "#map"))
+            )
+            assert map_element is not None, "Map should be present"
+            
+            # Verify map loads
+            time.sleep(5)
+            map_loaded = self.driver.execute_script("""
+                return typeof map !== 'undefined' && map.loaded && map.loaded();
+            """)
+            
+            self.take_screenshot("02_test_data_map_loaded")
+            print(f"📍 Map loaded: {map_loaded}")
+            print("✅ App launches successfully with test data")
+            
+        finally:
+            if hasattr(self, 'driver') and self.driver:
+                self.driver.quit()
     
     def test_test_activity_is_visible_on_map(self, fresh_app_session):
         """Test that the test activity is actually visible on the map"""  
         print("🧪 Testing test activity visualization...")
         
-        # Launch and load app
-        time.sleep(8)
-        self.switch_to_webview()
-        self.wait_for_map_load()
+        # Setup mobile driver
+        mobile_info = self.setup_mobile_driver(fresh_app_session)
         
-        # Get map information to verify test data is loaded
-        map_info = self.driver.execute_script("""
+        try:
+            # Launch and load app
+            time.sleep(8)
+            self.switch_to_webview()
+            self.wait_for_map_load()
+        
+            # Get map information to verify test data is loaded
+            map_info = self.driver.execute_script("""
             if (typeof map !== 'undefined') {
                 const style = map.getStyle();
                 const sources = style.sources || {};
@@ -100,36 +172,36 @@ class TestMobileApp:
             return null;
         """)
         
-        print(f"🗺️ Map sources: {map_info['sources']}")
-        print(f"📊 RunsVec source: {map_info['runsVecExists']}")
-        if map_info['runsVecUrl']:
-            print(f"🔗 PMTiles URL: {map_info['runsVecUrl']}")
+            print(f"🗺️ Map sources: {map_info['sources']}")
+            print(f"📊 RunsVec source: {map_info['runsVecExists']}")
+            if map_info['runsVecUrl']:
+                print(f"🔗 PMTiles URL: {map_info['runsVecUrl']}")
+            
+            assert map_info['runsVecExists'], "runsVec source should be loaded"
         
-        assert map_info['runsVecExists'], "runsVec source should be loaded"
+            # Pan to test activity location (Frederick, MD)
+            test_lat = 39.4168
+            test_lon = -77.4169
+            zoom_level = 16
         
-        # Pan to test activity location (Frederick, MD)
-        test_lat = 39.4168
-        test_lon = -77.4169
-        zoom_level = 16
+            print(f"🗺️ Panning to test location: {test_lat}, {test_lon}")
+            
+            self.driver.execute_script(f"""
+                if (typeof map !== 'undefined') {{
+                    map.flyTo({{
+                        center: [{test_lon}, {test_lat}],
+                        zoom: {zoom_level},
+                        duration: 2000
+                    }});
+                }}
+            """)
         
-        print(f"🗺️ Panning to test location: {test_lat}, {test_lon}")
+            # Wait for map to pan and data to load
+            time.sleep(6)
+            self.take_screenshot("03_test_activity_location")
         
-        self.driver.execute_script(f"""
-            if (typeof map !== 'undefined') {{
-                map.flyTo({{
-                    center: [{test_lon}, {test_lat}],
-                    zoom: {zoom_level},
-                    duration: 2000
-                }});
-            }}
-        """)
-        
-        # Wait for map to pan and data to load
-        time.sleep(6)
-        self.take_screenshot("03_test_activity_location")
-        
-        # Check for rendered features in the area
-        features_info = self.driver.execute_script("""
+            # Check for rendered features in the area
+            features_info = self.driver.execute_script("""
             if (typeof map !== 'undefined') {
                 try {
                     const features = map.queryRenderedFeatures();
@@ -155,46 +227,59 @@ class TestMobileApp:
             return null;
         """)
         
-        print(f"🎯 Features info: {features_info}")
-        
-        if features_info and not features_info.get('error'):
-            print(f"📊 Rendered features: {features_info['renderedTotal']}")
-            print(f"📍 Line features: {features_info['renderedLines']}")
-            print(f"📂 Source features: {features_info['sourceTotal']}")
-            print(f"🔍 Zoom: {features_info['zoom']}")
+            print(f"🎯 Features info: {features_info}")
             
-            # We should have at least some features from our test data
-            assert features_info['sourceTotal'] > 0, "Should have features in PMTiles source"
+            if features_info and not features_info.get('error'):
+                print(f"📊 Rendered features: {features_info['renderedTotal']}")
+                print(f"📍 Line features: {features_info['renderedLines']}")
+                print(f"📂 Source features: {features_info['sourceTotal']}")
+                print(f"🔍 Zoom: {features_info['zoom']}")
+                
+                # We should have at least some features from our test data
+                assert features_info['sourceTotal'] > 0, "Should have features in PMTiles source"
+            
+            # Take final verification screenshot
+            self.take_screenshot("04_test_activity_verification")
         
-        # Take final verification screenshot
-        self.take_screenshot("04_test_activity_verification")
-        
-        print("✅ Test activity visualization test completed")
-        print("📸 Check screenshots for visual verification of red activity line")
+            print("✅ Test activity visualization test completed")
+            print("📸 Check screenshots for visual verification of red activity line")
+            
+        finally:
+            if hasattr(self, 'driver') and self.driver:
+                self.driver.quit()
     
     def test_map_navigation_works(self, fresh_app_session):
         """Test that map navigation controls work with test data"""
         print("🧪 Testing map navigation with test data...")
         
-        time.sleep(8)
-        self.switch_to_webview() 
-        self.wait_for_map_load()
+        # Setup mobile driver
+        mobile_info = self.setup_mobile_driver(fresh_app_session)
         
-        # Test zoom controls
-        initial_zoom = self.driver.execute_script("return map.getZoom();")
+        try:
+            time.sleep(8)
+            self.switch_to_webview() 
+            self.wait_for_map_load()
         
-        # Click zoom in
-        zoom_in_btn = self.driver.find_element(By.CSS_SELECTOR, "#zoom-in-btn")
-        zoom_in_btn.click()
-        time.sleep(2)
+            # Test zoom controls
+            initial_zoom = self.driver.execute_script("return map.getZoom();")
+            
+            # Click zoom in
+            from selenium.webdriver.common.by import By
+            zoom_in_btn = self.driver.find_element(By.CSS_SELECTOR, "#zoom-in-btn")
+            zoom_in_btn.click()
+            time.sleep(2)
+            
+            new_zoom = self.driver.execute_script("return map.getZoom();")
+            assert new_zoom > initial_zoom, "Zoom should increase"
+            
+            self.take_screenshot("05_zoom_test")
         
-        new_zoom = self.driver.execute_script("return map.getZoom();")
-        assert new_zoom > initial_zoom, "Zoom should increase"
-        
-        self.take_screenshot("05_zoom_test")
-        
-        print(f"📍 Zoom test: {initial_zoom} → {new_zoom}")
-        print("✅ Map navigation works with test data")
+            print(f"📍 Zoom test: {initial_zoom} → {new_zoom}")
+            print("✅ Map navigation works with test data")
+            
+        finally:
+            if hasattr(self, 'driver') and self.driver:
+                self.driver.quit()
 
 
 if __name__ == '__main__':

@@ -11,6 +11,22 @@ import time
 from pathlib import Path
 
 
+def pytest_addoption(parser):
+    """Add custom command line options"""
+    parser.addoption(
+        "--fast", 
+        action="store_true", 
+        default=False, 
+        help="Skip expensive build operations (APK build, tile generation) for faster testing cycles"
+    )
+
+
+@pytest.fixture(scope="session")
+def fast_mode(request):
+    """Access the --fast flag value"""
+    return request.config.getoption("--fast")
+
+
 @pytest.fixture(scope="session")
 def test_gpx_data():
     """Provide test GPX data"""
@@ -18,8 +34,19 @@ def test_gpx_data():
 
 
 @pytest.fixture(scope="session") 
-def isolated_test_environment(test_gpx_data):
+def isolated_test_environment(test_gpx_data, fast_mode):
     """Create isolated test environment with processed data"""
+    
+    if fast_mode:
+        print("\n⚡ Fast mode: Skipping isolated test environment setup")
+        # Return minimal structure for fast mode
+        yield {
+            'test_env': Path(__file__).parent.parent,  # Use project root
+            'server_dir': Path(__file__).parent.parent / "server",
+            'pmtiles_path': Path(__file__).parent.parent / "server" / "runs.pmtiles"
+        }
+        return
+    
     print("\n🏗️ Setting up isolated test environment...")
     
     # Create temporary environment
@@ -71,8 +98,20 @@ def isolated_test_environment(test_gpx_data):
 
 
 @pytest.fixture(scope="session")
-def test_apk_with_data(isolated_test_environment):
+def test_apk_with_data(isolated_test_environment, fast_mode):
     """Build APK with test data in completely isolated environment - expensive operation done once per session"""
+    
+    if fast_mode:
+        print("\n⚡ Fast mode: Skipping APK build, assuming existing APK is available")
+        # Return path to existing APK
+        existing_apk = Path(__file__).parent.parent / "mobile" / "android" / "app" / "build" / "outputs" / "apk" / "debug" / "app-debug.apk"
+        if existing_apk.exists():
+            print(f"✅ Using existing APK: {existing_apk}")
+            yield existing_apk
+            return
+        else:
+            raise Exception(f"Fast mode requires existing APK at {existing_apk}. Run full build first or use --fast flag only after successful full build.")
+    
     print("\n📱 Building APK with test data in isolated environment (this may take 5-10 minutes)...")
     
     env_info = isolated_test_environment
@@ -167,8 +206,30 @@ if __name__ == '__main__':
 
 
 @pytest.fixture(scope="session")
-def test_emulator_with_apk(test_apk_with_data):
+def test_emulator_with_apk(test_apk_with_data, fast_mode):
     """Install test APK on emulator - done once per session"""
+    
+    if fast_mode:
+        print("\n⚡ Fast mode: Skipping APK installation, assuming app is already installed")
+        # Just verify the app is available on the device
+        android_home = os.environ.get('ANDROID_HOME', '/home/imkacarlson/android-sdk')
+        adb_env = os.environ.copy()
+        adb_env['PATH'] = f"{adb_env['PATH']}:{android_home}/platform-tools"
+        
+        # Check if app is installed
+        result = subprocess.run(["adb", "shell", "pm", "list", "packages", "com.run.heatmap"], 
+                              capture_output=True, text=True, env=adb_env)
+        
+        if "com.run.heatmap" not in result.stdout:
+            raise Exception("Fast mode requires app to be already installed. Run full test first or install app manually.")
+        
+        print("✅ App is already installed on device")
+        yield {
+            'apk_path': test_apk_with_data,
+            'package_name': 'com.run.heatmap'
+        }
+        return
+    
     print("\n📲 Installing test APK on emulator...")
     
     # Set up adb environment

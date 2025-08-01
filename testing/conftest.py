@@ -74,8 +74,22 @@ def isolated_test_environment(test_gpx_data, fast_mode):
         if (real_server_dir / file).exists():
             shutil.copy(real_server_dir / file, server_dir / file)
     
-    # Copy test GPX to raw data
+    # Copy ONLY our specific test GPX files to raw data (isolated environment)
+    print("📁 Copying test GPX files to isolated environment...")
     shutil.copy(test_gpx_data, raw_data_dir / "test_run.gpx")
+    print(f"   ✓ Copied: {test_gpx_data.name}")
+    
+    # Copy second test GPX file
+    eastside_gpx = Path(__file__).parent / "test_data" / "eastside_run.gpx"
+    if eastside_gpx.exists():
+        shutil.copy(eastside_gpx, raw_data_dir / "eastside_run.gpx")
+        print(f"   ✓ Copied: {eastside_gpx.name}")
+    else:
+        print(f"   ⚠️ Eastside GPX not found: {eastside_gpx}")
+    
+    # Verify only our test files are present
+    raw_files = list(raw_data_dir.glob("*.gpx"))
+    print(f"📋 GPX files in isolated raw data directory: {[f.name for f in raw_files]}")
     
     # Run data pipeline using the main venv that has the required packages
     main_venv_python = Path(__file__).parent.parent / ".venv" / "bin" / "python"

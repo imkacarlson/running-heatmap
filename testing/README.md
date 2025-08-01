@@ -54,12 +54,21 @@ npm install
 
 **Option A: Android Emulator**
 ```bash
-# List available AVDs
+# List available AVDs  
 emulator -list-avds
 
-# Start an emulator (replace with your AVD name)
-emulator -avd TestDevice -no-audio &
+# Start an emulator with extended controls fix (for WSL/Windows)
+emulator -avd TestDevice -no-audio -gpu swiftshader_indirect -skin 1080x1920 &
+
+# Or use the setup script for guided setup
+./setup_emulator.sh
 ```
+
+**📱 Extended Controls Fix for WSL/Windows Users:**
+If the Extended Controls panel (tall thin window) buttons don't respond to clicks:
+1. **Recommended**: Launch emulator from Android Studio > Tools > AVD Manager (▶️ button)
+2. **Alternative**: Use the command above with `-skin 1080x1920` parameter
+3. This fixes WSLg compatibility issues with emulator controls (volume, rotation, location, etc.)
 
 **Option B: Physical Device**
 1. Enable Developer Options on your Android device
@@ -119,14 +128,23 @@ python -m pytest -m mobile
 # Run ALL tests (mobile + legacy)
 python -m pytest
 
+# ⚡ FAST MODE: Skip APK builds for rapid iteration (use existing APK)
+python -m pytest -m mobile --fast
+
 # Run individual test suites by marker
 python -m pytest -m mobile test_mobile_with_fixtures.py     # App functionality tests
-python -m pytest -m mobile test_lasso_with_uploads.py       # Lasso tool tests  
+python -m pytest -m mobile test_basic_lasso_selection.py    # Lasso precision tests
 python -m pytest -m mobile test_end_to_end_gpx_mobile.py    # End-to-end pipeline tests
 
-# Run specific test
-python -m pytest test_mobile_with_fixtures.py::TestMobileAppWithTestData::test_activity_definitely_visible
+# Run specific test with fast mode
+python -m pytest test_basic_lasso_selection.py::TestBasicLassoSelection::test_basic_lasso_polygon_selection -v -s --fast
 ```
+
+**🚀 Fast Mode Testing:**
+- Use `--fast` flag to skip expensive APK builds and tile generation
+- Reduces test cycle from ~10 minutes to ~30 seconds for UI testing
+- Requires existing APK from previous full build
+- Perfect for rapid iteration during test development
 
 ### Legacy Test Run (Old Framework)
 
@@ -251,7 +269,13 @@ class TestNewFeature(BaseTest):
 ### "No devices found" 
 - Start Android emulator or connect physical device
 - Run `adb devices` to verify connection
-- For emulator: `emulator -avd YourAVDName &`
+- For emulator: `emulator -avd YourAVDName -no-audio -gpu swiftshader_indirect -skin 1080x1920 &`
+
+### "Extended Controls buttons not responding" (WSL/Windows)
+- **Immediate fix**: Launch emulator from Android Studio > Tools > AVD Manager (▶️ button)
+- **Alternative**: Use `-skin 1080x1920` parameter when starting emulator
+- **Root cause**: WSLg version compatibility issue with emulator UI
+- **Affected controls**: Volume, rotation, location, camera buttons in Extended Controls panel
 
 ### "APK build failed" (Session-scoped fixtures)
 - Check that main project `.venv` has required packages (shapely, etc.)

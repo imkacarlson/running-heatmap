@@ -269,6 +269,7 @@ class TestMobileAppWithTestData:
         screenshots_dir.mkdir(exist_ok=True)
         driver.save_screenshot(str(screenshots_dir / f"{name}.png"))
     
+    @pytest.mark.core  
     def test_activity_definitely_visible(self, mobile_driver):
         """Rock-solid test that activity is visible to user - combines all verification methods"""
         print("🏆 Starting rock-solid visibility verification...")
@@ -377,8 +378,9 @@ class TestMobileAppWithTestData:
         
         # Test completed successfully - all assertions passed
     
+    @pytest.mark.legacy
     def test_app_launches_with_test_data(self, mobile_driver):
-        """Test that app launches successfully with test data"""
+        """Test that app launches successfully with test data - REDUNDANT: App launch is verified in rock-solid test"""
         print("🧪 Testing app launch with test data...")
         
         driver = mobile_driver['driver']
@@ -411,8 +413,9 @@ class TestMobileAppWithTestData:
         self.take_screenshot(driver, "02_fixture_map_loaded")
         print("✅ App launches successfully with test data")
     
+    @pytest.mark.legacy  
     def test_test_activity_visualization(self, mobile_driver):
-        """Test that test activity is visible on map using enhanced verification"""
+        """Test that test activity is visible on map using enhanced verification - REDUNDANT: Use rock-solid test instead"""
         print("🧪 Testing test activity visualization with enhanced verification...")
         
         driver = mobile_driver['driver']

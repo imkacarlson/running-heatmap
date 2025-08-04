@@ -54,6 +54,7 @@ def mobile_driver(test_emulator_with_apk):
 
 
 @pytest.mark.mobile
+@pytest.mark.core
 class TestBasicLassoSelection:
     """Test basic lasso selection functionality with pre-packaged data"""
     

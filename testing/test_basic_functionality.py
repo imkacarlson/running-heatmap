@@ -3,14 +3,16 @@ Basic functionality tests for the mobile app
 Tests existing features to verify the testing framework works
 """
 import time
+import pytest
 from base_test import BaseTest
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 
 class TestBasicFunctionality(BaseTest):
     
+    @pytest.mark.legacy
     def test_app_launches_successfully(self):
-        """Test that the app launches and basic UI elements are present"""
+        """Test that the app launches and basic UI elements are present - REDUNDANT: App launch is verified in rock-solid test"""
         print("Testing app launch...")
         
         # Give app extra time to fully load
@@ -31,6 +33,7 @@ class TestBasicFunctionality(BaseTest):
         
         print("✅ App launched successfully and map container found")
         
+    @pytest.mark.core
     def test_map_controls_present(self):
         """Test that map control buttons are present and visible"""
         print("Testing map controls...")
@@ -62,6 +65,7 @@ class TestBasicFunctionality(BaseTest):
         self.take_screenshot("02_map_controls_visible")
         print("✅ All map controls are present and visible")
         
+    @pytest.mark.core
     def test_zoom_functionality(self):
         """Test that zoom controls work"""
         print("Testing zoom functionality...")
@@ -97,6 +101,7 @@ class TestBasicFunctionality(BaseTest):
         self.take_screenshot("03_zoom_functionality")
         print("✅ Zoom functionality works correctly")
         
+    @pytest.mark.core
     def test_extras_panel_opens(self):
         """Test that the extras panel opens when button is clicked"""
         print("Testing extras panel...")

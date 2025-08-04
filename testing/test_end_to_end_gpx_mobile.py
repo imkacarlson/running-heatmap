@@ -105,8 +105,9 @@ class TestMobileApp:
             print(f"⚠️ Screenshot failed: {e}")
             return None
     
+    @pytest.mark.legacy
     def test_app_launches_with_test_data(self, fresh_app_session):
-        """Test that app launches successfully with test data"""
+        """Test that app launches successfully with test data - REDUNDANT: App launch is verified in rock-solid test"""
         print("🧪 Testing app launch with test data...")
         
         # Setup mobile driver
@@ -144,8 +145,9 @@ class TestMobileApp:
             if hasattr(self, 'driver') and self.driver:
                 self.driver.quit()
     
+    @pytest.mark.legacy
     def test_test_activity_is_visible_on_map(self, fresh_app_session):
-        """Test that the test activity is actually visible on the map"""  
+        """Test that the test activity is actually visible on the map - REDUNDANT: Use rock-solid test instead"""  
         print("🧪 Testing test activity visualization...")
         
         # Setup mobile driver

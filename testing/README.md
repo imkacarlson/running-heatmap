@@ -122,22 +122,26 @@ Keep this running - you'll see Appium server logs here.
 cd testing  
 source test_venv/bin/activate
 
-# Run ALL mobile tests (using pytest markers - the expert way!)
-python -m pytest -m mobile
+# 🏆 RECOMMENDED: Run core test suite (streamlined, no redundancy)
+python -m pytest -m core --fast
 
-# Run ALL tests (mobile + legacy)
-python -m pytest
-
-# ⚡ FAST MODE: Skip APK builds for rapid iteration (use existing APK)
+# Run ALL mobile tests (includes redundant legacy tests)
 python -m pytest -m mobile --fast
 
-# Run individual test suites by marker
-python -m pytest -m mobile test_mobile_with_fixtures.py     # App functionality tests
-python -m pytest -m mobile test_basic_lasso_selection.py    # Lasso precision tests
-python -m pytest -m mobile test_end_to_end_gpx_mobile.py    # End-to-end pipeline tests
+# ⚡ CORE TESTS: Essential functionality only (FAST)
+python -m pytest -m core             # Full build + core tests
+python -m pytest -m core --fast      # Skip builds + core tests
 
-# Run specific test with fast mode
-python -m pytest test_basic_lasso_selection.py::TestBasicLassoSelection::test_basic_lasso_polygon_selection -v -s --fast
+# Legacy tests (redundant, for reference only)
+python -m pytest -m legacy --fast
+
+# Run specific core test suites
+python -m pytest test_mobile_with_fixtures.py::TestMobileAppWithTestData::test_activity_definitely_visible --fast  # Rock-solid verification
+python -m pytest test_upload_functionality.py --fast                        # Upload functionality
+python -m pytest test_basic_lasso_selection.py --fast                       # Lasso selection
+
+# Run ALL tests (core + mobile + legacy)
+python -m pytest
 ```
 
 **🚀 Fast Mode Testing:**
@@ -163,18 +167,30 @@ python -m pytest test_basic_functionality.py -v -s
 
 ## Test Structure
 
-### New Fixture-Based Tests (Recommended)
+### 🏆 Core Test Suite (Recommended)
 
-**`test_mobile_with_fixtures.py`** - Uses session-scoped fixtures:
-- ✅ App launches with isolated test data
-- ✅ Test activity visualization on map
-- ✅ Automatic APK building with test data only
-- ✅ Screenshots and visual verification
+**Streamlined essential tests with no redundancy:**
 
-**`test_end_to_end_gpx_mobile.py`** - End-to-end pipeline tests:
-- ✅ Data pipeline validation (GPX → runs.pkl → PMTiles)
-- ✅ APK build validation
-- ✅ Complete integration testing
+**`test_mobile_with_fixtures.py`** - Rock-solid activity verification:  
+- ✅ `test_activity_definitely_visible` - **Rock-solid packaged activity verification** (pixel + viewport + feature detection)
+
+**`test_upload_functionality.py`** - Upload functionality:
+- ✅ `test_upload_gpx_file_flow` - Complete upload flow with coordinate-specific verification
+
+**`test_basic_lasso_selection.py`** - Lasso selection:
+- ✅ `test_basic_lasso_polygon_selection` - Lasso polygon selection with precision verification
+
+**`test_basic_functionality.py`** - Core UI functionality:
+- ✅ `test_map_controls_present` - Map controls presence and visibility
+- ✅ `test_zoom_functionality` - Zoom controls functionality
+- ✅ `test_extras_panel_opens` - Extras panel functionality
+
+### Legacy Tests (Reference Only)
+
+**Redundant tests marked for exclusion from default runs:**
+- App launch tests (redundant - covered in rock-solid test)
+- Duplicate activity visibility tests (use rock-solid test instead)
+- Other legacy functionality tests
 
 **Session-Scoped Fixtures (`conftest.py`)**:
 - `isolated_test_environment` - Creates temporary test env with GPX data

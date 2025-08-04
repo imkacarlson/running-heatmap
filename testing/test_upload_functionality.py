@@ -51,6 +51,7 @@ def mobile_driver(test_emulator_with_apk):
 
 
 @pytest.mark.mobile
+@pytest.mark.core
 class TestUploadFunctionality:
     """Test upload functionality with rock-solid activity verification"""
     

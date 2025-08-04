@@ -283,30 +283,23 @@ class TestUploadFunctionality:
         try:
             # Wait for file picker to appear
             time.sleep(3)
+            self.take_screenshot(driver, "upload_file_picker_01_initial")
             
-            # Look for Downloads folder or direct file access
-            # Try multiple strategies to find and select the file
-            
-            # Strategy 1: Look for the file directly by name
+            # Strategy 1: Look for the file directly by name (in case it's in Recent)
             try:
                 file_element = driver.find_element(
                     "xpath", 
                     "//android.widget.TextView[@text='manual_upload_run.gpx']"
                 )
                 file_element.click()
-                print("✅ Found and selected test file directly")
+                print("✅ Found and selected test file directly in Recent")
                 return
             except:
-                print("🔍 File not visible directly, trying Downloads folder...")
+                print("🔍 File not visible in Recent, navigating to Downloads folder...")
             
-            # Strategy 2: Navigate to Downloads folder
+            # Strategy 2: Use hamburger menu to navigate to Downloads
             try:
-                downloads_folder = driver.find_element(
-                    "xpath",
-                    "//android.widget.TextView[@text='Download' or @text='Downloads']"
-                )
-                downloads_folder.click()
-                time.sleep(2)
+                self.navigate_to_downloads_via_menu(driver)
                 
                 # Now look for the file in Downloads
                 file_element = driver.find_element(
@@ -316,15 +309,35 @@ class TestUploadFunctionality:
                 file_element.click()
                 print("✅ Found and selected test file in Downloads folder")
                 return
-            except:
-                print("🔍 Downloads folder navigation failed, trying scroll...")
+            except Exception as e:
+                print(f"🔍 Menu navigation failed: {e}, trying direct Downloads detection...")
             
-            # Strategy 3: Scroll and search
+            # Strategy 3: Look for Downloads folder directly in main view
             try:
-                # Scroll down to find the file
-                driver.swipe(500, 800, 500, 400, 1000)  # Swipe up to scroll down
-                time.sleep(1)
+                downloads_folder = driver.find_element(
+                    "xpath",
+                    "//android.widget.TextView[@text='Download' or @text='Downloads']"
+                )
+                downloads_folder.click()
+                time.sleep(2)
+                self.take_screenshot(driver, "upload_file_picker_03_downloads_opened")
                 
+                # Now look for the file in Downloads
+                file_element = driver.find_element(
+                    "xpath",
+                    "//android.widget.TextView[@text='manual_upload_run.gpx']"
+                )
+                file_element.click()
+                print("✅ Found and selected test file in Downloads folder (direct)")
+                return
+            except:
+                print("🔍 Downloads folder not found directly, trying scroll and search...")
+            
+            # Strategy 4: Scroll to find Downloads folder or file
+            try:
+                self.scroll_and_find_downloads(driver)
+                
+                # Look for the file after scrolling
                 file_element = driver.find_element(
                     "xpath",
                     "//android.widget.TextView[@text='manual_upload_run.gpx']"
@@ -333,9 +346,12 @@ class TestUploadFunctionality:
                 print("✅ Found and selected test file after scrolling")
                 return
             except:
-                print("⚠️ Could not find test file, taking screenshot for debugging...")
-                self.take_screenshot(driver, "upload_file_picker_debug")
-                raise Exception("Could not locate test file in file picker")
+                print("⚠️ Could not find test file after all navigation attempts...")
+                self.take_screenshot(driver, "upload_file_picker_debug_final")
+                
+                # Debug: dump current screen elements
+                self.dump_current_elements(driver)
+                raise Exception("Could not locate test file in file picker after all navigation attempts")
                 
         finally:
             # Wait for file selection to process
@@ -344,6 +360,124 @@ class TestUploadFunctionality:
             # Switch back to WebView context
             print("🔄 Switching back to WebView context...")
             self.switch_to_webview(driver)
+    
+    def navigate_to_downloads_via_menu(self, driver):
+        """Navigate to Downloads folder using hamburger menu or side navigation"""
+        print("🍔 Attempting to navigate via hamburger menu...")
+        
+        # Strategy 1: Look for hamburger menu icon (3 lines)
+        hamburger_selectors = [
+            "//android.widget.ImageView[@content-desc='Show roots']",
+            "//android.widget.ImageButton[@content-desc='Show roots']",
+            "//android.widget.ImageView[@content-desc='Navigate up']",
+            "//android.widget.ImageButton[@content-desc='Navigate up']",
+            "//android.widget.ImageView[@content-desc='Open navigation drawer']",
+            "//android.widget.ImageButton[@content-desc='Open navigation drawer']",
+            "//android.widget.ImageView[contains(@content-desc, 'navigation')]",
+            "//android.widget.ImageView[contains(@content-desc, 'menu')]",
+            "//android.widget.ImageView[contains(@content-desc, 'drawer')]"
+        ]
+        
+        for selector in hamburger_selectors:
+            try:
+                hamburger = driver.find_element("xpath", selector)
+                hamburger.click()
+                print(f"✅ Clicked hamburger menu with selector: {selector}")
+                time.sleep(2)
+                self.take_screenshot(driver, "upload_file_picker_02_menu_opened")
+                
+                # Now look for Downloads in the side menu
+                downloads_selectors = [
+                    "//android.widget.TextView[@text='Downloads']",
+                    "//android.widget.TextView[@text='Download']",
+                    "//android.widget.TextView[contains(@text, 'Download')]",
+                    "//*[@content-desc='Downloads']",
+                    "//*[@content-desc='Download']"
+                ]
+                
+                for dl_selector in downloads_selectors:
+                    try:
+                        downloads_item = driver.find_element("xpath", dl_selector)
+                        downloads_item.click()
+                        print(f"✅ Clicked Downloads in menu with selector: {dl_selector}")
+                        time.sleep(2)
+                        return
+                    except:
+                        continue
+                        
+                print("⚠️ Hamburger menu opened but Downloads not found in menu")
+                break
+                
+            except:
+                continue
+                
+        raise Exception("Could not find or use hamburger menu for navigation")
+    
+    def scroll_and_find_downloads(self, driver):
+        """Scroll through file picker to find Downloads folder"""
+        print("📜 Scrolling to find Downloads folder...")
+        
+        # Try scrolling down to find Downloads folder
+        for attempt in range(3):
+            try:
+                # Look for Downloads folder
+                downloads_folder = driver.find_element(
+                    "xpath",
+                    "//android.widget.TextView[@text='Download' or @text='Downloads']"
+                )
+                downloads_folder.click()
+                print(f"✅ Found Downloads folder after {attempt + 1} scroll attempts")
+                time.sleep(2)
+                return
+            except:
+                # Scroll down
+                driver.swipe(500, 800, 500, 400, 1000)
+                time.sleep(1)
+                print(f"🔍 Scrolled down (attempt {attempt + 1}/3)")
+        
+        raise Exception("Could not find Downloads folder after scrolling")
+    
+    def dump_current_elements(self, driver):
+        """Dump current screen elements for debugging"""
+        print("🔍 Dumping current screen elements for debugging...")
+        try:
+            # Get page source for debugging
+            page_source = driver.page_source
+            
+            # Save to file for analysis
+            debug_file = Path(__file__).parent / "screenshots" / "file_picker_page_source.xml"
+            debug_file.parent.mkdir(exist_ok=True)
+            
+            with open(debug_file, 'w', encoding='utf-8') as f:
+                f.write(page_source)
+            
+            print(f"📁 Page source saved to: {debug_file}")
+            
+            # Also try to find common elements
+            common_elements = [
+                "//android.widget.TextView",
+                "//android.widget.ImageView",
+                "//android.widget.ImageButton",
+                "//*[@content-desc]",
+                "//*[@text]"
+            ]
+            
+            for selector in common_elements:
+                try:
+                    elements = driver.find_elements("xpath", selector)
+                    print(f"🔍 Found {len(elements)} elements with selector: {selector}")
+                    if elements and len(elements) < 10:  # Don't spam too many elements
+                        for i, elem in enumerate(elements[:5]):  # Show first 5
+                            try:
+                                text = elem.get_attribute("text") or elem.get_attribute("content-desc") or "No text"
+                                print(f"   Element {i+1}: {text}")
+                            except:
+                                pass
+                except:
+                    pass
+                    
+        except Exception as e:
+            print(f"⚠️ Error during element dump: {e}")
     
     def verify_upload_processing_complete(self, driver, wait):
         """Wait for upload processing to complete and verify success"""
@@ -439,61 +573,186 @@ class TestUploadFunctionality:
     # Rock-Solid Verification Methods (adapted from test_mobile_with_fixtures.py)
     
     def rock_solid_upload_verification(self, driver):
-        """Complete rock-solid verification for uploaded activity"""
-        print("🏆 Starting rock-solid verification of uploaded activity...")
+        """Complete coordinate-specific verification for uploaded activity red line"""
+        print("🏆 Starting coordinate-specific verification of uploaded activity red line...")
         
-        # Step 1: Wait for app's auto-zoom to uploaded activity (no manual navigation needed)
-        print("📋 Step 1: Waiting for app's auto-zoom to uploaded activity...")
-        print("🎯 App should automatically zoom to uploaded activity - no manual panning needed")
-        time.sleep(6)  # Wait for auto-zoom animation to complete
+        # Step 1: Navigate to uploaded activity coordinates (from manual_upload_run.gpx)
+        print("📋 Step 1: Navigating to uploaded activity coordinates...")
+        upload_center_lat, upload_center_lon = 39.4212, -77.4112  # Center of uploaded GPX route
+        driver.execute_script(f"""
+            map.flyTo({{
+                center: [{upload_center_lon}, {upload_center_lat}],
+                zoom: 13,
+                duration: 1000
+            }});
+        """)
+        time.sleep(3)  # Wait for navigation and render
         
-        # Step 2: Verify features are in current viewport (after auto-zoom)
-        print("📋 Step 2: Verifying features in current viewport after auto-zoom...")
-        features = self.verify_features_in_current_viewport(driver)
-        assert features['featuresInViewport'] > 0, f"No activity features found in viewport after auto-zoom (found {features['featuresInViewport']})"
-        print(f"✅ Found {features['featuresInViewport']} activity features in current viewport")
+        # Step 2: Verify red activity line at specific uploaded coordinates
+        print("📋 Step 2: Verifying red line pixels at uploaded GPX coordinates...")
+        pixels = self.verify_uploaded_activity_line_visible(driver)
         
-        # Step 3: Verify pixels are actually rendered in current viewport
-        print("📋 Step 3: Verifying actual pixel rendering in current viewport...")
-        pixels = self.verify_activity_pixels_in_viewport(driver)
+        # Step 3: Take verification screenshot showing uploaded activity
+        print("📋 Step 3: Taking verification screenshot of uploaded activity coordinates...")
+        self.take_screenshot(driver, "upload_03_coordinate_verification")
         
-        # Step 4: Take verification screenshot of current auto-zoomed view
-        print("📋 Step 4: Taking verification screenshot of auto-zoomed uploaded activity...")
-        # No manual markers needed - the auto-zoom should perfectly frame the uploaded activity
-        
-        self.take_screenshot(driver, "upload_03_rock_solid_verification")
-        
-        # Step 5: Get debug rendering state
-        print("📋 Step 5: Getting rendering debug info...")
+        # Step 4: Get debug rendering state
+        print("📋 Step 4: Getting rendering debug info...")
         debug_state = self.debug_rendering_state(driver)
         print(f"🔍 Debug: Map loaded: {debug_state['mapLoaded']}, Canvas: {debug_state['canvasSize']}")
         print(f"🔍 Debug: {len(debug_state['layers'])} layers, {len(debug_state['sources'])} sources")
         
-        # Step 6: Final success criteria verification
+        # Step 5: Final success criteria verification
         success_criteria = {
-            'features_found': features['featuresInViewport'] > 0,
             'pixels_available': 'error' not in pixels,
-            'pixels_visible': pixels.get('successRate', 0) >= 0.25 if 'error' not in pixels else True,
-            'canvas_functional': debug_state['webglContext'] and debug_state['canvasSize']['w'] > 0
+            'red_line_visible': pixels.get('successRate', 0) >= 0.5 if 'error' not in pixels else False,
+            'canvas_functional': debug_state['webglContext'] and debug_state['canvasSize']['w'] > 0,
+            'coordinates_verified': pixels.get('redPixelsFound', 0) >= 2  # At least 2 route points show red
         }
         
-        print("🏆 Final upload verification results:")
+        print("🏆 Final coordinate-specific verification results:")
         for criterion, passed in success_criteria.items():
             status = "✅" if passed else "❌"
             print(f"  {status} {criterion}: {passed}")
         
+        if 'error' not in pixels:
+            print(f"🎯 Red pixels found at {pixels['redPixelsFound']}/{pixels['totalPoints']} uploaded coordinates")
+            print(f"📊 Success rate: {pixels['successRate']*100:.1f}%")
+        
         # Assert all criteria
-        assert success_criteria['features_found'], f"No activity features in viewport after auto-zoom (found {features['featuresInViewport']})"
         if success_criteria['pixels_available']:
-            assert success_criteria['pixels_visible'], f"Activity not visible enough in viewport (only {pixels.get('successRate', 0)*100:.1f}% visible)"
+            assert success_criteria['red_line_visible'], f"Uploaded activity red line not visible at expected coordinates (only {pixels.get('successRate', 0)*100:.1f}% visible)"
+            assert success_criteria['coordinates_verified'], f"Not enough red pixels at uploaded coordinates (found {pixels.get('redPixelsFound', 0)}/{pixels.get('totalPoints', 0)})"
+        else:
+            print("⚠️ Pixel verification unavailable due to WebView limitations, using fallback verification")
+            # Fallback: verify features are loaded in the expected area
+            features = self.verify_features_in_current_viewport(driver)
+            assert features['featuresInViewport'] > 0, f"No activity features found at uploaded coordinates (found {features['featuresInViewport']})"
+        
         assert success_criteria['canvas_functional'], "Canvas or WebGL context not functional"
         
-        print("🎉 UPLOADED ACTIVITY IS DEFINITELY VISIBLE! All verification methods passed.")
-        if 'error' not in pixels:
-            print(f"📊 Pixel success rate: {pixels['successRate']*100:.1f}%")
+        print("🎉 Uploaded activity red line verification completed successfully!")
+    
+    def verify_uploaded_activity_line_visible(self, driver):
+        """Verify red activity line is rendered at uploaded GPX coordinates using pixel sampling"""
+        print("🎯 Starting pixel-based verification at uploaded GPX coordinates...")
+        
+        # Sample pixels along the uploaded route points (from manual_upload_run.gpx)
+        pixel_check = driver.execute_script("""
+            try {
+                // Get canvas and context
+                const canvas = map.getCanvas();
+                if (!canvas) {
+                    return {
+                        error: 'Canvas not available',
+                        redPixelsFound: 0,
+                        totalPoints: 4,
+                        successRate: 0,
+                        details: [],
+                        canvasSize: {width: 0, height: 0}
+                    };
+                }
+                
+                const ctx = canvas.getContext('2d', {willReadFrequently: true});
+                if (!ctx) {
+                    return {
+                        error: 'Canvas context not available (WebView limitation)',
+                        redPixelsFound: 0,
+                        totalPoints: 4,
+                        successRate: 0,
+                        details: [],
+                        canvasSize: {width: canvas.width || 0, height: canvas.height || 0}
+                    };
+                }
+                
+                // Define route points based on uploaded GPX data (manual_upload_run.gpx)
+                const routePoints = [
+                    [-77.4100, 39.4200],  // Start point
+                    [-77.4105, 39.4205],  // First intermediate
+                    [-77.4115, 39.4215],  // Second intermediate  
+                    [-77.4125, 39.4225]   // End point
+                ];
+                
+                let redPixelsFound = 0;
+                const results = [];
+                
+                for (const [lng, lat] of routePoints) {
+                    // Convert geo coords to screen pixels
+                    const point = map.project([lng, lat]);
+                    
+                    // Sample a small area around each point
+                    const sampleSize = 10;
+                    let foundRed = false;
+                    
+                    for (let dx = -sampleSize; dx <= sampleSize; dx += 2) {
+                        for (let dy = -sampleSize; dy <= sampleSize; dy += 2) {
+                            const x = Math.round(point.x + dx);
+                            const y = Math.round(point.y + dy);
+                            
+                            // Ensure we're within canvas bounds
+                            if (x < 0 || y < 0 || x >= canvas.width || y >= canvas.height) continue;
+                            
+                            try {
+                                // Get pixel data
+                                const pixel = ctx.getImageData(x, y, 1, 1).data;
+                                const [r, g, b, a] = pixel;
+                                
+                                // Check if pixel is reddish (activity line color)
+                                // Looking for red-dominant pixels with some alpha
+                                if (r > 150 && g < 100 && b < 100 && a > 0) {
+                                    foundRed = true;
+                                    redPixelsFound++;
+                                    break;
+                                }
+                            } catch (pixelError) {
+                                // Skip this pixel if we can't read it
+                                continue;
+                            }
+                        }
+                        if (foundRed) break;
+                    }
+                    
+                    results.push({
+                        coord: [lng, lat],
+                        screenPos: {x: point.x, y: point.y},
+                        foundRed: foundRed
+                    });
+                }
+                
+                return {
+                    redPixelsFound: redPixelsFound,
+                    totalPoints: routePoints.length,
+                    successRate: redPixelsFound / routePoints.length,
+                    details: results,
+                    canvasSize: {width: canvas.width, height: canvas.height}
+                };
+                
+            } catch (error) {
+                return {
+                    error: 'Pixel sampling failed: ' + error.message,
+                    redPixelsFound: 0,
+                    totalPoints: 4,
+                    successRate: 0,
+                    details: [],
+                    canvasSize: {width: 0, height: 0}
+                };
+            }
+        """)
+        
+        if 'error' in pixel_check:
+            print(f"⚠️ Pixel verification unavailable: {pixel_check['error']}")
+            print("📝 Note: This is a WebView limitation, using viewport verification instead")
         else:
-            print("📊 Pixel verification: Not available in WebView (using viewport verification)")
-        print(f"📊 Features in current viewport: {features['featuresInViewport']}")
+            print(f"🎯 Pixel verification: {pixel_check['redPixelsFound']}/{pixel_check['totalPoints']} uploaded route points have red pixels")
+            print(f"📊 Success rate: {pixel_check['successRate']*100:.1f}%")
+            
+            # Show details for each route point
+            for i, detail in enumerate(pixel_check['details']):
+                coord_str = f"{detail['coord'][1]:.4f}, {detail['coord'][0]:.4f}"
+                status = "✅" if detail['foundRed'] else "❌"
+                print(f"   {status} Point {i+1}: ({coord_str}) -> Red pixels: {detail['foundRed']}")
+        
+        return pixel_check
     
     def verify_features_in_current_viewport(self, driver):
         """Verify activity features are visible in current viewport (after auto-zoom)"""

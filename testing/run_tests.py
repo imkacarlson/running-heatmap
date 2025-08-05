@@ -20,28 +20,27 @@ from pathlib import Path
 def parse_arguments():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(
-        description="Enhanced test runner for Running Heatmap mobile app",
+        description="Enhanced test runner for Running Heatmap mobile app (defaults: core tests, auto-emulator, no browser)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python run_tests.py --core --fast --auto-emulator    # Full automation with cleanup
-  python run_tests.py --mobile                         # Full mobile test suite  
-  python run_tests.py --core --fast --keep-emulator    # Keep emulator running
-  python run_tests.py --legacy --keep-app              # Keep test app installed
-  python run_tests.py --no-browser                     # Don't open report in browser
+  python run_tests.py                          # Core tests with auto-emulator (most common)
+  python run_tests.py --fast                   # Core tests in fast mode
+  python run_tests.py --mobile                 # Full mobile test suite
+  python run_tests.py --browser                # Core tests with browser report
+  python run_tests.py --manual-emulator        # Core tests with manual emulator
+  python run_tests.py --legacy --keep-app      # Legacy tests, keep app installed
         """
     )
     
-    # Test suite selection
+    # Test suite selection (defaults to core tests)
     suite_group = parser.add_mutually_exclusive_group()
-    suite_group.add_argument('--core', action='store_true', 
-                           help='Run core essential tests only (recommended)')
     suite_group.add_argument('--mobile', action='store_true',
-                           help='Run all mobile tests')
+                           help='Run all mobile tests (default: core tests)')
     suite_group.add_argument('--legacy', action='store_true',
-                           help='Run legacy tests only')
+                           help='Run legacy tests only (default: core tests)')
     suite_group.add_argument('--integration', action='store_true',
-                           help='Run integration tests only')
+                           help='Run integration tests only (default: core tests)')
     
     # Test execution options
     parser.add_argument('--fast', action='store_true',
@@ -50,8 +49,8 @@ Examples:
                        help='Enable verbose output')
     
     # Infrastructure management
-    parser.add_argument('--auto-emulator', action='store_true',
-                       help='Automatically start emulator if no devices connected')
+    parser.add_argument('--manual-emulator', action='store_true',
+                       help='Disable automatic emulator startup (default: auto-start emulator if needed)')
     parser.add_argument('--emulator-name', default='TestDevice',
                        help='Name of AVD to start (default: TestDevice)')
     parser.add_argument('--keep-emulator', action='store_true',
@@ -60,8 +59,8 @@ Examples:
                        help='Keep test app installed after tests (default: uninstall for fresh runs)')
     
     # Reporting options
-    parser.add_argument('--no-browser', action='store_true',
-                       help="Don't automatically open test report in browser")
+    parser.add_argument('--browser', action='store_true',
+                       help='Automatically open test report in browser (default: no browser)')
     parser.add_argument('--report-file', default='reports/test_report.html',
                        help='Path for HTML test report (default: reports/test_report.html)')
     parser.add_argument('--keep-old-screenshots', action='store_true',
@@ -129,12 +128,12 @@ def check_and_start_emulator(args):
             print(f"   - {device}")
         return True
     
-    if not args.auto_emulator:
+    if args.manual_emulator:
         print("❌ No Android devices/emulators connected")
-        print("   Options:")
+        print("   Manual emulator mode enabled. Options:")
         print("   1. Start an Android emulator manually")
         print("   2. Connect a physical device")
-        print("   3. Use --auto-emulator flag to start emulator automatically")
+        print("   3. Remove --manual-emulator flag for automatic startup")
         print("   4. Run ./setup_emulator.sh for guided setup")
         return False
     
@@ -272,10 +271,6 @@ def build_pytest_command(args):
     if args.tests:
         # Specific test files provided
         cmd.extend(args.tests)
-    elif args.core:
-        cmd.extend(['-m', 'core'])
-        if args.fast:
-            cmd.append('--fast')
     elif args.mobile:
         cmd.extend(['-m', 'mobile'])
         if args.fast:
@@ -289,8 +284,7 @@ def build_pytest_command(args):
         if args.fast:
             cmd.append('--fast')
     else:
-        # Default: run core tests (recommended)
-        print("ℹ️  No test suite specified, running core tests (recommended)")
+        # Default: run core tests
         cmd.extend(['-m', 'core'])
         if args.fast:
             cmd.append('--fast')
@@ -312,15 +306,16 @@ def build_pytest_command(args):
 def run_tests(args):
     """Enhanced test execution with intelligent discovery"""
     # Determine what we're running
-    suite_name = "custom tests" if args.tests else "core tests"
-    if args.core:
-        suite_name = "core tests"
+    if args.tests:
+        suite_name = "custom tests"
     elif args.mobile:
         suite_name = "mobile tests"
     elif args.legacy:
         suite_name = "legacy tests"
     elif args.integration:
         suite_name = "integration tests"
+    else:
+        suite_name = "core tests"
     
     mode_desc = " (fast mode)" if args.fast else " (full build mode)"
     print(f"🧪 Running {suite_name}{mode_desc}...")
@@ -403,7 +398,7 @@ def print_test_summary(exit_code, args):
         print("❌ RESULT: Some tests failed")
     
     # Test configuration
-    suite = "core" if args.core else "mobile" if args.mobile else "legacy" if args.legacy else "integration" if args.integration else "custom" if args.tests else "core (default)"
+    suite = "mobile" if args.mobile else "legacy" if args.legacy else "integration" if args.integration else "custom" if args.tests else "core"
     mode = "fast mode" if args.fast else "full build mode"
     print(f"🧪 SUITE: {suite}")
     print(f"⚡ MODE: {mode}")
@@ -515,7 +510,7 @@ def kill_emulator_processes(processes, verbose=False):
 
 def shutdown_emulator(args, verbose=False):
     """Enhanced multi-method emulator shutdown"""
-    if not args.auto_emulator:
+    if args.manual_emulator:
         print("📱 Emulator was manually started - leaving it running")
         return
         
@@ -749,7 +744,7 @@ def main():
         print_test_summary(exit_code, args)
         
         # Open test report
-        open_test_report(args.report_file, args.no_browser)
+        open_test_report(args.report_file, not args.browser)
         
     except KeyboardInterrupt:
         print("\n⏹️  Tests interrupted by user")

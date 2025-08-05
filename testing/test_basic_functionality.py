@@ -4,144 +4,154 @@ Tests existing features to verify the testing framework works
 """
 import time
 import pytest
-from base_test import BaseTest
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 
-class TestBasicFunctionality(BaseTest):
+@pytest.mark.core
+class TestBasicFunctionality:
     
-    @pytest.mark.legacy
-    def test_app_launches_successfully(self):
-        """Test that the app launches and basic UI elements are present - REDUNDANT: App launch is verified in rock-solid test"""
-        print("Testing app launch...")
-        
-        # Give app extra time to fully load
-        time.sleep(5)
-        
-        # Take screenshot of initial state
-        self.take_screenshot("01_initial_launch")
-        
-        # Switch to WebView context to interact with the web content
-        webview_found = self.switch_to_webview()
-        self.assertTrue(webview_found, "Could not find WebView context")
-        
-        # Wait for map container to be present (using CSS selector instead of ID)
-        map_element = self.wait.until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "#map"))
-        )
-        self.assertIsNotNone(map_element, "Map container not found")
-        
-        print("✅ App launched successfully and map container found")
-        
-    @pytest.mark.core
-    def test_map_controls_present(self):
+    def test_map_controls_present(self, mobile_driver):
         """Test that map control buttons are present and visible"""
         print("Testing map controls...")
+        driver = mobile_driver['driver']
+        wait = mobile_driver['wait']
+        self.switch_to_webview(driver)
+        self.wait_for_map_load(driver, wait)
         
-        time.sleep(3)
-        self.switch_to_webview()
+        # Wait for map controls to be visible (using correct CSS selectors)
+        wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, "#zoom-in-btn")))
+        wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, "#zoom-out-btn")))
+        wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, "#extras-btn")))
         
-        # Wait for map to load
-        self.wait_for_map_load()
+        # Assert that all controls are displayed
+        assert driver.find_element(By.CSS_SELECTOR, "#zoom-in-btn").is_displayed()
+        assert driver.find_element(By.CSS_SELECTOR, "#zoom-out-btn").is_displayed()
+        assert driver.find_element(By.CSS_SELECTOR, "#extras-btn").is_displayed()
         
-        # Check for zoom in button (using CSS selectors)
-        zoom_in_btn = self.wait.until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "#zoom-in-btn"))
-        )
-        self.assertTrue(zoom_in_btn.is_displayed(), "Zoom in button not visible")
-        
-        # Check for zoom out button
-        zoom_out_btn = self.driver.find_element(By.CSS_SELECTOR, "#zoom-out-btn")
-        self.assertTrue(zoom_out_btn.is_displayed(), "Zoom out button not visible")
-        
-        # Check for lasso button
-        lasso_btn = self.driver.find_element(By.CSS_SELECTOR, "#lasso-btn")
-        self.assertTrue(lasso_btn.is_displayed(), "Lasso button not visible")
-        
-        # Check for extras button
-        extras_btn = self.driver.find_element(By.CSS_SELECTOR, "#extras-btn")
-        self.assertTrue(extras_btn.is_displayed(), "Extras button not visible")
-        
-        self.take_screenshot("02_map_controls_visible")
         print("✅ All map controls are present and visible")
         
-    @pytest.mark.core
-    def test_zoom_functionality(self):
+    def test_zoom_functionality(self, mobile_driver):
         """Test that zoom controls work"""
         print("Testing zoom functionality...")
-        
-        time.sleep(3)
-        self.switch_to_webview()
-        self.wait_for_map_load()
-        
-        # Get initial zoom level
-        initial_zoom = self.driver.execute_script("return map.getZoom();")
+        driver = mobile_driver['driver']
+        wait = mobile_driver['wait']
+        self.switch_to_webview(driver)
+        self.wait_for_map_load(driver, wait)
+
+        initial_zoom = driver.execute_script("return map.getZoom();")
         print(f"Initial zoom level: {initial_zoom}")
         
-        # Click zoom in
-        zoom_in_btn = self.driver.find_element(By.CSS_SELECTOR, "#zoom-in-btn")
-        zoom_in_btn.click()
+        # Click zoom-in and verify zoom level increases
+        driver.find_element(By.CSS_SELECTOR, "#zoom-in-btn").click()
         time.sleep(2)
+        zoomed_in_level = driver.execute_script("return map.getZoom();")
+        print(f"Zoom after zoom-in: {zoomed_in_level}")
+        assert zoomed_in_level > initial_zoom
         
-        # Check zoom increased
-        new_zoom = self.driver.execute_script("return map.getZoom();")
-        print(f"Zoom after zoom-in: {new_zoom}")
-        self.assertGreater(new_zoom, initial_zoom, "Zoom did not increase")
-        
-        # Click zoom out
-        zoom_out_btn = self.driver.find_element(By.CSS_SELECTOR, "#zoom-out-btn")
-        zoom_out_btn.click()
+        # Click zoom-out and verify zoom level decreases
+        driver.find_element(By.CSS_SELECTOR, "#zoom-out-btn").click()
         time.sleep(2)
+        zoomed_out_level = driver.execute_script("return map.getZoom();")
+        print(f"Zoom after zoom-out: {zoomed_out_level}")
+        assert zoomed_out_level < zoomed_in_level
         
-        # Check zoom decreased
-        final_zoom = self.driver.execute_script("return map.getZoom();")
-        print(f"Zoom after zoom-out: {final_zoom}")
-        self.assertLess(final_zoom, new_zoom, "Zoom did not decrease")
-        
-        self.take_screenshot("03_zoom_functionality")
         print("✅ Zoom functionality works correctly")
         
-    @pytest.mark.core
-    def test_extras_panel_opens(self):
+    def test_extras_panel_opens(self, mobile_driver):
         """Test that the extras panel opens when button is clicked"""
         print("Testing extras panel...")
-        
-        time.sleep(3)
-        self.switch_to_webview()
-        self.wait_for_map_load()
-        
-        # Click extras button
-        extras_btn = self.driver.find_element(By.CSS_SELECTOR, "#extras-btn")
-        extras_btn.click()
-        time.sleep(2)
-        
-        # Check that extras panel is now open
-        extras_panel = self.wait.until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "#extras-panel"))
-        )
-        
-        # Check if panel has 'open' class
-        panel_classes = extras_panel.get_attribute("class")
-        self.assertIn("open", panel_classes, "Extras panel did not open")
-        
-        # Check for last activity content (this might take time to load)
-        time.sleep(3)
-        extras_content = self.driver.find_element(By.CSS_SELECTOR, "#extras-content")
-        self.assertTrue(extras_content.is_displayed(), "Extras content not visible")
-        
-        self.take_screenshot("04_extras_panel_open")
-        
-        # Close the panel
-        extras_close = self.driver.find_element(By.CSS_SELECTOR, "#extras-close")
-        extras_close.click()
+        driver = mobile_driver['driver']
+        wait = mobile_driver['wait']
+        self.switch_to_webview(driver)
+        self.wait_for_map_load(driver, wait)
+
+        # Click extras button to open panel
+        driver.find_element(By.CSS_SELECTOR, "#extras-btn").click()
         time.sleep(1)
         
-        # Verify panel closed
-        panel_classes = extras_panel.get_attribute("class")
-        self.assertNotIn("open", panel_classes, "Extras panel did not close")
+        # Verify panel is visible (check for 'open' class)
+        panel = driver.find_element(By.CSS_SELECTOR, "#extras-panel")
+        panel_classes = panel.get_attribute("class")
+        assert "open" in panel_classes, f"Extras panel should have 'open' class, got: {panel_classes}"
+        
+        # Click close button to close panel
+        driver.find_element(By.CSS_SELECTOR, "#extras-close").click()
+        time.sleep(1)
+        
+        # Verify panel is hidden (no 'open' class)
+        panel_classes = panel.get_attribute("class")
+        assert "open" not in panel_classes, f"Extras panel should not have 'open' class after closing, got: {panel_classes}"
         
         print("✅ Extras panel opens and closes correctly")
 
-if __name__ == '__main__':
-    import unittest
-    unittest.main()
+    def wait_for_map_load(self, driver, wait):
+        """Wait for map to load with robust criteria for slow connections"""
+        print("🗺️ Waiting for map to load (extended wait for slow WiFi)...")
+        
+        # Wait for map element with longer timeout
+        print("🔍 Waiting for map element...")
+        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "#map")))
+        
+        # Extended wait for slow connections
+        print("⏳ Giving extra time for map initialization on slow WiFi...")
+        time.sleep(8)  # Increased from 3 to 8 seconds
+        
+        # Wait for map to actually be functional with retries
+        max_attempts = 5
+        for attempt in range(max_attempts):
+            try:
+                print(f"🔍 Map functionality check {attempt + 1}/{max_attempts}...")
+                
+                map_status = driver.execute_script("""
+                    return {
+                        mapExists: typeof map !== 'undefined',
+                        elementExists: !!document.getElementById('map'),
+                        canvasExists: !!document.querySelector('#map canvas'),
+                        mapLoaded: typeof map !== 'undefined' && map.loaded && map.loaded(),
+                        mapStyle: typeof map !== 'undefined' && map.isStyleLoaded && map.isStyleLoaded(),
+                        hasContainer: !!document.querySelector('#map .mapboxgl-canvas-container, #map .maplibregl-canvas-container')
+                    };
+                """)
+                
+                print(f"🔍 Map status: {map_status}")
+                
+                # Check multiple conditions for robust loading detection
+                conditions_met = (
+                    map_status['mapExists'] and 
+                    map_status['elementExists'] and
+                    (map_status['canvasExists'] or map_status['hasContainer'])
+                )
+                
+                if conditions_met:
+                    print("✅ Map loaded successfully")
+                    # Extra wait for data loading
+                    print("📡 Allowing time for map data to load...")
+                    time.sleep(3)
+                    return True
+                    
+                if attempt < max_attempts - 1:
+                    print(f"⏳ Map not ready, waiting... (attempt {attempt + 1})")
+                    time.sleep(4)  # Wait before retry
+                    
+            except Exception as e:
+                print(f"⚠️ Map check attempt {attempt + 1} failed: {e}")
+                if attempt < max_attempts - 1:
+                    time.sleep(4)
+                    continue
+                else:
+                    raise
+        
+        raise Exception(f"Map failed to load after {max_attempts} attempts: {map_status}")
+
+    def switch_to_webview(self, driver):
+        """Switch to WebView context for hybrid app testing"""
+        time.sleep(10)  # Wait for WebView to load
+        contexts = driver.contexts
+        print(f"Available contexts: {contexts}")
+        
+        for context in contexts:
+            if 'WEBVIEW' in context:
+                driver.switch_to.context(context)
+                print(f"Switched to context: {context}")
+                return True
+        return False

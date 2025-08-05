@@ -16,42 +16,6 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.common.exceptions import TimeoutException, ElementClickInterceptedException
-from appium import webdriver
-from appium.options.android import UiAutomator2Options
-
-
-@pytest.fixture(scope="function")
-def mobile_driver(test_emulator_with_apk):
-    """Create Appium driver for mobile tests"""
-    print("📱 Starting Appium session...")
-    
-    # Set up Appium options
-    options = UiAutomator2Options()
-    options.platform_name = "Android"
-    options.device_name = "Android Emulator"
-    options.app_package = "com.run.heatmap"
-    options.app_activity = "com.run.heatmap.MainActivity"
-    options.auto_grant_permissions = True
-    options.chromedriver_autodownload = False
-    options.chromedriver_executable = str(Path(__file__).parent / "vetted-drivers/chromedriver-101")
-    options.native_web_screenshot = True
-    options.new_command_timeout = 300
-    options.auto_webview = False
-    
-    # Create driver
-    driver = webdriver.Remote("http://localhost:4723/wd/hub", options=options)
-    wait = WebDriverWait(driver, 30)
-    
-    yield {
-        'driver': driver,
-        'wait': wait,
-        'apk_info': test_emulator_with_apk
-    }
-    
-    # Cleanup
-    print("📱 Closing Appium session...")
-    driver.quit()
-
 
 @pytest.mark.mobile
 @pytest.mark.core

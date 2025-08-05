@@ -14,6 +14,10 @@ import re
 from pathlib import Path
 from PIL import Image
 import pytest_html
+import datetime
+
+# Global variable to track test session start time
+TEST_SESSION_START_TIME = None
 
 def pytest_addoption(parser):
     """Add custom command line options"""
@@ -28,6 +32,17 @@ def pytest_addoption(parser):
 def fast_mode(request):
     """Access the --fast flag value"""
     return request.config.getoption("--fast")
+
+@pytest.fixture(scope="session", autouse=True)
+def test_session_timestamp():
+    """
+    Initialize test session start time to filter screenshots by creation time.
+    This fixture runs automatically for all test sessions.
+    """
+    global TEST_SESSION_START_TIME
+    TEST_SESSION_START_TIME = datetime.datetime.now()
+    print(f"\n🕐 Test session started at: {TEST_SESSION_START_TIME.strftime('%Y-%m-%d %H:%M:%S')}")
+    yield TEST_SESSION_START_TIME
 
 @pytest.fixture(scope="session")
 def session_setup(fast_mode):
@@ -208,6 +223,7 @@ def mobile_driver(test_emulator_with_apk):
 def find_test_screenshots(test_nodeid, screenshots_dir):
     """
     Find screenshots associated with a specific test based on naming patterns.
+    Only includes screenshots created during the current test session.
     
     Actual patterns found in the codebase:
     - lasso_basic_##_description.png (for lasso tests)
@@ -215,8 +231,17 @@ def find_test_screenshots(test_nodeid, screenshots_dir):
     - ##_fixture_description.png (for fixture tests)
     - rock_solid_visibility_verified.png (for specific tests)
     """
+    global TEST_SESSION_START_TIME
+    
     if not screenshots_dir.exists():
         return []
+    
+    # Use session start time to filter screenshots, with fallback
+    session_start = TEST_SESSION_START_TIME
+    if session_start is None:
+        # Fallback: use a time 1 minute ago if session time not available
+        session_start = datetime.datetime.now() - datetime.timedelta(minutes=1)
+        print(f"⚠️  Warning: Session start time not available, using fallback: {session_start}")
     
     # Extract test method name from nodeid (e.g., "test_file.py::TestClass::test_method")
     parts = test_nodeid.split("::")
@@ -228,9 +253,20 @@ def find_test_screenshots(test_nodeid, screenshots_dir):
     clean_test_name = re.sub(r'\[.*\]$', '', clean_test_name)  # Remove pytest parameters
     
     screenshots = []
+    filtered_count = 0
     
     # Look for screenshots matching various patterns based on actual naming conventions
     for screenshot_file in screenshots_dir.glob("*.png"):
+        # Check if screenshot was created during current test session
+        try:
+            file_mtime = datetime.datetime.fromtimestamp(screenshot_file.stat().st_mtime)
+            if file_mtime < session_start:
+                filtered_count += 1
+                continue  # Skip old screenshots
+        except Exception as e:
+            print(f"Warning: Could not check timestamp for {screenshot_file}: {e}")
+            continue
+        
         filename = screenshot_file.name.lower()
         should_include = False
         
@@ -274,6 +310,11 @@ def find_test_screenshots(test_nodeid, screenshots_dir):
     
     # Sort screenshots by filename to maintain step order
     screenshots.sort(key=lambda x: x.name)
+    
+    # Report filtering results
+    if filtered_count > 0:
+        print(f"📸 Filtered out {filtered_count} old screenshots for {test_nodeid}")
+    
     return screenshots
 
 def create_screenshot_thumbnail(image_path, max_width=300):

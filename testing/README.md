@@ -1,12 +1,52 @@
 # Mobile App Testing Framework
 
-This directory contains the automated testing framework for the Running Heatmap mobile app using Appium and Python.
+This directory contains the **enhanced automated testing framework** for the Running Heatmap mobile app using Appium and Python.
+
+## 🚀 **NEW: Single Command Test Runner** 
+
+**Just run one command and the framework handles everything automatically:**
+
+```bash
+python run_tests.py --core --fast
+```
 
 **Key Features:**
-- 🔄 **End-to-End Testing**: GPX → PMTiles → APK → Mobile visualization
+- 🎯 **Single Command Testing**: Automatically starts emulator, Appium server, runs tests, generates report, and opens it in your browser
+- 🔄 **End-to-End Testing**: GPX → PMTiles → APK → Mobile visualization  
 - 🏗️ **Isolated Build Environment**: Never touches production data
 - ⚡ **Session-Scoped Fixtures**: Expensive APK builds done once per test session
 - 📸 **Visual Verification**: Screenshot capture and automated feature detection
+- 🤖 **Automatic Infrastructure**: No manual Appium server or emulator management needed
+
+---
+
+## 📚 Table of Contents
+- [🚀 Quick Start](#-complete-setup-guide-first-time-users) - Get running in 5 minutes
+- [🎯 Running Tests](#-running-tests---enhanced-single-command-approach) - All command options
+- [🔧 Troubleshooting](#-troubleshooting) - Solutions to common issues
+- [📋 Test Structure](#test-structure) - Understanding the test suites
+- [✍️ Writing Tests](#writing-new-tests) - Adding new test cases
+
+---
+
+## ⚡ **Most Important Commands**
+
+```bash
+# 🏆 COMPLETE AUTOMATION: Tests + automatic cleanup 
+python run_tests.py --core --fast --auto-emulator
+
+# 🚀 DEVELOPMENT: Fast iteration for UI changes  
+python run_tests.py --core --fast
+
+# 🏗️ FULL BUILD: Complete APK build + all tests (first time)
+python run_tests.py --core
+
+# 🔄 KEEP ENVIRONMENT: Don't shutdown emulator or uninstall app
+python run_tests.py --core --fast --keep-emulator --keep-app
+
+# 📖 HELP: See all available options
+python run_tests.py --help
+```
 
 ## Prerequisites
 
@@ -103,9 +143,83 @@ adb devices
 
 Should show your device/emulator listed.
 
-## Running Tests
+## 🎯 Running Tests - Enhanced Single Command Approach
 
-### The Two-Terminal Approach
+### **Quick Start (Recommended)**
+
+```bash
+cd testing
+source test_venv/bin/activate
+
+# 🏆 BEST: Quick core tests (30 seconds)
+python run_tests.py --core --fast
+
+# 🚀 With automatic emulator startup
+python run_tests.py --core --fast --auto-emulator
+```
+
+**That's it!** The enhanced runner handles everything automatically:
+- ✅ Checks prerequisites 
+- ✅ Starts emulator if needed (`--auto-emulator`)
+- ✅ Starts Appium server with health checks
+- ✅ Runs your chosen test suite
+- ✅ Generates HTML report
+- ✅ Opens report in browser
+- ✅ **NEW**: Automatically cleans up and shuts down for fresh runs
+
+### **All Available Commands**
+
+```bash
+# 🏆 RECOMMENDED: Core tests (essential functionality)
+python run_tests.py --core --fast              # Quick core tests (30 seconds)
+python run_tests.py --core                     # Full build + core tests (10+ minutes)
+
+# 📱 Full mobile test suites
+python run_tests.py --mobile --fast            # All mobile tests (skip builds)
+python run_tests.py --mobile                   # Full mobile tests with APK build
+
+# 🔧 Legacy and integration tests
+python run_tests.py --legacy --fast            # Legacy tests only
+python run_tests.py --integration --fast       # Integration tests only
+
+# 🤖 Automatic infrastructure management
+python run_tests.py --core --auto-emulator     # Auto-start emulator if needed
+python run_tests.py --core --emulator-name MyTestDevice  # Use specific AVD
+
+# 🧹 Cleanup control (default: automatic cleanup for fresh runs)
+python run_tests.py --core --keep-emulator     # Keep emulator running after tests
+python run_tests.py --core --keep-app          # Keep test app installed after tests
+python run_tests.py --core --keep-emulator --keep-app  # Keep everything running
+
+# 🎯 Specific test files
+python run_tests.py test_upload_functionality.py --fast
+python run_tests.py test_basic_lasso_selection.py --fast
+
+# 🔍 Debugging and customization
+python run_tests.py --core --verbose           # Detailed output
+python run_tests.py --core --no-browser        # Don't auto-open report
+python run_tests.py --help                     # See all options
+```
+
+### **Test Modes Explained**
+
+| Mode | Time | Description | Use Case |
+|------|------|-------------|----------|
+| `--fast` | ~30 seconds | Skips APK builds, uses existing APK | Rapid UI testing, development |
+| Full build | ~10+ minutes | Builds fresh APK with test data | First run, CI/CD, full validation |
+
+### **Test Suite Options**
+
+| Suite | Description | Tests Included |
+|-------|-------------|----------------|
+| `--core` ⭐ | Essential functionality (recommended) | Activity verification, upload, lasso, basic controls |
+| `--mobile` | All mobile tests | Core + legacy + redundant tests |  
+| `--legacy` | Legacy tests only | Old test framework compatibility |
+| `--integration` | Integration tests | End-to-end workflows |
+
+### **Legacy Manual Approach (Still Available)**
+
+If you prefer the old two-terminal approach or need to debug Appium server issues:
 
 **Terminal 1: Start Appium Server**
 ```bash
@@ -113,57 +227,87 @@ cd testing
 source test_venv/bin/activate
 npx appium --base-path /wd/hub
 ```
-Keep this running - you'll see Appium server logs here.
-
-**Important:** The `--base-path /wd/hub` flag is required! Without it, you'll get "No route found" errors because the tests expect the server at `http://localhost:4723/wd/hub/session`.
 
 **Terminal 2: Run Tests**
 ```bash
 cd testing  
 source test_venv/bin/activate
-
-# 🏆 RECOMMENDED: Run core test suite (streamlined, no redundancy)
 python -m pytest -m core --fast
-
-# Run ALL mobile tests (includes redundant legacy tests)
-python -m pytest -m mobile --fast
-
-# ⚡ CORE TESTS: Essential functionality only (FAST)
-python -m pytest -m core             # Full build + core tests
-python -m pytest -m core --fast      # Skip builds + core tests
-
-# Legacy tests (redundant, for reference only)
-python -m pytest -m legacy --fast
-
-# Run specific core test suites
-python -m pytest test_mobile_with_fixtures.py::TestMobileAppWithTestData::test_activity_definitely_visible --fast  # Rock-solid verification
-python -m pytest test_upload_functionality.py --fast                        # Upload functionality
-python -m pytest test_basic_lasso_selection.py --fast                       # Lasso selection
-
-# Run ALL tests (core + mobile + legacy)
-python -m pytest
 ```
 
-**🚀 Fast Mode Testing:**
-- Use `--fast` flag to skip expensive APK builds and tile generation
-- Reduces test cycle from ~10 minutes to ~30 seconds for UI testing
-- Requires existing APK from previous full build
-- Perfect for rapid iteration during test development
+## 📋 Complete Setup Guide (First Time Users)
 
-### Legacy Test Run (Old Framework)
+### **Option 1: Full Automatic Setup (Recommended)**
 
 ```bash
-# Run old basic functionality tests (still works)
-python -m pytest test_basic_functionality.py -v -s
+# 1. Navigate to testing directory
+cd testing
+
+# 2. Activate Python environment  
+source test_venv/bin/activate
+
+# 3. Install dependencies (first time only)
+pip install -r requirements.txt
+npm install
+
+# 4. Create an Android Virtual Device (AVD) in Android Studio
+# - Open Android Studio > Tools > AVD Manager
+# - Create Virtual Device > Choose Pixel 4 > API 29+ > Name it "TestDevice"
+
+# 5. Run tests with automatic everything!
+python run_tests.py --core --fast --auto-emulator
 ```
 
-### Test Output
+### **Option 2: Manual Device Management**
 
-- Console output shows test progress
-- Screenshots saved to `screenshots/` directory (auto-created)
-- HTML report generated at `reports/test_report.html` (auto-created)
+```bash
+# 1-3. Same as above
 
-**Note**: The `screenshots/` and `reports/` directories are automatically created when tests run and are excluded from git.
+# 4. Start your device manually:
+# Option A: Android Studio > Tools > AVD Manager > ▶️ button
+# Option B: emulator -avd TestDevice -no-audio -gpu swiftshader_indirect -skin 1080x1920 &
+# Option C: Connect physical device with USB debugging
+
+# 5. Verify device connection
+adb devices
+
+# 6. Run tests
+python run_tests.py --core --fast
+```
+
+### **Automatic Cleanup for Fresh Runs**
+
+🧹 **The enhanced runner automatically cleans up after each test run:**
+
+- **🔌 Emulator Management**: Auto-started emulators are shut down gracefully
+- **📱 App Cleanup**: Test app is uninstalled for fresh installs next time  
+- **📁 File Cleanup**: Test files are removed from device storage
+- **🛑 Process Cleanup**: Appium server is terminated properly
+
+**🎛️ Control cleanup behavior:**
+```bash
+# Default: Full automatic cleanup (recommended)
+python run_tests.py --core --auto-emulator
+
+# Keep emulator running for faster subsequent tests
+python run_tests.py --core --keep-emulator
+
+# Keep test app installed (faster app startup)  
+python run_tests.py --core --keep-app
+
+# Keep everything running (manual cleanup)
+python run_tests.py --core --keep-emulator --keep-app
+```
+
+### **Test Output & Reports**
+
+The enhanced runner automatically provides:
+- 📊 **Comprehensive console summary** with test results and configuration
+- 📁 **Screenshots** saved to `screenshots/` directory (auto-created) 
+- 📋 **HTML report** at `reports/test_report.html` (auto-opened in browser)
+- 🧹 **Fresh environment** ready for next test run
+
+**Note**: The `screenshots/` and `reports/` directories are automatically created and excluded from git.
 
 ## Test Structure
 
@@ -271,52 +415,114 @@ class TestNewFeature(BaseTest):
         # Assert expected behavior
 ```
 
-## Troubleshooting
+## 🔧 Troubleshooting
 
-### "Connection refused" / "Appium server not found"
-- **Solution**: Start Appium server first in Terminal 1: `npx appium --base-path /wd/hub`
-- Make sure Appium server is running on `http://localhost:4723`
+### **Enhanced Runner Issues**
 
-### "No route found for /wd/hub/session" (404 error)
-- **Solution**: You started Appium without the base path flag
-- Restart Appium with: `npx appium --base-path /wd/hub`
-- Tests require the `/wd/hub` path to work correctly
+#### "No Android devices/emulators connected"
+The enhanced runner provides helpful guidance when no devices are found:
+```bash
+# ✅ SOLUTION 1: Use auto-emulator flag
+python run_tests.py --core --fast --auto-emulator
 
-### "No devices found" 
-- Start Android emulator or connect physical device
-- Run `adb devices` to verify connection
-- For emulator: `emulator -avd YourAVDName -no-audio -gpu swiftshader_indirect -skin 1080x1920 &`
+# ✅ SOLUTION 2: Start emulator manually first
+emulator -avd TestDevice -no-audio -gpu swiftshader_indirect -skin 1080x1920 &
+# Then run tests
+python run_tests.py --core --fast
 
-### "Extended Controls buttons not responding" (WSL/Windows)
-- **Immediate fix**: Launch emulator from Android Studio > Tools > AVD Manager (▶️ button)
-- **Alternative**: Use `-skin 1080x1920` parameter when starting emulator
-- **Root cause**: WSLg version compatibility issue with emulator UI
-- **Affected controls**: Volume, rotation, location, camera buttons in Extended Controls panel
+# ✅ SOLUTION 3: Use guided setup script
+./setup_emulator.sh
+```
 
-### "APK build failed" (Session-scoped fixtures)
-- Check that main project `.venv` has required packages (shapely, etc.)
-- Verify Android SDK and Node.js are properly installed
-- Check build output in test logs for specific error
+#### "APK not found for --fast mode"
+```bash
+# ✅ SOLUTION: Run full build first (creates APK)
+python run_tests.py --core
 
-### "App crashes on launch"
-- Verify device has enough storage/memory
-- Check Appium logs in Terminal 1 for detailed error
-- Try with a fresh emulator or different device
+# Then fast mode will work
+python run_tests.py --core --fast
+```
 
-### "Cannot switch to WebView" 
-- App may still be loading - wait longer
-- Check available contexts: `driver.contexts`
-- Ensure hybrid app WebView is enabled
+#### "AVD 'TestDevice' not found"
+```bash
+# ✅ SOLUTION 1: Create TestDevice AVD in Android Studio
+# Android Studio > Tools > AVD Manager > Create Virtual Device
 
-### "Element not found"
-- Take screenshot to see current app state
-- Check if you're in correct context (Native vs WebView)
-- Wait for elements to load before interacting
+# ✅ SOLUTION 2: Use existing AVD name
+python run_tests.py --core --auto-emulator --emulator-name YourExistingAVD
+```
 
-### "PMTiles not visible" / "Features not found"
-- Try different zoom levels (zoom 13 works well, zoom 16+ may be too detailed)
-- Check screenshots to verify map is loaded
-- Ensure test data is in the expected location (Frederick, MD area)
+#### "Appium server failed to start"
+```bash
+# ✅ SOLUTION 1: Install Node dependencies
+npm install
+
+# ✅ SOLUTION 2: Check Node.js is installed
+node --version  # Should be 14+
+
+# ✅ SOLUTION 3: Use verbose mode for details
+python run_tests.py --core --verbose
+```
+
+### **Common Device Issues**
+
+#### "Extended Controls buttons not responding" (WSL/Windows)
+- **✅ Best solution**: Launch emulator from Android Studio > Tools > AVD Manager (▶️ button)
+- **Alternative**: The enhanced runner uses `-skin 1080x1920` automatically for WSL compatibility
+- **Root cause**: WSLg compatibility issue with emulator UI controls
+
+#### "Emulator failed to start within timeout"
+```bash
+# ✅ Check available AVDs
+emulator -list-avds
+
+# ✅ Start manually to see errors
+emulator -avd TestDevice -verbose
+
+# ✅ Try different AVD or recreate in Android Studio
+```
+
+### **Legacy Manual Mode Issues**
+
+#### "Connection refused" / "Appium server not found" 
+- **Solution**: The enhanced runner handles this automatically, or start Appium manually: `npx appium --base-path /wd/hub`
+
+#### "No route found for /wd/hub/session" (404 error)
+- **Solution**: Use enhanced runner (includes correct base path) or restart Appium with: `npx appium --base-path /wd/hub`
+
+### **App & Test Issues**
+
+#### "App crashes on launch"
+- Check device has enough storage/memory
+- Try different emulator or device
+- Use `--verbose` flag to see detailed logs
+
+#### "Cannot switch to WebView"
+- App may still be loading - wait longer  
+- Check available contexts in verbose output
+- Ensure WebView is enabled in hybrid app
+
+#### "Element not found" / "PMTiles not visible"
+- Check screenshots in `screenshots/` directory to see current app state
+- Try different zoom levels (zoom 13 works well)
+- Ensure test data covers Frederick, MD area
+- Verify you're in correct context (Native vs WebView)
+
+### **Getting Help**
+
+```bash
+# 📖 See all available options
+python run_tests.py --help
+
+# 🔍 Run with detailed output
+python run_tests.py --core --verbose
+
+# 📸 Check screenshots to debug visual issues
+ls screenshots/
+
+# 📋 Check HTML report for detailed test results
+# (automatically opens in browser, or manually open reports/test_report.html)
+```
 
 ## Advanced Usage
 

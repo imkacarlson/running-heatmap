@@ -4,5 +4,6 @@ pytest-html==4.1.1
 allure-pytest==2.13.2
 Pillow==10.1.0
 python-dotenv==1.0.0
+requests==2.31.0
 selenium==4.15.2
 watchdog==3.0.0

@@ -10,6 +10,56 @@ from selenium.webdriver.support import expected_conditions as EC
 @pytest.mark.core
 class TestBasicFunctionality:
     
+    def switch_to_webview(self, driver):
+        """Helper to switch to WebView context"""
+        contexts = driver.contexts
+        print(f"Available contexts: {contexts}")
+        for context in contexts:
+            if 'WEBVIEW' in context:
+                driver.switch_to.context(context)
+                print(f"Switched to context: {context}")
+                return context
+        raise Exception("No WebView context found")
+    
+    def wait_for_map_load(self, driver, wait):
+        """Helper to wait for map to load with extended wait for slow WiFi"""
+        print("🗺️ Waiting for map to load (extended wait for slow WiFi)...")
+        print("🔍 Waiting for map element...")
+        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "#map")))
+        
+        print("⏳ Giving extra time for map initialization on slow WiFi...")
+        time.sleep(8)
+        
+        # Try multiple checks to ensure map is loaded
+        for attempt in range(5):
+            print(f"🔍 Map functionality check {attempt + 1}/5...")
+            try:
+                map_status = driver.execute_script("""
+                    return {
+                        mapExists: typeof map !== 'undefined',
+                        mapLoaded: typeof map !== 'undefined' && map.loaded && map.loaded(),
+                        elementExists: document.getElementById('map') !== null,
+                        canvasExists: document.querySelector('#map canvas') !== null,
+                        hasContainer: document.querySelector('.maplibregl-map') !== null,
+                        mapStyle: typeof map !== 'undefined' && map.getStyle() !== undefined
+                    };
+                """)
+                print(f"🔍 Map status: {map_status}")
+                
+                if map_status['mapExists'] and map_status['elementExists'] and map_status['canvasExists']:
+                    print("✅ Map loaded successfully")
+                    print("📡 Allowing time for map data to load...")
+                    time.sleep(3)
+                    return
+                else:
+                    print(f"   Map not ready, waiting... (attempt {attempt + 1}/5)")
+                    time.sleep(3)
+            except Exception as e:
+                print(f"   Map check failed: {e}")
+                time.sleep(3)
+        
+        raise Exception("Map failed to load after extended wait")
+    
     def test_map_controls_present(self, mobile_driver):
         """Test that map control buttons are present and visible"""
         print("Testing map controls...")

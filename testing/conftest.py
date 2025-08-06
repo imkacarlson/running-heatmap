@@ -387,8 +387,10 @@ def generate_screenshot_html(screenshots):
                 <div style="border: 1px solid #ddd; border-radius: 4px; padding: 5px; background: #f9f9f9;">
                     <img src="data:image/jpeg;base64,{thumbnail_b64}" 
                          alt="{display_name}"
+                         class="screenshot-thumbnail"
+                         data-full-image="{full_b64}"
+                         data-title="{display_name}"
                          style="cursor: pointer; max-width: 300px; display: block;"
-                         onclick="showFullScreenshot('{full_b64}', '{display_name}')"
                          title="Click to view full size" />
                     <div style="font-size: 11px; color: #666; margin-top: 3px; max-width: 300px; word-wrap: break-word;">
                         {display_name}
@@ -400,38 +402,212 @@ def generate_screenshot_html(screenshots):
     html_parts.append("""
         </div>
     </div>
-    
-    <!-- Modal for full-size image viewing -->
-    <div id="screenshot-modal" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.8);" onclick="closeScreenshotModal()">
-        <div style="position: relative; margin: auto; top: 50%; transform: translateY(-50%); max-width: 90%; max-height: 90%; text-align: center;">
-            <img id="modal-screenshot" style="max-width: 100%; max-height: 100%; border-radius: 4px;" />
-            <div id="modal-title" style="color: white; margin-top: 10px; font-size: 16px;"></div>
-            <div style="color: #ccc; margin-top: 5px; font-size: 12px;">Click anywhere to close</div>
-        </div>
-    </div>
-    
-    <script>
-    function showFullScreenshot(base64Data, title) {
-        document.getElementById('modal-screenshot').src = 'data:image/png;base64,' + base64Data;
-        document.getElementById('modal-title').textContent = title;
-        document.getElementById('screenshot-modal').style.display = 'block';
-        event.stopPropagation();
-    }
-    
-    function closeScreenshotModal() {
-        document.getElementById('screenshot-modal').style.display = 'none';
-    }
-    
-    // Close modal on Escape key
-    document.addEventListener('keydown', function(event) {
-        if (event.key === 'Escape') {
-            closeScreenshotModal();
-        }
-    });
-    </script>
     """)
     
     return ''.join(html_parts)
+
+# Global modal and JavaScript for screenshots - ensures it's included once
+SCREENSHOT_MODAL_JS = """
+<div id="screenshot-modal" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.8);">
+    <div style="position: relative; margin: auto; top: 50%; transform: translateY(-50%); max-width: 90%; max-height: 90%; text-align: center;">
+        <img id="modal-screenshot" style="max-width: 100%; max-height: 100%; border-radius: 4px;" />
+        <div id="modal-title" style="color: white; margin-top: 10px; font-size: 16px;"></div>
+        <div style="color: #ccc; margin-top: 5px; font-size: 12px;">Click anywhere to close | Press Escape</div>
+    </div>
+</div>
+
+<script type="text/javascript">
+(function() {
+    'use strict';
+    
+    // Debug flag - set to false to disable console logging
+    var DEBUG_SCREENSHOTS = true;
+    
+    function debugLog(message) {
+        if (DEBUG_SCREENSHOTS && window.console && console.log) {
+            console.log('[Screenshot Modal] ' + message);
+        }
+    }
+    
+    debugLog('Screenshot modal script loading...');
+    
+    // Modal functions - make them global
+    window.showFullScreenshot = function(base64Data, title) {
+        debugLog('showFullScreenshot called: ' + title);
+        var modal = document.getElementById('screenshot-modal');
+        var modalImg = document.getElementById('modal-screenshot');
+        var modalTitle = document.getElementById('modal-title');
+        
+        if (modal && modalImg && modalTitle) {
+            modalImg.src = 'data:image/png;base64,' + base64Data;
+            modalTitle.textContent = title;
+            modal.style.display = 'block';
+            debugLog('Modal displayed for: ' + title);
+        } else {
+            debugLog('Modal elements not found! modal: ' + !!modal + ', modalImg: ' + !!modalImg + ', modalTitle: ' + !!modalTitle);
+        }
+    };
+
+    window.closeScreenshotModal = function() {
+        debugLog('closeScreenshotModal called');
+        var modal = document.getElementById('screenshot-modal');
+        if (modal) {
+            modal.style.display = 'none';
+            debugLog('Modal closed');
+        } else {
+            debugLog('Modal element not found when trying to close');
+        }
+    };
+    
+    // Enhanced click handler with debugging
+    function handleScreenshotClick(event) {
+        debugLog('Click event detected on: ' + (event.target.tagName || 'unknown'));
+        
+        // Handle screenshot thumbnail clicks
+        if (event.target.classList.contains('screenshot-thumbnail')) {
+            debugLog('Screenshot thumbnail clicked!');
+            var base64Data = event.target.dataset.fullImage;
+            var title = event.target.dataset.title;
+            
+            debugLog('Data attributes - fullImage: ' + (base64Data ? 'present (' + base64Data.substring(0,50) + '...)' : 'missing') + 
+                     ', title: ' + (title || 'missing'));
+            
+            if (base64Data && title) {
+                window.showFullScreenshot(base64Data, title);
+            } else {
+                debugLog('Missing required data attributes');
+            }
+            return;
+        }
+        
+        // Handle modal background clicks
+        if (event.target.id === 'screenshot-modal') {
+            debugLog('Modal background clicked, closing modal');
+            window.closeScreenshotModal();
+            return;
+        }
+    }
+    
+    // Enhanced keydown handler
+    function handleKeyDown(event) {
+        if (event.key === 'Escape' || event.keyCode === 27) {
+            debugLog('Escape key pressed, closing modal');
+            window.closeScreenshotModal();
+        }
+    }
+    
+    // Function to set up event listeners
+    function setupEventListeners() {
+        debugLog('Setting up event listeners...');
+        
+        // Remove existing listeners to prevent duplicates
+        document.removeEventListener('click', handleScreenshotClick);
+        document.removeEventListener('keydown', handleKeyDown);
+        
+        // Add new listeners
+        document.addEventListener('click', handleScreenshotClick, true); // Use capture phase for better compatibility
+        document.addEventListener('keydown', handleKeyDown, true);
+        
+        debugLog('Event listeners attached');
+        
+        // Check if screenshot thumbnails already exist
+        var existingThumbnails = document.querySelectorAll('.screenshot-thumbnail');
+        debugLog('Found ' + existingThumbnails.length + ' existing screenshot thumbnails');
+    }
+    
+    // Function to initialize when DOM is ready
+    function initializeScreenshotModal() {
+        debugLog('Initializing screenshot modal...');
+        setupEventListeners();
+        
+        // Set up MutationObserver to detect when new content is added (for modern pytest-html)
+        if (window.MutationObserver) {
+            var observer = new MutationObserver(function(mutations) {
+                var shouldReinit = false;
+                mutations.forEach(function(mutation) {
+                    if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+                        // Check if any added nodes contain screenshot thumbnails
+                        for (var i = 0; i < mutation.addedNodes.length; i++) {
+                            var node = mutation.addedNodes[i];
+                            if (node.nodeType === Node.ELEMENT_NODE) {
+                                if (node.classList && node.classList.contains('screenshot-thumbnail')) {
+                                    shouldReinit = true;
+                                    break;
+                                } else if (node.querySelector && node.querySelector('.screenshot-thumbnail')) {
+                                    shouldReinit = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                });
+                
+                if (shouldReinit) {
+                    debugLog('New screenshot thumbnails detected, reinitializing...');
+                    var newThumbnails = document.querySelectorAll('.screenshot-thumbnail');
+                    debugLog('Total screenshot thumbnails now: ' + newThumbnails.length);
+                }
+            });
+            
+            // Start observing
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true
+            });
+            
+            debugLog('MutationObserver set up to detect new content');
+        } else {
+            debugLog('MutationObserver not available, using polling fallback');
+            // Fallback: periodically check for new screenshots
+            var checkCount = 0;
+            var checkInterval = setInterval(function() {
+                var thumbnails = document.querySelectorAll('.screenshot-thumbnail');
+                if (thumbnails.length > 0) {
+                    debugLog('Found ' + thumbnails.length + ' screenshot thumbnails via polling');
+                    clearInterval(checkInterval);
+                } else if (checkCount++ > 20) { // Stop after ~10 seconds
+                    debugLog('Polling timeout - no screenshots found');
+                    clearInterval(checkInterval);
+                }
+            }, 500);
+        }
+        
+        debugLog('Screenshot modal initialization complete');
+    }
+    
+    // Initialize based on document state
+    if (document.readyState === 'loading') {
+        debugLog('Document still loading, waiting for DOMContentLoaded...');
+        document.addEventListener('DOMContentLoaded', initializeScreenshotModal);
+    } else if (document.readyState === 'interactive' || document.readyState === 'complete') {
+        debugLog('Document ready, initializing immediately...');
+        initializeScreenshotModal();
+    }
+    
+    // Also try to initialize on window load as a fallback
+    if (window.addEventListener) {
+        window.addEventListener('load', function() {
+            debugLog('Window load event fired');
+            // Small delay to allow pytest-html to finish rendering
+            setTimeout(function() {
+                var thumbnails = document.querySelectorAll('.screenshot-thumbnail');
+                debugLog('Post-window-load check: found ' + thumbnails.length + ' screenshot thumbnails');
+                if (thumbnails.length > 0 && !window.screenshotModalInitialized) {
+                    debugLog('Reinitializing after window load...');
+                    initializeScreenshotModal();
+                    window.screenshotModalInitialized = true;
+                }
+            }, 1000);
+        });
+    }
+    
+    debugLog('Screenshot modal script loaded');
+})();
+</script>
+"""
+
+# Track if we've already added global modal JS to prevent duplicates
+_modal_js_added = False
 
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item, call):
@@ -439,6 +615,8 @@ def pytest_runtest_makereport(item, call):
     Hook to add screenshots to HTML test reports.
     Automatically detects and embeds screenshots taken during test execution.
     """
+    global _modal_js_added
+    
     outcome = yield
     report = outcome.get_result()
     
@@ -457,14 +635,20 @@ def pytest_runtest_makereport(item, call):
         screenshot_html = generate_screenshot_html(screenshots)
         
         if screenshot_html:
-            # Add screenshots as HTML extra to the report
-            extra = pytest_html.extras.html(screenshot_html)
-            
             # Initialize extras list if it doesn't exist
             if not hasattr(report, 'extra'):
                 report.extra = []
             
-            report.extra.append(extra)
+            # Add global modal JavaScript on first test with screenshots
+            if not _modal_js_added:
+                modal_extra = pytest_html.extras.html(SCREENSHOT_MODAL_JS)
+                report.extra.append(modal_extra)
+                _modal_js_added = True
+                print("📸 Added global screenshot modal to HTML report")
+            
+            # Add screenshots as HTML extra to the report
+            screenshot_extra = pytest_html.extras.html(screenshot_html)
+            report.extra.append(screenshot_extra)
             
             # Add summary info
             print(f"📸 Added {len(screenshots)} screenshots to HTML report for {item.nodeid}")

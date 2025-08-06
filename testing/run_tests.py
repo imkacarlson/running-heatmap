@@ -214,23 +214,133 @@ def check_and_start_emulator(args):
     emulator_process.terminate()
     return False
 
+def cleanup_existing_appium_servers():
+    """Clean up any existing Appium server processes"""
+    try:
+        # Kill any existing Appium processes
+        subprocess.run(['pkill', '-f', 'appium'], capture_output=True)
+        time.sleep(2)  # Give processes time to die
+        
+        # Check if port 4723 is still in use and try to free it
+        try:
+            import socket
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(1)
+            result = sock.connect_ex(('localhost', 4723))
+            sock.close()
+            
+            if result == 0:
+                # Port is still in use, try to find and kill the process
+                try:
+                    lsof_result = subprocess.run(['lsof', '-t', '-i:4723'], 
+                                               capture_output=True, text=True)
+                    if lsof_result.returncode == 0:
+                        for pid in lsof_result.stdout.strip().split('\n'):
+                            if pid:
+                                subprocess.run(['kill', '-9', pid], capture_output=True)
+                        time.sleep(1)
+                except:
+                    pass
+        except:
+            pass
+            
+    except Exception:
+        pass
+
 def start_appium_server(verbose=False):
     """Enhanced Appium server startup with health checks"""
     print("🚀 Starting Appium server...")
     
-    # Use npx to run the local appium installation
+    # Clean up any existing Appium servers first
+    cleanup_existing_appium_servers()
+    
+    # Check prerequisites first
+    try:
+        # Check if npx is available
+        npx_check = subprocess.run(['npx', '--version'], capture_output=True, text=True)
+        if npx_check.returncode != 0:
+            print("❌ npx not available - please install Node.js")
+            return None
+        if verbose:
+            print(f"   npx version: {npx_check.stdout.strip()}")
+            
+        # Check if appium is available
+        appium_check = subprocess.run(['npx', 'appium', '--version'], capture_output=True, text=True)
+        if appium_check.returncode != 0:
+            print("❌ Appium not available - please run 'npm install' in testing directory")
+            return None
+        if verbose:
+            print(f"   Appium version: {appium_check.stdout.strip()}")
+            
+    except Exception as e:
+        print(f"❌ Error checking prerequisites: {e}")
+        return None
+    
+    # Try to start Appium with multiple port strategies
     log_level = 'debug' if verbose else 'info'
-    process = subprocess.Popen(
-        ['npx', 'appium', '--base-path', '/wd/hub', '--log-level', log_level],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        cwd=Path(__file__).parent
-    )
+    ports_to_try = [4723, 4724, 4725]  # Try alternative ports if 4723 fails
+    
+    for port in ports_to_try:
+        base_path = '/wd/hub' if port == 4723 else f'/wd/hub-{port}'
+        cmd = ['npx', 'appium', '--base-path', base_path, '--port', str(port), '--log-level', log_level]
+        if verbose:
+            print(f"   Trying port {port} with command: {' '.join(cmd)}")
+            print(f"   Working directory: {Path(__file__).parent}")
+        
+        try:
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                cwd=Path(__file__).parent,
+                text=True,  # Ensure text mode for better error handling
+                bufsize=1   # Line buffered
+            )
+            
+            # Give the process a moment to start and check if it immediately fails
+            time.sleep(3)
+            if process.poll() is not None:
+                stdout, stderr = process.communicate()
+                if "EADDRINUSE" in stderr:
+                    if verbose:
+                        print(f"   Port {port} is in use, trying next port...")
+                    continue
+                else:
+                    # Some other error occurred
+                    print(f"❌ Appium server process terminated unexpectedly on port {port}")
+                    print(f"   Return code: {process.returncode}")
+                    print("   STDERR output:")
+                    for line in str(stderr).splitlines():
+                        print(f"     {line}")
+                    continue
+            
+            # Process is still running, break out of port-trying loop
+            if verbose:
+                print(f"   Successfully started Appium on port {port}")
+            break
+            
+        except Exception as e:
+            print(f"❌ Failed to start Appium process on port {port}: {e}")
+            if port == ports_to_try[-1]:  # Last port attempt
+                return None
+            continue
+    else:
+        # No ports worked
+        print("❌ Failed to start Appium on any available port")
+        return None
     
     # Wait for server to start with health checks
     print("⏳ Waiting for Appium server to start...")
-    max_attempts = 20
+    max_attempts = 30  # Increased timeout for better stability
     attempt = 0
+    
+    # Determine the port and base path being used
+    server_port = port  # Use the port from the successful loop above
+    base_path_part = base_path  # Use the base_path from the successful loop above
+    server_url = f"http://localhost:{server_port}{base_path_part}/status"
+    
+    if verbose:
+        print(f"   Health checking server at: {server_url}")
     
     while attempt < max_attempts:
         time.sleep(1)
@@ -238,29 +348,55 @@ def start_appium_server(verbose=False):
         
         # Check if process is still running
         if process.poll() is not None:
-            stdout, stderr = process.communicate()
-            print("❌ Appium server failed to start")
-            if verbose:
-                print("STDOUT:", stdout.decode())
-                print("STDERR:", stderr.decode())
+            # Process has terminated, get output
+            try:
+                stdout, stderr = process.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                stdout, stderr = "Timeout getting output", "Timeout getting output"
+                
+            print("❌ Appium server process terminated unexpectedly")
+            print(f"   Return code: {process.returncode}")
+            print("   STDOUT output:")
+            for line in str(stdout).splitlines():
+                print(f"     {line}")
+            print("   STDERR output:")  
+            for line in str(stderr).splitlines():
+                print(f"     {line}")
             return None
         
         # Try to connect to server
         try:
             import requests
-            response = requests.get('http://localhost:4723/wd/hub/status', timeout=2)
+            response = requests.get(server_url, timeout=3)
             if response.status_code == 200:
-                print("✅ Appium server is ready and responding")
+                print(f"✅ Appium server is ready and responding on port {server_port}")
+                if server_port != 4723:
+                    print(f"   ⚠️  Note: Using alternate port {server_port} instead of default 4723")
+                # Store the port info for the process so tests can use it
+                process.appium_port = server_port
+                process.appium_base_path = base_path_part
                 return process
-        except:
+        except requests.exceptions.RequestException as e:
             # Server not ready yet, continue waiting
-            pass
+            if verbose and attempt % 10 == 0:
+                print(f"   Connection attempt failed: {e}")
+        except Exception as e:
+            if verbose and attempt % 10 == 0:
+                print(f"   Unexpected error checking server: {e}")
         
         if attempt % 5 == 0:
             print(f"   Still waiting... ({attempt}/{max_attempts})")
     
     print("❌ Appium server failed to respond within timeout")
-    process.terminate()
+    print("   Server process is still running but not responding to HTTP requests")
+    if process.poll() is None:
+        print("   Terminating unresponsive server process...")
+        process.terminate()
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            print("   Force killing server process...")
+            process.kill()
     return None
 
 def build_pytest_command(args):
@@ -637,24 +773,80 @@ def shutdown_emulator(args, verbose=False):
         if verbose:
             print("   💡 Consider using --keep-emulator flag if shutdown issues persist")
 
-def cleanup_resources(appium_process, args, verbose=False):
-    """Enhanced cleanup with app cleanup and emulator shutdown"""
-    # 1. Stop Appium server
-    if appium_process:
-        print("🛑 Stopping Appium server...")
+def cleanup_appium_server(appium_process, verbose=False):
+    """Enhanced Appium server cleanup with port verification"""
+    if not appium_process:
+        return
+        
+    print("🛑 Stopping Appium server...")
+    
+    # Get the port info if available
+    server_port = getattr(appium_process, 'appium_port', 4723)
+    
+    try:
+        # Try graceful termination first
+        appium_process.terminate()
+        appium_process.wait(timeout=8)
+        print("✅ Appium server stopped gracefully")
+    except subprocess.TimeoutExpired:
+        if verbose:
+            print("   Graceful shutdown timed out, force-killing Appium server...")
         try:
-            appium_process.terminate()
-            appium_process.wait(timeout=5)
-            print("✅ Appium server stopped gracefully")
-        except subprocess.TimeoutExpired:
-            if verbose:
-                print("   Force-killing Appium server...")
             appium_process.kill()
-            appium_process.wait()
+            appium_process.wait(timeout=3)
             print("✅ Appium server stopped (force-killed)")
         except Exception as e:
             if verbose:
-                print(f"   Warning: Error stopping Appium server: {e}")
+                print(f"   Warning: Error force-killing Appium server: {e}")
+    except Exception as e:
+        if verbose:
+            print(f"   Warning: Error stopping Appium server: {e}")
+    
+    # Verify the port is actually free and clean up if needed
+    try:
+        import socket
+        import time
+        
+        # Give a moment for the port to be released
+        time.sleep(2)
+        
+        # Test if the port is still in use
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(1)
+        result = sock.connect_ex(('localhost', server_port))
+        sock.close()
+        
+        if result == 0:
+            # Port is still in use, try to find and kill the process
+            print(f"   🔍 Port {server_port} still in use, attempting cleanup...")
+            try:
+                lsof_result = subprocess.run(['lsof', '-t', f'-i:{server_port}'], 
+                                           capture_output=True, text=True)
+                if lsof_result.returncode == 0 and lsof_result.stdout.strip():
+                    for pid in lsof_result.stdout.strip().split('\n'):
+                        if pid:
+                            print(f"   🔪 Killing process {pid} using port {server_port}")
+                            subprocess.run(['kill', '-9', pid], capture_output=True)
+                    time.sleep(1)
+                    print(f"✅ Port {server_port} cleanup completed")
+                else:
+                    if verbose:
+                        print(f"   ℹ️  No processes found using port {server_port}")
+            except Exception as e:
+                if verbose:
+                    print(f"   ⚠️  Port cleanup error: {e}")
+        else:
+            if verbose:
+                print(f"   ✅ Port {server_port} is properly released")
+                
+    except Exception as e:
+        if verbose:
+            print(f"   ⚠️  Port verification error: {e}")
+
+def cleanup_resources(appium_process, args, verbose=False):
+    """Enhanced cleanup with app cleanup and emulator shutdown"""
+    # 1. Stop Appium server with enhanced port cleanup
+    cleanup_appium_server(appium_process, verbose)
     
     # 2. Clean up test app and data
     cleanup_test_app(args, verbose)
@@ -760,6 +952,22 @@ def main():
     finally:
         # Enhanced cleanup with app cleanup and emulator shutdown
         cleanup_resources(appium_process, args, args.verbose)
+        
+        # Final port cleanup - ensure all Appium ports are released
+        if args.verbose:
+            print("🧹 Final port cleanup check...")
+        for port in [4723, 4724, 4725]:
+            try:
+                lsof_result = subprocess.run(['lsof', '-t', f'-i:{port}'], 
+                                           capture_output=True, text=True)
+                if lsof_result.returncode == 0 and lsof_result.stdout.strip():
+                    for pid in lsof_result.stdout.strip().split('\n'):
+                        if pid:
+                            if args.verbose:
+                                print(f"   🔪 Final cleanup: killing process {pid} on port {port}")
+                            subprocess.run(['kill', '-9', pid], capture_output=True)
+            except Exception:
+                pass
     
     sys.exit(exit_code)
 

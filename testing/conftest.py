@@ -35,13 +35,30 @@ def session_setup(fast_mode):
     - Installs APK on emulator
     This runs only ONCE per test session unless in --fast mode.
     """
+    # Define project_root at the top so it's available for both modes
+    project_root = Path(__file__).parent.parent
+    
     if fast_mode:
-        print("\n⚡ Fast mode: Skipping all setup, assuming app is already installed.")
-        # In fast mode, we just need to provide the package name
+        print("\n⚡ Fast mode: Using cached test APK from previous full build.")
+        # In fast mode, look for cached test APK from previous full build
+        # This APK should contain test data from a previous full test run
+        cached_apk_path = project_root / "testing" / "cached_test_apk" / "app-debug.apk"
+        cached_pmtiles_path = project_root / "testing" / "cached_test_data" / "runs.pmtiles"
+        
+        if not cached_apk_path.exists():
+            raise Exception(
+                f"❌ Fast mode requires cached test APK from previous full build.\n"
+                f"   Expected: {cached_apk_path}\n"
+                f"   💡 SOLUTION: Run full build first to create cached test APK:\n"
+                f"      python run_tests.py --core\n"
+                f"   Then fast mode will work:\n"
+                f"      python run_tests.py --core --fast"
+            )
+        
         yield {
             'package_name': 'com.run.heatmap',
-            'apk_path': None, # Not needed in fast mode
-            'pmtiles_path': None # Not needed in fast mode
+            'apk_path': str(cached_apk_path),
+            'pmtiles_path': str(cached_pmtiles_path) if cached_pmtiles_path.exists() else None
         }
         return
 
@@ -56,8 +73,6 @@ def session_setup(fast_mode):
         print("   📁 Creating isolated test environment with sample GPX data...")
         server_dir.mkdir(parents=True)
         raw_data_dir.mkdir(parents=True)
-        
-        project_root = Path(__file__).parent.parent
         
         # Copy essential server files
         essential_files = [
@@ -159,6 +174,32 @@ def session_setup(fast_mode):
         
         print("   ✅ Test APK installed successfully.")
         
+        # 5. Cache test APK and data for future fast mode runs
+        print("   💾 Caching test APK and data for future fast mode runs...")
+        cached_apk_dir = project_root / "testing" / "cached_test_apk"
+        cached_data_dir = project_root / "testing" / "cached_test_data"
+        
+        try:
+            # Create cache directories
+            cached_apk_dir.mkdir(parents=True, exist_ok=True)
+            cached_data_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Copy test APK to cache
+            cached_apk_path = cached_apk_dir / "app-debug.apk"
+            shutil.copy2(apk_path, cached_apk_path)
+            print(f"   📱 Cached test APK: {cached_apk_path}")
+            
+            # Copy PMTiles data to cache
+            pmtiles_source = server_dir / "runs.pmtiles"
+            if pmtiles_source.exists():
+                cached_pmtiles_path = cached_data_dir / "runs.pmtiles"
+                shutil.copy2(pmtiles_source, cached_pmtiles_path)
+                print(f"   🗺️ Cached PMTiles data: {cached_pmtiles_path}")
+                
+            print("   ✅ Test artifacts cached for fast mode")
+        except Exception as e:
+            print(f"   ⚠️ Warning: Could not cache test artifacts: {e}")
+        
         # Provide session data to tests
         session_data = {
             'package_name': 'com.run.heatmap',
@@ -193,15 +234,9 @@ def mobile_driver(session_setup):
     # Use test config for capabilities
     capabilities = config.TestConfig.ANDROID_CAPABILITIES.copy()
     
-    # In fast mode, we don't need to specify the app path since it's already installed
+    # Use APK path from session setup (works for both fast and full mode)
     if session_setup.get('apk_path'):
         capabilities['appium:app'] = session_setup['apk_path']
-    else:
-        # Fast mode: just specify the package to connect to existing installation
-        capabilities['appium:appPackage'] = session_setup['package_name']
-        capabilities['appium:appActivity'] = 'com.run.heatmap.MainActivity'
-        # Remove app key to prevent reinstallation in fast mode
-        capabilities.pop('appium:app', None)
     
     # Create WebDriver instance
     driver = webdriver.Remote(

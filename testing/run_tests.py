@@ -63,8 +63,6 @@ Examples:
                        help='Automatically open test report in browser (default: no browser)')
     parser.add_argument('--report-file', default='reports/test_report.html',
                        help='Path for HTML test report (default: reports/test_report.html)')
-    parser.add_argument('--keep-old-screenshots', action='store_true',
-                       help='Keep old screenshots from previous test runs (default: clear old screenshots for clean reports)')
     
     # Specific test files
     parser.add_argument('tests', nargs='*',
@@ -854,47 +852,6 @@ def cleanup_resources(appium_process, args, verbose=False):
     # 3. Shutdown emulator if auto-started
     shutdown_emulator(args, verbose)
 
-def clear_old_screenshots(keep_old_screenshots=False, verbose=False):
-    """
-    Clear old screenshots to ensure HTML reports only show current test run screenshots.
-    
-    Args:
-        keep_old_screenshots: If True, keep existing screenshots
-        verbose: If True, show detailed output
-    """
-    screenshots_dir = Path(__file__).parent / "screenshots"
-    
-    if keep_old_screenshots:
-        if verbose:
-            print("📸 Keeping old screenshots as requested")
-        return
-    
-    if not screenshots_dir.exists():
-        if verbose:
-            print("📸 No screenshots directory found, nothing to clear")
-        return
-    
-    try:
-        screenshot_files = list(screenshots_dir.glob("*.png"))
-        if not screenshot_files:
-            if verbose:
-                print("📸 No old screenshots found")
-            return
-        
-        print(f"🧹 Clearing {len(screenshot_files)} old screenshots for clean test report...")
-        
-        for screenshot_file in screenshot_files:
-            try:
-                screenshot_file.unlink()
-                if verbose:
-                    print(f"   Removed: {screenshot_file.name}")
-            except Exception as e:
-                print(f"   Warning: Could not remove {screenshot_file.name}: {e}")
-        
-        print("✅ Old screenshots cleared")
-        
-    except Exception as e:
-        print(f"⚠️  Warning: Error clearing screenshots: {e}")
 
 def main():
     """Enhanced main test runner function"""
@@ -916,8 +873,6 @@ def main():
     reports_dir = Path(__file__).parent / Path(args.report_file).parent
     reports_dir.mkdir(exist_ok=True)
     
-    # Clear old screenshots for clean test reports (unless explicitly keeping them)
-    clear_old_screenshots(args.keep_old_screenshots, args.verbose)
     
     appium_process = None
     exit_code = 1
@@ -937,6 +892,7 @@ def main():
         
         # Open test report
         open_test_report(args.report_file, not args.browser)
+        
         
     except KeyboardInterrupt:
         print("\n⏹️  Tests interrupted by user")

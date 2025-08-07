@@ -37,7 +37,6 @@ class TestUploadFunctionality(BaseMobileTest):
         print("🗺️ Waiting for map to fully load...")
         self.wait_for_map_load(driver, wait, verbose=True)
         
-        self.take_screenshot(driver, "upload_01_initial_state")
         
         # Phase 2: File Upload Process
         print("📁 Setting up test file on device...")
@@ -52,7 +51,6 @@ class TestUploadFunctionality(BaseMobileTest):
         print("⏳ Waiting for upload processing...")
         self.verify_upload_processing_complete(driver, wait)
         
-        self.take_screenshot(driver, "upload_02_processing_complete")
         
         # Phase 3: Rock-Solid Activity Verification
         print("🏆 Starting rock-solid verification of uploaded activity...")
@@ -140,7 +138,6 @@ class TestUploadFunctionality(BaseMobileTest):
         try:
             # Wait for file picker to appear
             time.sleep(3)
-            self.take_screenshot(driver, "upload_file_picker_01_initial")
             
             # Strategy 1: Look for the file directly by name (in case it's in Recent)
             try:
@@ -177,7 +174,6 @@ class TestUploadFunctionality(BaseMobileTest):
                 )
                 downloads_folder.click()
                 time.sleep(2)
-                self.take_screenshot(driver, "upload_file_picker_03_downloads_opened")
                 
                 # Now look for the file in Downloads
                 file_element = driver.find_element(
@@ -204,7 +200,6 @@ class TestUploadFunctionality(BaseMobileTest):
                 return
             except:
                 print("⚠️ Could not find test file after all navigation attempts...")
-                self.take_screenshot(driver, "upload_file_picker_debug_final")
                 
                 # Debug: dump current screen elements
                 self.dump_current_elements(driver)
@@ -241,7 +236,6 @@ class TestUploadFunctionality(BaseMobileTest):
                 hamburger.click()
                 print(f"✅ Clicked hamburger menu with selector: {selector}")
                 time.sleep(2)
-                self.take_screenshot(driver, "upload_file_picker_02_menu_opened")
                 
                 # Now look for Downloads in the side menu
                 downloads_selectors = [
@@ -302,7 +296,6 @@ class TestUploadFunctionality(BaseMobileTest):
             page_source = driver.page_source
             
             # Save to file for analysis
-            debug_file = Path(__file__).parent / "screenshots" / "file_picker_page_source.xml"
             debug_file.parent.mkdir(exist_ok=True)
             
             with open(debug_file, 'w', encoding='utf-8') as f:
@@ -420,9 +413,6 @@ class TestUploadFunctionality(BaseMobileTest):
         print("📋 Step 2: Verifying red line pixels at uploaded GPX coordinates...")
         pixels = self.verify_uploaded_activity_line_visible(driver)
         
-        # Step 3: Take verification screenshot showing uploaded activity
-        print("📋 Step 3: Taking verification screenshot of uploaded activity coordinates...")
-        self.take_screenshot(driver, "upload_03_coordinate_verification")
         
         # Step 4: Get debug rendering state
         print("📋 Step 4: Getting rendering debug info...")
@@ -781,8 +771,6 @@ class TestUploadFunctionality(BaseMobileTest):
             extras_btn.click()
             time.sleep(2)
             
-            # Take screenshot to verify cleanup
-            self.take_screenshot(driver, "upload_04_cleanup_complete")
             
         except Exception as e:
             print(f"⚠️ Error during cleanup: {e}")

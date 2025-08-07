@@ -15,7 +15,7 @@ python run_tests.py --core --fast
 - 🔄 **End-to-End Testing**: GPX → PMTiles → APK → Mobile visualization  
 - 🏗️ **Isolated Build Environment**: Never touches production data
 - ⚡ **Session-Scoped Fixtures**: Expensive APK builds done once per test session
-- 📸 **Visual Verification**: Screenshot capture and automated feature detection
+- 📊 **Feature Detection**: Automated map feature and rendering verification
 - 🤖 **Automatic Infrastructure**: No manual Appium server or emulator management needed
 
 ---
@@ -303,11 +303,10 @@ python run_tests.py --core --keep-emulator --keep-app
 
 The enhanced runner automatically provides:
 - 📊 **Comprehensive console summary** with test results and configuration
-- 📁 **Screenshots** saved to `screenshots/` directory (auto-created) 
 - 📋 **HTML report** at `reports/test_report.html` (auto-opened in browser)
 - 🧹 **Fresh environment** ready for next test run
 
-**Note**: The `screenshots/` and `reports/` directories are automatically created and excluded from git.
+**Note**: The `reports/` directory is automatically created and excluded from git.
 
 ## Test Structure
 
@@ -353,7 +352,6 @@ The enhanced runner automatically provides:
 **Test Framework (`base_test.py`)** - Common functionality:
 - Appium WebDriver setup
 - Context switching (Native ↔ WebView)
-- Screenshot capture
 - Map loading waits
 
 ## Writing New Tests
@@ -373,7 +371,6 @@ class TestMyNewFeature:
         """Test using automatically built APK with test data"""
         driver = mobile_driver['driver']
         wait = mobile_driver['wait']
-        screenshots_dir = Path(__file__).parent / "screenshots"
         
         # App already launched with test data
         time.sleep(8)
@@ -391,8 +388,6 @@ class TestMyNewFeature:
         # Your test logic here
         button = driver.find_element(By.CSS_SELECTOR, "#my-button")
         button.click()
-        
-        driver.save_screenshot(str(screenshots_dir / "my_feature_test.png"))
         # Assert expected behavior
 ```
 
@@ -410,8 +405,6 @@ class TestNewFeature(BaseTest):
         # Your test logic here
         button = self.driver.find_element(By.ID, "my-button")
         button.click()
-        
-        self.take_screenshot("after_click")
         # Assert expected behavior
 ```
 
@@ -503,7 +496,7 @@ emulator -avd TestDevice -verbose
 - Ensure WebView is enabled in hybrid app
 
 #### "Element not found" / "PMTiles not visible"
-- Check screenshots in `screenshots/` directory to see current app state
+- Use the HTML report to analyze test failure details
 - Try different zoom levels (zoom 13 works well)
 - Ensure test data covers Frederick, MD area
 - Verify you're in correct context (Native vs WebView)
@@ -516,9 +509,6 @@ python run_tests.py --help
 
 # 🔍 Run with detailed output
 python run_tests.py --core --verbose
-
-# 📸 Check screenshots to debug visual issues
-ls screenshots/
 
 # 📋 Check HTML report for detailed test results
 # (automatically opens in browser, or manually open reports/test_report.html)

@@ -2,7 +2,6 @@
 Base class for mobile tests with common functionality including dynamic map loading.
 """
 import time
-from pathlib import Path
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
@@ -99,21 +98,6 @@ class BaseMobileTest:
             time.sleep(1)
             return element
     
-    def take_screenshot(self, driver, name):
-        """
-        Take screenshot with consistent naming and storage.
-        Consolidated from multiple test files.
-        """
-        screenshots_dir = Path(__file__).parent / "screenshots"
-        screenshots_dir.mkdir(exist_ok=True)
-        try:
-            path = screenshots_dir / f"{name}.png"
-            driver.save_screenshot(str(path))
-            print(f"📸 Screenshot saved: {name}.png")
-            return path
-        except Exception as e:
-            print(f"⚠️ Screenshot failed ({name}): {e}")
-            return None
     
     def check_side_panel(self, driver):
         """

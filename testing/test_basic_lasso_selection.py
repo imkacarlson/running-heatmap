@@ -40,8 +40,6 @@ class TestBasicLassoSelection(BaseMobileTest):
         print("🗺️ Waiting for map to fully load...")
         self.wait_for_map_load(driver, wait, verbose=True)
         
-        # Take initial screenshot
-        self.take_screenshot(driver, "lasso_basic_01_initial_state")
         
         # Navigate to Frederick activity location (where we saw it working)
         frederick_lat, frederick_lon = 39.4168, -77.4169
@@ -58,7 +56,6 @@ class TestBasicLassoSelection(BaseMobileTest):
         """)
         time.sleep(4)  # Wait for navigation and data loading
         
-        self.take_screenshot(driver, "lasso_basic_02_at_frederick_location")
         
         # Activate lasso mode - this was working!
         print("🎯 Activating lasso selection mode...")
@@ -78,20 +75,17 @@ class TestBasicLassoSelection(BaseMobileTest):
         """)
         print(f"🔍 Lasso button active style: {button_style}")
         
-        self.take_screenshot(driver, "lasso_basic_03_lasso_mode_active")
         
         # Draw triangle polygon around Frederick activity - this was working beautifully!
         print("🖊️ Drawing triangle polygon around Frederick activity...")
         self.draw_triangle_polygon(driver, frederick_lat, frederick_lon)
         
-        self.take_screenshot(driver, "lasso_basic_04_triangle_drawn")
         
         # Wait for processing and verify side panel opens - this was happening!
         time.sleep(3)
         print("📋 Checking if side panel opened...")
         
         panel_info = self.check_side_panel(driver)
-        self.take_screenshot(driver, "lasso_basic_05_side_panel_result")
         
         # Enhanced precision assertions
         assert button_style['exists'], "Lasso button should exist"

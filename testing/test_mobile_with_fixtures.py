@@ -226,11 +226,6 @@ class TestMobileAppWithTestData:
             };
         """)
     
-    def take_screenshot(self, driver, name):
-        """Helper to take screenshot"""
-        screenshots_dir = Path(__file__).parent / "screenshots"
-        screenshots_dir.mkdir(exist_ok=True)
-        driver.save_screenshot(str(screenshots_dir / f"{name}.png"))
     
     @pytest.mark.core  
     def test_activity_definitely_visible(self, mobile_driver):
@@ -282,10 +277,7 @@ class TestMobileAppWithTestData:
         print("📋 Step 4: Verifying actual pixel rendering...")
         pixels = self.verify_activity_line_visible(driver)
         
-        # Step 5: Add temporary markers for debugging screenshot
-        print("📋 Step 5: Adding debug markers and taking screenshot...")
         driver.execute_script("""
-            // Add temporary markers at test points for screenshot
             const testPoints = [
                 [-77.4144, 39.4143],
                 [-77.4174, 39.4173]
@@ -303,7 +295,6 @@ class TestMobileAppWithTestData:
             }
         """)
         
-        self.take_screenshot(driver, "rock_solid_visibility_verified")
         
         # Step 6: Get debug rendering state
         print("📋 Step 6: Getting rendering debug info...")
@@ -351,7 +342,6 @@ class TestMobileAppWithTestData:
         
         # Give app time to load
         time.sleep(8)
-        self.take_screenshot(driver, "01_fixture_app_launch")
         
         # Switch to WebView using helper
         webview_context = self.switch_to_webview(driver)
@@ -373,7 +363,6 @@ class TestMobileAppWithTestData:
         assert source_info['exists'], "PMTiles source should be loaded"
         print(f"✅ PMTiles source loaded: {source_info['url']}")
         
-        self.take_screenshot(driver, "02_fixture_map_loaded")
         print("✅ App launches successfully with test data")
     
     @pytest.mark.legacy  
@@ -428,7 +417,6 @@ class TestMobileAppWithTestData:
         
         # Wait for pan and data loading
         time.sleep(6)
-        self.take_screenshot(driver, "03_fixture_test_activity_location")
         
         # Use enhanced viewport verification
         features = self.verify_features_in_viewport(driver)
@@ -446,11 +434,8 @@ class TestMobileAppWithTestData:
         else:
             print("⚠️ Note: Pixel verification didn't detect red pixels (this may be okay due to rendering variations)")
         
-        # Final screenshot
-        self.take_screenshot(driver, "04_fixture_activity_verification")
         
         print("✅ Test activity visualization completed with enhanced verification")
-        print("📸 Screenshots saved - activity definitively verified in viewport")
 
 
 if __name__ == '__main__':

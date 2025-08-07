@@ -93,16 +93,10 @@ class TestMobileApp:
         )
         time.sleep(3)
     
-    def take_screenshot(self, name):
-        """Take screenshot"""
         try:
             from pathlib import Path
-            Path("screenshots").mkdir(exist_ok=True)
-            path = Path("screenshots") / f"{name}.png"
-            self.driver.save_screenshot(str(path))
             return path
         except Exception as e:
-            print(f"⚠️ Screenshot failed: {e}")
             return None
     
     @pytest.mark.legacy
@@ -116,7 +110,6 @@ class TestMobileApp:
         try:
             # Give app time to load
             time.sleep(8)
-            self.take_screenshot("01_test_data_app_launch")
             
             # Switch to WebView
             webview_found = self.switch_to_webview()
@@ -137,7 +130,6 @@ class TestMobileApp:
                 return typeof map !== 'undefined' && map.loaded && map.loaded();
             """)
             
-            self.take_screenshot("02_test_data_map_loaded")
             print(f"📍 Map loaded: {map_loaded}")
             print("✅ App launches successfully with test data")
             
@@ -200,7 +192,6 @@ class TestMobileApp:
         
             # Wait for map to pan and data to load
             time.sleep(6)
-            self.take_screenshot("03_test_activity_location")
         
             # Check for rendered features in the area
             features_info = self.driver.execute_script("""
@@ -240,11 +231,8 @@ class TestMobileApp:
                 # We should have at least some features from our test data
                 assert features_info['sourceTotal'] > 0, "Should have features in PMTiles source"
             
-            # Take final verification screenshot
-            self.take_screenshot("04_test_activity_verification")
         
             print("✅ Test activity visualization test completed")
-            print("📸 Check screenshots for visual verification of red activity line")
             
         finally:
             if hasattr(self, 'driver') and self.driver:
@@ -274,7 +262,6 @@ class TestMobileApp:
             new_zoom = self.driver.execute_script("return map.getZoom();")
             assert new_zoom > initial_zoom, "Zoom should increase"
             
-            self.take_screenshot("05_zoom_test")
         
             print(f"📍 Zoom test: {initial_zoom} → {new_zoom}")
             print("✅ Map navigation works with test data")

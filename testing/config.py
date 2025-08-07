@@ -9,7 +9,6 @@ class TestConfig:
     PROJECT_ROOT = Path(__file__).parent.parent
     APK_PATH = PROJECT_ROOT / "mobile/android/app/build/outputs/apk/debug/app-debug.apk"
     TEST_DATA_PATH = PROJECT_ROOT / "testing/test_data"
-    SCREENSHOTS_PATH = PROJECT_ROOT / "testing/screenshots"
     
     # Appium settings
     APPIUM_SERVER = os.getenv('APPIUM_SERVER', 'http://localhost:4723/wd/hub')

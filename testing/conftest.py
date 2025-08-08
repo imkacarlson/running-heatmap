@@ -100,11 +100,16 @@ def session_setup(fast_mode):
                     # It's a file
                     shutil.copy2(src_dir, dest_dir)
         
-        # Copy sample GPX data
+        # Copy sample GPX data (exclude manual_upload_run.gpx - that's for manual upload testing only)
         test_data_dir = Path(__file__).parent / "test_data"
         if test_data_dir.exists():
             for gpx_file in test_data_dir.glob("*.gpx"):
-                shutil.copy2(gpx_file, raw_data_dir / gpx_file.name)
+                # Skip manual_upload_run.gpx - it should only be available for manual upload testing
+                if gpx_file.name != "manual_upload_run.gpx":
+                    shutil.copy2(gpx_file, raw_data_dir / gpx_file.name)
+                    print(f"   📄 Including {gpx_file.name} in APK build")
+                else:
+                    print(f"   ⏭️  Excluding {gpx_file.name} from APK (manual upload testing only)")
         
         # 2. Process test data (GPX import and PMTiles generation)
         print("   🗂️ Processing test data (GPX import and PMTiles generation)...")

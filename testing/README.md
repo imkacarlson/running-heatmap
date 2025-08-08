@@ -38,6 +38,9 @@ python run_tests.py --core --fast --auto-emulator
 # 🚀 DEVELOPMENT: Fast iteration for UI changes  
 python run_tests.py --core --fast
 
+# 🧪 MANUAL TESTING: Interactive testing session
+python manual_test.py --fast
+
 # 🏗️ FULL BUILD: Complete APK build + all tests (first time)
 python run_tests.py --core
 
@@ -166,6 +169,36 @@ python run_tests.py --core --fast --auto-emulator
 - ✅ Generates HTML report
 - ✅ Opens report in browser
 - ✅ **NEW**: Automatically cleans up and shuts down for fresh runs
+
+## 🧪 **NEW: Manual Testing Mode**
+
+**Interactive testing with automatic setup and cleanup!**
+
+```bash
+# 🎯 Start manual testing session
+python manual_test.py --fast
+
+# 🚀 With automatic emulator startup  
+python manual_test.py --fast --auto-emulator
+
+# 🔄 Keep environment running when done
+python manual_test.py --fast --keep-emulator --keep-app
+```
+
+**What it does:**
+1. **🚀 Sets up everything**: Emulator, APK installation, test data, Appium server
+2. **📱 Launches the app**: Ready for you to test manually
+3. **⏳ Waits for you**: Test at your own pace, no time limits
+4. **🧹 Cleans up**: When you press Enter/Ctrl+C, automatically does all cleanup
+
+**Perfect for:**
+- 🎨 UI/UX testing and design validation  
+- 🐛 Bug reproduction and debugging
+- 🔍 Exploratory testing of new features
+- 📊 Performance and usability testing
+- 🎮 Interactive feature demonstrations
+
+The manual testing script uses the same robust infrastructure as `run_tests.py` but gives you complete control over the testing session.
 
 ### **All Available Commands**
 

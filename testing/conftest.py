@@ -11,6 +11,43 @@ import time
 from pathlib import Path
 import pytest_html
 
+def configure_emulator_stability():
+    """
+    Configure emulator settings for deterministic test behavior.
+    Disables animations and sets consistent density/font scaling.
+    """
+    stability_commands = [
+        # Disable all animations for deterministic behavior
+        ['adb', 'shell', 'settings', 'put', 'global', 'window_animation_scale', '0'],
+        ['adb', 'shell', 'settings', 'put', 'global', 'transition_animation_scale', '0'],
+        ['adb', 'shell', 'settings', 'put', 'global', 'animator_duration_scale', '0'],
+        # Set consistent density (420 is standard for many devices)
+        ['adb', 'shell', 'wm', 'density', '420'],
+        # Set consistent font scaling
+        ['adb', 'shell', 'settings', 'put', 'system', 'font_scale', '1.0'],
+        # Lock orientation and screen size for WebView stability
+        ['adb', 'shell', 'settings', 'put', 'system', 'accelerometer_rotation', '0'],
+        ['adb', 'shell', 'settings', 'put', 'system', 'user_rotation', '0'],  # 0 = portrait
+        ['adb', 'shell', 'wm', 'size', '1080x1920'],
+    ]
+    
+    print("   🎛️  Configuring emulator for deterministic behavior...")
+    
+    for cmd in stability_commands:
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            if result.returncode == 0:
+                setting_name = cmd[-2] if len(cmd) > 3 else "setting"
+                print(f"   ✅ {setting_name} = {cmd[-1]}")
+            else:
+                print(f"   ⚠️  Warning: {' '.join(cmd)} failed: {result.stderr.strip()}")
+        except subprocess.TimeoutExpired:
+            print(f"   ⚠️  Warning: {' '.join(cmd)} timed out")
+        except Exception as e:
+            print(f"   ⚠️  Warning: {' '.join(cmd)} error: {e}")
+    
+    print("   ✅ Emulator stability configuration complete")
+
 def pytest_addoption(parser):
     """Add custom command line options"""
     parser.addoption(
@@ -235,6 +272,9 @@ def mobile_driver(session_setup):
     import config
     
     print(f"\n📱 Setting up mobile driver...")
+    
+    # Configure emulator for deterministic behavior
+    configure_emulator_stability()
     
     # Use test config for capabilities
     capabilities = config.TestConfig.ANDROID_CAPABILITIES.copy()

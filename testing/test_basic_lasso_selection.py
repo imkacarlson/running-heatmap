@@ -162,15 +162,193 @@ class TestBasicLassoSelection(BaseMobileTest):
         print("⏳ Waiting for lasso processing...")
         lasso_result = self._wait_for_lasso_completion(driver, wait)
         
-        # Verify results
+        # Verify results for small polygon
         assert lasso_result['panel_opened'], f"Side panel should open: {lasso_result['debug_info']}"
         assert lasso_result['run_count'] >= 1, f"Should select at least 1 activity: {lasso_result['debug_info']}"
         
-        print(f"✅ Lasso selection completed successfully!")
-        print(f"📊 Selected {lasso_result['run_count']} activities")
+        print(f"✅ Small polygon lasso selection completed successfully!")
+        print(f"📊 Selected {lasso_result['run_count']} activities with small polygon")
+        
+        # Close the side panel before starting the second test
+        print("🔒 Closing side panel to prepare for second test...")
+        panel_closed = driver.execute_script("""
+            const panel = document.getElementById('side-panel');
+            if (panel && panel.classList.contains('open')) {
+                // Try clicking the close button first
+                const closeBtn = panel.querySelector('.close-btn, .close, [data-dismiss], .panel-close');
+                if (closeBtn) {
+                    closeBtn.click();
+                    return 'clicked_close_button';
+                }
+                
+                // Fallback: click outside the panel to close it
+                const mapElement = document.getElementById('map');
+                if (mapElement) {
+                    mapElement.click();
+                    return 'clicked_map_to_close';
+                }
+                
+                // Last resort: remove the open class directly
+                panel.classList.remove('open');
+                return 'removed_class_directly';
+            }
+            return 'panel_already_closed';
+        """)
+        print(f"📋 Panel close method: {panel_closed}")
+        
+        # Wait for panel to close
+        time.sleep(1.0)
+        
+        # Verify panel is closed
+        panel_closed_check = driver.execute_script("""
+            const panel = document.getElementById('side-panel');
+            return !panel || !panel.classList.contains('open') || 
+                   window.getComputedStyle(panel).display === 'none';
+        """)
+        
+        if not panel_closed_check:
+            print("⚠️ Panel didn't close properly, forcing closure...")
+            driver.execute_script("""
+                const panel = document.getElementById('side-panel');
+                if (panel) {
+                    panel.style.display = 'none';
+                    panel.classList.remove('open');
+                }
+            """)
+        else:
+            print("✅ Side panel closed successfully")
+        
+        # Test 2: Draw a larger polygon that should capture both packaged activities
+        print("\n🔄 Testing larger polygon to capture both packaged activities...")
+        print("🎯 This larger polygon should encompass both sample_run.gpx and eastside_run.gpx")
+        
+        # Zoom out to ensure both activities are visible for the large polygon test
+        print("🔍 Zooming out to ensure both activities are in view...")
+        current_zoom = driver.execute_script("return map.getZoom();")
+        new_zoom = max(11, current_zoom - 2)  # Zoom out by 2 levels, minimum zoom 11
+        print(f"📏 Current zoom: {current_zoom}, new zoom: {new_zoom}")
+        
+        driver.execute_script(f"""
+            // Use jumpTo for instant, deterministic positioning (no animation)
+            map.jumpTo({{
+                center: [{frederick_lon}, {frederick_lat}],
+                zoom: {new_zoom}
+            }});
+        """)
+        
+        # Wait for map to settle at new zoom level
+        print("⏳ Waiting for map to settle at new zoom level...")
+        time.sleep(2.0)
+        
+        # Wait for map idle and runs features at new zoom level
+        print("⏳ Waiting for view to go idle after zoom out...")
+        zoom_idle = driver.execute_async_script("""
+            const cb = arguments[arguments.length - 1];
+            if (!window.__mapTestHelpers) return cb(false);
+            window.__mapTestHelpers.waitForIdleAfterMove(12000).then(cb);
+        """)
+        print(f"🔎 Zoom out idle result: {zoom_idle}")
+        
+        # Verify features are still ready at new zoom
+        features_ready_zoom = driver.execute_async_script("""
+            const cb = arguments[arguments.length - 1];
+            if (!window.__mapTestHelpers) return cb(false);
+            window.__mapTestHelpers.waitForRunsReady(10000).then(cb);
+        """)
+        
+        if not features_ready_zoom:
+            print("⚠️ Features not immediately ready at new zoom, continuing anyway...")
+        else:
+            print("✅ Features ready at new zoom level")
+        
+        # Wait a moment for UI to settle before second test
+        time.sleep(1.0)
+        
+        # Reactivate lasso mode (it gets deactivated when panel closes)
+        print("🎯 Reactivating lasso selection mode for second test...")
+        lasso_btn_second = self.find_clickable_element(driver, wait, "#lasso-btn")
+        lasso_btn_second.click()
+        time.sleep(0.5)
+        
+        # Verify lasso mode is active
+        lasso_active_check = driver.execute_script("""
+            const btn = document.getElementById('lasso-btn');
+            const styles = window.getComputedStyle(btn);
+            return {
+                backgroundColor: styles.backgroundColor,
+                isActive: styles.backgroundColor.includes('rgb') && 
+                         !styles.backgroundColor.includes('255, 255, 255')
+            };
+        """)
+        print(f"🔍 Lasso button state for second test: {lasso_active_check}")
+        
+        if not lasso_active_check['isActive']:
+            print("❌ Lasso mode not properly activated for second test")
+            # Try clicking again
+            lasso_btn_second.click()
+            time.sleep(0.5)
+        
+        # Generate larger polygon with 350px radius to span both activities
+        print("📐 Generating larger polygon (350px radius) to encompass both activities...")
+        large_polygon_coords = driver.execute_script("""
+            return window.__mapTestHelpers.generateCenterPolygon(350);
+        """)
+        print(f"🗺️ Generated large polygon coordinates: {len(large_polygon_coords)} points")
+        
+        # Convert to viewport points for the larger polygon
+        large_viewport_points = driver.execute_script("""
+            return window.__mapTestHelpers.projectToViewportPoints(arguments[0]);
+        """, large_polygon_coords)
+        print(f"🎯 Large polygon viewport points: {large_viewport_points}")
+        
+        # Draw the larger polygon
+        print("👆 Drawing larger polygon with absolute viewport coordinates...")
+        self._draw_polygon_absolute_viewport(driver, large_viewport_points)
+        
+        # Wait for lasso processing of larger polygon
+        print("⏳ Waiting for large polygon lasso processing...")
+        large_lasso_result = self._wait_for_lasso_completion(driver, wait, max_wait=20)
+        
+        # Verify results for large polygon - should capture both activities
+        assert large_lasso_result['panel_opened'], f"Side panel should open for large polygon: {large_lasso_result['debug_info']}"
+        assert large_lasso_result['run_count'] == 2, f"Large polygon should select exactly 2 activities (both packaged GPX files): found {large_lasso_result['run_count']} activities. Debug: {large_lasso_result['debug_info']}"
+        
+        print(f"✅ Large polygon lasso selection completed successfully!")
+        print(f"📊 Selected {large_lasso_result['run_count']} activities with large polygon")
+        print("🎉 Both small and large polygon tests passed - lasso selection working correctly!")
+        
+        # Final cleanup: Close the side panel at the end of the test
+        print("🧹 Final cleanup: Closing side panel...")
+        final_cleanup = driver.execute_script("""
+            const panel = document.getElementById('side-panel');
+            if (panel && panel.classList.contains('open')) {
+                // Try clicking the map to close it
+                const mapElement = document.getElementById('map');
+                if (mapElement) {
+                    mapElement.click();
+                }
+                // Also remove the class directly
+                panel.classList.remove('open');
+                panel.style.display = 'none';
+            }
+            
+            // Also deactivate lasso mode
+            const lassoBtn = document.getElementById('lasso-btn');
+            if (lassoBtn) {
+                const styles = window.getComputedStyle(lassoBtn);
+                const isActive = styles.backgroundColor.includes('rgb') && 
+                               !styles.backgroundColor.includes('255, 255, 255');
+                if (isActive) {
+                    lassoBtn.click(); // Turn off lasso mode
+                }
+            }
+            
+            return 'cleanup_completed';
+        """)
+        print(f"🧹 Final cleanup result: {final_cleanup}")
         
         # Add diagnostics on unexpected results
-        if lasso_result['run_count'] == 0:
+        if lasso_result['run_count'] == 0 or large_lasso_result['run_count'] != 2:
             diagnostics = driver.execute_script("""
                 return window.__mapTestHelpers ? window.__mapTestHelpers.getMapDiagnostics() : 
                        { error: 'Map helpers not available' };

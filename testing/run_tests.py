@@ -110,12 +110,6 @@ def check_and_start_emulator(args):
     """Check for devices and optionally start emulator"""
     print("📱 Checking for connected devices...")
     
-    # Restart ADB server first to ensure fresh detection
-    print("   Refreshing ADB connection...")
-    subprocess.run(['adb', 'kill-server'], capture_output=True)
-    subprocess.run(['adb', 'start-server'], capture_output=True)
-    time.sleep(2)  # Give ADB a moment to start
-    
     # Check for connected devices
     result = subprocess.run(['adb', 'devices'], capture_output=True, text=True)
     devices = [line for line in result.stdout.split('\n') if '\tdevice' in line]
@@ -194,7 +188,7 @@ def check_and_start_emulator(args):
                         print(f"   Emulator detected, checking boot status... ({counter}s)")
             else:
                 # Try restarting ADB if no devices after reasonable time
-                if counter > 60 and counter % 30 == 0:
+                if counter >= 30 and counter % 30 == 0:
                     print(f"   Restarting ADB server to refresh device detection... ({counter}s)")
                     subprocess.run(['adb', 'kill-server'], capture_output=True)
                     subprocess.run(['adb', 'start-server'], capture_output=True)

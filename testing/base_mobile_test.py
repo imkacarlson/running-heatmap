@@ -156,8 +156,154 @@ class BaseMobileTest:
             };
         """)
         
-        print(f"📋 Side panel info: {panel_info}")
+        self._print_formatted_panel_info(panel_info)
         return panel_info
+    
+    def _print_formatted_panel_info(self, panel_info):
+        """Format and print side panel information in a human-readable way"""
+        if not panel_info:
+            print("📋 Side Panel Status: No panel info available")
+            return
+            
+        print("📋 Side Panel Status:")
+        
+        # Panel visibility
+        if panel_info.get('visible', False):
+            display = panel_info.get('display', 'unknown')
+            visibility = panel_info.get('visibility', 'unknown')
+            print(f"   ✅ Visible (display: {display}, visibility: {visibility})")
+        else:
+            print(f"   ❌ Not visible")
+            if 'error' in panel_info:
+                print(f"      Error: {panel_info['error']}")
+            return
+        
+        # Run count and content
+        run_count = panel_info.get('runCount', 0)
+        has_content = panel_info.get('hasContent', False)
+        
+        if not has_content:
+            print("   📭 No content found")
+            return
+            
+        if run_count > 0:
+            print(f"   🏃 Found {run_count} activit{'ies' if run_count != 1 else 'y'}:")
+            
+            # Parse and format the full text
+            full_text = panel_info.get('fullText', '')
+            if full_text:
+                activities = self._parse_activities_from_text(full_text)
+                for i, activity in enumerate(activities, 1):
+                    print(f"      {i}. {activity}")
+            else:
+                print("      (Activity details not available)")
+        else:
+            print("   📝 Panel has content but no activities detected")
+            # Show a snippet of the content for debugging
+            full_text = panel_info.get('fullText', '')
+            if full_text:
+                snippet = full_text.replace('\n', ' ').strip()[:100]
+                if len(snippet) == 100:
+                    snippet += "..."
+                print(f"      Content snippet: {snippet}")
+    
+    def _parse_activities_from_text(self, full_text):
+        """Parse individual activities from the panel's full text"""
+        import re
+        
+        activities = []
+        
+        # Clean up the text - remove excessive whitespace and newlines
+        cleaned_text = re.sub(r'\s+', ' ', full_text).strip()
+        
+        # Look for date patterns (various formats)
+        date_patterns = [
+            r'\d{1,2}/\d{1,2}/\d{4} \d{1,2}:\d{2}:\d{2} [AP]M',  # MM/DD/YYYY HH:MM:SS AM/PM
+            r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}',  # ISO format
+            r'\d{1,2}/\d{1,2}/\d{4}',  # MM/DD/YYYY
+        ]
+        
+        # Try to split by date patterns
+        for pattern in date_patterns:
+            matches = list(re.finditer(pattern, cleaned_text))
+            if matches:
+                for match in matches:
+                    date_str = match.group()
+                    # Find the end of this activity (start of next date or end of text)
+                    start_pos = match.start()
+                    next_match = None
+                    for other_match in matches:
+                        if other_match.start() > match.start():
+                            next_match = other_match
+                            break
+                    
+                    if next_match:
+                        end_pos = next_match.start()
+                    else:
+                        end_pos = len(cleaned_text)
+                    
+                    # Extract the activity text
+                    activity_text = cleaned_text[start_pos:end_pos].strip()
+                    
+                    # Clean up and format the activity
+                    activity = self._format_single_activity(activity_text)
+                    if activity and activity not in activities:
+                        activities.append(activity)
+                break
+        
+        # If no date patterns found, try to split by emojis or other markers
+        if not activities:
+            # Split by running emoji or other common separators
+            parts = re.split(r'🏃|🚴|🏊', cleaned_text)
+            for part in parts:
+                part = part.strip()
+                if part and len(part) > 10:  # Ignore very short fragments
+                    activity = self._format_single_activity(part)
+                    if activity:
+                        activities.append(activity)
+        
+        # If still no activities, return the cleaned text as one activity
+        if not activities and cleaned_text:
+            activities.append(self._format_single_activity(cleaned_text))
+        
+        return activities[:10]  # Limit to 10 activities to avoid spam
+    
+    def _format_single_activity(self, activity_text):
+        """Format a single activity text for display"""
+        import re
+        
+        # Remove excessive whitespace
+        activity = re.sub(r'\s+', ' ', activity_text).strip()
+        
+        # Remove common UI artifacts
+        activity = re.sub(r'^\s*🏃\s*', '', activity)  # Remove leading running emoji
+        
+        # Extract meaningful parts (date, distance, time)
+        parts = []
+        
+        # Look for date
+        date_match = re.search(r'\d{1,2}/\d{1,2}/\d{4}(?:\s+\d{1,2}:\d{2}:\d{2}\s*[AP]M)?', activity)
+        if date_match:
+            parts.append(date_match.group())
+        
+        # Look for distance (with emoji)
+        distance_match = re.search(r'📏\s*[\d.]+\s*mi', activity)
+        if distance_match:
+            parts.append(distance_match.group())
+        
+        # Look for time (with emoji)  
+        time_match = re.search(r'⏱️\s*\d+:\d+', activity)
+        if time_match:
+            parts.append(time_match.group())
+        
+        if parts:
+            return ' - '.join(parts)
+        
+        # Fallback: return cleaned activity if it's not too long
+        if len(activity) <= 100:
+            return activity
+        else:
+            return activity[:97] + "..."
     
     def get_selected_runs_details(self, driver):
         """

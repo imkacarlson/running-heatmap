@@ -27,6 +27,8 @@ Examples:
   python run_tests.py                          # Core tests with auto-emulator (most common)
   python run_tests.py --fast                   # Core tests in fast mode
   python run_tests.py --mobile                 # Full mobile test suite
+  python run_tests.py --one-test               # Interactive single test selection
+  python run_tests.py --one-test --fast        # Interactive single test selection in fast mode
   python run_tests.py --browser                # Core tests with browser report
   python run_tests.py --manual-emulator        # Core tests with manual emulator
   python run_tests.py --legacy --keep-app      # Legacy tests, keep app installed
@@ -41,6 +43,8 @@ Examples:
                            help='Run legacy tests only (default: core tests)')
     suite_group.add_argument('--integration', action='store_true',
                            help='Run integration tests only (default: core tests)')
+    suite_group.add_argument('--one-test', action='store_true',
+                           help='Interactive selection of a single test to run (always includes test_00 setup)')
     
     # Test execution options
     parser.add_argument('--fast', action='store_true',
@@ -399,6 +403,15 @@ def build_pytest_command(args):
     if args.tests:
         # Specific test files provided
         cmd.extend(args.tests)
+    elif getattr(args, 'one_test', False):
+        # one_test mode - tests will be set by discover_and_select_test()
+        if hasattr(args, 'selected_tests') and args.selected_tests:
+            cmd.extend(args.selected_tests)
+        else:
+            print("❌ No tests selected for one-test mode")
+            return None
+        if args.fast:
+            cmd.append('--fast')
     elif args.mobile:
         cmd.extend(['-m', 'mobile'])
         if args.fast:
@@ -434,7 +447,14 @@ def build_pytest_command(args):
 def run_tests(args):
     """Enhanced test execution with intelligent discovery"""
     # Determine what we're running
-    if args.tests:
+    if getattr(args, 'one_test', False):
+        # Test selection already done in main()
+        if hasattr(args, 'selected_tests') and args.selected_tests:
+            suite_name = f"selected tests ({', '.join(args.selected_tests)})"
+        else:
+            print("❌ No test selected for one-test mode")
+            return 1
+    elif args.tests:
         suite_name = "custom tests"
     elif args.mobile:
         suite_name = "mobile tests"
@@ -454,6 +474,9 @@ def run_tests(args):
     
     # Build pytest command
     cmd = build_pytest_command(args)
+    
+    if cmd is None:
+        return 1  # Error in building command
     
     if args.verbose:
         print(f"   Command: {' '.join(cmd)}")
@@ -512,6 +535,130 @@ def open_test_report(report_path, no_browser=False):
         print(f"📊 Test report available at: {abs_report_path}")
         print(f"   💡 In WSL? Copy path to Windows and open in browser manually")
         print(f"   💡 Or use: --no-browser flag to skip auto-opening")
+
+def extract_test_description(test_file_path):
+    """Extract a description from the test file by looking at docstrings or class names"""
+    try:
+        with open(test_file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Try to find class docstring first
+        import re
+        
+        # Look for class docstring
+        class_match = re.search(r'class\s+\w+.*?:\s*"""(.*?)"""', content, re.DOTALL)
+        if class_match:
+            docstring = class_match.group(1).strip()
+            # Take first line of docstring
+            first_line = docstring.split('\n')[0].strip()
+            if first_line and len(first_line) < 80:
+                return first_line
+        
+        # Look for module docstring
+        module_match = re.search(r'^"""(.*?)"""', content, re.DOTALL | re.MULTILINE)
+        if module_match:
+            docstring = module_match.group(1).strip()
+            first_line = docstring.split('\n')[0].strip()
+            if first_line and len(first_line) < 80:
+                return first_line
+        
+        # Look for class name and make it readable
+        class_name_match = re.search(r'class\s+(\w+)', content)
+        if class_name_match:
+            class_name = class_name_match.group(1)
+            if class_name.startswith('Test'):
+                class_name = class_name[4:]  # Remove 'Test' prefix
+            # Convert CamelCase to readable format
+            readable = re.sub(r'([A-Z])', r' \1', class_name).strip()
+            return readable
+            
+    except Exception:
+        pass
+    
+    # Fallback: convert filename to readable format
+    name = test_file_path.stem.replace('test_', '').replace('_', ' ')
+    # Remove leading numbers like "00 "
+    name = re.sub(r'^\d+\s*', '', name)
+    return name.title()
+
+def discover_and_select_test():
+    """Discover available tests and let user select one"""
+    print("🔍 Discovering available tests...")
+    
+    # Get all test files in the current directory
+    test_files = []
+    test_dir = Path(__file__).parent
+    
+    for test_file in sorted(test_dir.glob("test_*.py")):
+        test_files.append(test_file)
+    
+    if not test_files:
+        print("❌ No test files found!")
+        return None
+        
+    # Display menu
+    print("\n🧪 Available Tests:")
+    print("=" * 80)
+    
+    for i, test_file in enumerate(test_files, 1):
+        description = extract_test_description(test_file)
+        
+        # Special note for the setup test
+        if test_file.name.startswith('test_00'):
+            description += " (always runs first)"
+        
+        print(f"{i:2}. {test_file.name:<35} - {description}")
+    
+    print("=" * 80)
+    
+    # Get user selection
+    while True:
+        try:
+            choice = input(f"Enter test number to run (1-{len(test_files)}): ").strip()
+            
+            if not choice:
+                print("❌ Please enter a number")
+                continue
+                
+            choice_num = int(choice)
+            
+            if 1 <= choice_num <= len(test_files):
+                selected_test = test_files[choice_num - 1]
+                print(f"\n✅ Selected: {selected_test.name}")
+                
+                # Always run test_00 first if it's not the selected test
+                tests_to_run = []
+                setup_test = None
+                
+                # Find the setup test (test_00*)
+                for test_file in test_files:
+                    if test_file.name.startswith('test_00'):
+                        setup_test = test_file.name
+                        break
+                
+                if selected_test.name != setup_test and setup_test:
+                    tests_to_run.append(setup_test)
+                    print(f"📋 Will run: {setup_test} (setup) + {selected_test.name}")
+                else:
+                    if setup_test:
+                        print(f"📋 Will run: {selected_test.name} (setup test selected)")
+                    else:
+                        print(f"📋 Will run: {selected_test.name} (no setup test found)")
+                
+                tests_to_run.append(selected_test.name)
+                return tests_to_run
+                
+            else:
+                print(f"❌ Please enter a number between 1 and {len(test_files)}")
+                
+        except ValueError:
+            print("❌ Please enter a valid number")
+        except KeyboardInterrupt:
+            print("\n❌ Test selection cancelled")
+            return None
+        except EOFError:
+            print("\n❌ Test selection cancelled")
+            return None
 
 def print_test_summary(exit_code, args):
     """Print a comprehensive test summary"""
@@ -854,6 +1001,18 @@ def main():
     
     print("📱 Enhanced Running Heatmap Mobile App Test Runner")
     print("=" * 60)
+    
+    # Handle test selection BEFORE infrastructure setup
+    if getattr(args, 'one_test', False):
+        selected_tests = discover_and_select_test()
+        if selected_tests is None:
+            print("❌ No test selected, exiting...")
+            sys.exit(1)
+        
+        # Set the selected tests on args object
+        args.selected_tests = selected_tests
+        print(f"🎯 Proceeding with infrastructure setup for: {', '.join(selected_tests)}")
+        print()
     
     # Check prerequisites
     if not check_prerequisites(args):

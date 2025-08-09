@@ -12,6 +12,8 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.actions.pointer_input import PointerInput
+from selenium.webdriver.common.actions.action_builder import ActionBuilder
 from selenium.common.exceptions import TimeoutException, ElementClickInterceptedException
 from base_mobile_test import BaseMobileTest
 
@@ -56,11 +58,15 @@ class TestUploadFunctionality(BaseMobileTest):
         print("🏆 Starting rock-solid verification of uploaded activity...")
         self.rock_solid_upload_verification(driver)
         
-        # Phase 4: Cleanup - Clear uploaded activities
+        # Phase 4: Lasso Selection Verification - Test uploaded activity shows in sidebar
+        print("🎯 Starting lasso selection verification of all activities (uploaded + packaged)...")
+        self.lasso_selection_verification(driver, wait)
+        
+        # Phase 5: Cleanup - Clear uploaded activities
         print("🧹 Cleaning up uploaded activities...")
         self.clear_uploaded_activities(driver, wait)
         
-        # Phase 5: Cleanup device files
+        # Phase 6: Cleanup device files
         print("📁 Cleaning up test files from device...")
         self.cleanup_test_file_from_device()
         
@@ -296,6 +302,7 @@ class TestUploadFunctionality(BaseMobileTest):
             page_source = driver.page_source
             
             # Save to file for analysis
+            debug_file = Path(__file__).parent / "debug_upload_file_picker.xml"
             debug_file.parent.mkdir(exist_ok=True)
             
             with open(debug_file, 'w', encoding='utf-8') as f:
@@ -803,3 +810,211 @@ class TestUploadFunctionality(BaseMobileTest):
         except Exception as e:
             print(f"⚠️ Error removing test file from device: {e}")
             print("📝 Note: File cleanup failed but won't affect other tests")
+    
+    # Lasso Selection Methods
+    
+    def lasso_selection_verification(self, driver, wait):
+        """Test lasso selection to verify uploaded activity appears in sidebar with all activities"""
+        print("🎯 Starting lasso selection verification after upload...")
+        
+        # Navigate to area that encompasses all activities (uploaded + 2 packaged)
+        # Using Frederick center coordinates to encompass all three activities
+        frederick_lat, frederick_lon = 39.4168, -77.4169  # Center of all activities
+        zoom_level = 11  # Zoomed out to see all activities
+        
+        print(f"🗺️ Navigating to Frederick area to encompass all activities: {frederick_lat}, {frederick_lon}")
+        driver.execute_script(f"""
+            map.jumpTo({{
+                center: [{frederick_lon}, {frederick_lat}],
+                zoom: {zoom_level}
+            }});
+        """)
+        time.sleep(3)  # Wait for map to settle and tiles to load
+        
+        # Inject map helpers if not already present
+        print("📦 Ensuring map test helpers are available...")
+        self._inject_map_helpers(driver, wait)
+        
+        # Wait for map idle and runs features
+        print("⏳ Waiting for view to go idle after navigation...")
+        went_idle = driver.execute_async_script("""
+            const cb = arguments[arguments.length - 1];
+            if (!window.__mapTestHelpers) return cb(false);
+            window.__mapTestHelpers.waitForIdleAfterMove(15000).then(cb);
+        """)
+        print(f"🔎 Idle wait result: {went_idle}")
+        
+        # Activate lasso mode
+        print("🎯 Activating lasso selection mode...")
+        lasso_btn = self.find_clickable_element(driver, wait, "#lasso-btn")
+        lasso_btn.click()
+        time.sleep(1)
+        
+        # Generate large polygon to encompass all activities (uploaded + 2 packaged)
+        print("📐 Generating large polygon to encompass all three activities...")
+        large_polygon_coords = driver.execute_script("""
+            return window.__mapTestHelpers.generateCenterPolygon(400);
+        """)
+        print(f"🗺️ Generated large polygon coordinates: {len(large_polygon_coords)} points")
+        
+        # Convert to viewport points
+        viewport_points = driver.execute_script("""
+            return window.__mapTestHelpers.projectToViewportPoints(arguments[0]);
+        """, large_polygon_coords)
+        print(f"🎯 Viewport points: {viewport_points}")
+        
+        # Draw the polygon
+        print("👆 Drawing large polygon to select all activities...")
+        self._draw_polygon_absolute_viewport(driver, viewport_points)
+        
+        # Wait for lasso processing and verify results
+        print("⏳ Waiting for lasso processing to complete...")
+        lasso_result = self._wait_for_lasso_completion(driver, wait, max_wait=20)
+        
+        # Verify that exactly 3 activities are selected (2 packaged + 1 uploaded)
+        assert lasso_result['panel_opened'], f"Side panel should open after lasso selection: {lasso_result['debug_info']}"
+        assert lasso_result['run_count'] == 3, f"Should select exactly 3 activities (2 packaged + 1 uploaded): found {lasso_result['run_count']} activities. Debug: {lasso_result['debug_info']}"
+        
+        print(f"✅ Lasso selection verification completed successfully!")
+        print(f"📊 Selected {lasso_result['run_count']} activities - uploaded activity successfully integrated with packaged data")
+        
+        # Close the side panel
+        print("🔒 Closing side panel after lasso verification...")
+        driver.execute_script("""
+            const panel = document.getElementById('side-panel');
+            if (panel && panel.classList.contains('open')) {
+                const mapElement = document.getElementById('map');
+                if (mapElement) {
+                    mapElement.click();
+                }
+                panel.classList.remove('open');
+            }
+            
+            // Deactivate lasso mode
+            const lassoBtn = document.getElementById('lasso-btn');
+            if (lassoBtn) {
+                const styles = window.getComputedStyle(lassoBtn);
+                const isActive = styles.backgroundColor.includes('rgb') && 
+                               !styles.backgroundColor.includes('255, 255, 255');
+                if (isActive) {
+                    lassoBtn.click();
+                }
+            }
+        """)
+        time.sleep(1)
+        
+        print("✅ Lasso selection verification completed - uploaded activity properly shows in sidebar!")
+    
+    def _inject_map_helpers(self, driver, wait):
+        """Inject map helpers for lasso functionality"""
+        helpers_js_path = Path(__file__).parent / "map_helpers.js"
+        
+        # First bind __map if not already bound
+        driver.execute_script("""
+            if (!window.__map && typeof map !== 'undefined' && map && map.project) {
+                window.__map = map;
+            }
+        """)
+        
+        # Inject helpers if available and not already injected
+        if helpers_js_path.exists() and not driver.execute_script("return window.__mapTestHelpers !== undefined"):
+            with open(helpers_js_path, 'r') as f:
+                helpers_script = f.read()
+            driver.execute_script(helpers_script)
+            
+            # Wait for helpers to be ready
+            wait.until(lambda d: d.execute_script("return window.__mapTestHelpers !== undefined"))
+            print("✅ Map test helpers injected successfully")
+        else:
+            print("✅ Map test helpers already available or file not found")
+    
+    def _draw_polygon_absolute_viewport(self, driver, viewport_points):
+        """Draw polygon using absolute viewport coordinates (adapted from lasso test)"""
+        if len(viewport_points) < 3:
+            raise ValueError("Need at least 3 points for polygon")
+        
+        # Freeze scroll position to prevent coordinate shifts
+        driver.execute_script("window.scrollTo(0,0)")
+        
+        # Get viewport dimensions for clamping
+        vw, vh = driver.execute_script("return [window.innerWidth, window.innerHeight]")
+        
+        # Clamp points to viewport bounds
+        clamped_points = []
+        for p in viewport_points:
+            x = max(15, min(vw - 15, int(p["x"])))
+            y = max(15, min(vh - 15, int(p["y"])))
+            clamped_points.append({"x": x, "y": y})
+        
+        print(f"🔒 Clamped to viewport bounds: {len(clamped_points)} points")
+        
+        # Create touch pointer
+        finger = PointerInput("touch", "finger")
+        actions = ActionBuilder(driver, finger)
+        
+        def move_abs(pt):
+            """Absolute viewport move"""
+            actions.pointer_action.move_to_location(int(pt["x"]), int(pt["y"]))
+        
+        def lerp(a, b, t):
+            """Interpolate between two absolute points"""
+            x = int(a["x"] + (b["x"] - a["x"]) * t)
+            y = int(a["y"] + (b["y"] - a["y"]) * t)
+            x = max(15, min(vw - 15, x))
+            y = max(15, min(vh - 15, y))
+            return {"x": x, "y": y}
+        
+        # Start at first point
+        first_point = clamped_points[0]
+        move_abs(first_point)
+        actions.pointer_action.pointer_down()
+        actions.pointer_action.pause(0.1)
+        
+        print(f"👆 Starting absolute touch at {first_point}")
+        
+        # Draw smooth path between points
+        for i in range(len(clamped_points) - 1):
+            point_a = clamped_points[i]
+            point_b = clamped_points[i + 1]
+            
+            # Interpolated moves for smoothness
+            steps = 12
+            for step in range(1, steps + 1):
+                interpolated_point = lerp(point_a, point_b, step / steps)
+                move_abs(interpolated_point)
+                actions.pointer_action.pause(0.015)
+            
+            print(f"👆 Drew to absolute point {i+1}: {point_b}")
+        
+        # Release touch
+        actions.pointer_action.pointer_up()
+        
+        # Perform the entire action sequence
+        actions.perform()
+        print("✅ Absolute viewport polygon drawing completed")
+    
+    def _wait_for_lasso_completion(self, driver, wait, max_wait=15):
+        """Wait for lasso processing with enhanced checks (adapted from lasso test)"""
+        start_time = time.time()
+        
+        while time.time() - start_time < max_wait:
+            # Check panel state
+            panel_info = self.check_side_panel(driver)
+            run_count = panel_info.get('runCount', 0)
+            
+            if run_count > 0:
+                elapsed = time.time() - start_time
+                return {
+                    'panel_opened': True,
+                    'run_count': run_count,
+                    'debug_info': f'Success after {elapsed:.1f}s'
+                }
+            
+            time.sleep(0.5)
+        
+        # Timeout - return diagnostic info
+        return {
+            'panel_opened': False,
+            'run_count': 0,
+            'debug_info': f'Timeout after {max_wait}s'
+        }

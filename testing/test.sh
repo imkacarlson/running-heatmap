@@ -9,7 +9,7 @@ echo "🐍 Activating Python virtual environment..."
 source test_venv/bin/activate
 
 # Run the enhanced test suite
-echo "🚀 Running core tests with enhanced runner..."
-python run_tests.py
+echo "🚀 Running tests with enhanced runner..."
+python run_tests.py "$@"
 
 echo "🎉 Testing complete!"

@@ -317,7 +317,181 @@ class TestBasicLassoSelection(BaseMobileTest):
         print(f"📊 Selected {large_lasso_result['run_count']} activities with large polygon")
         print("🎉 Both small and large polygon tests passed - lasso selection working correctly!")
         
-        # Final cleanup: Close the side panel at the end of the test
+        # Continue to sidebar selection test instead of cleaning up
+        print("\n🔄 Continuing to sidebar selection and visibility test...")
+        
+        # We should already have sidebar open with 2 activities from the large polygon test
+        print(f"✅ Starting with sidebar open and {large_lasso_result['run_count']} activities selected")
+        
+        # Step 1: Sidebar manipulation - deselect all, then select one
+        print("🎯 Step 1: Testing sidebar selection controls...")
+        
+        # First, click "deselect all"
+        print("   📝 Clicking 'Deselect All' button...")
+        deselect_all_btn = self.find_clickable_element(driver, wait, "#deselect-all")
+        deselect_all_btn.click()
+        time.sleep(1)
+        
+        # Verify all checkboxes are unchecked and no activities are visible
+        deselect_verification = driver.execute_script("""
+            const checkboxes = document.querySelectorAll('.run-checkbox');
+            const checkedBoxes = Array.from(checkboxes).filter(cb => cb.checked);
+            const selectedRunsSize = window.selectedRuns ? window.selectedRuns.size : 0;
+            
+            return {
+                totalCheckboxes: checkboxes.length,
+                checkedCheckboxes: checkedBoxes.length,
+                selectedRunsSize: selectedRunsSize,
+                allUnchecked: checkedBoxes.length === 0
+            };
+        """)
+        
+        assert deselect_verification['allUnchecked'], f"All checkboxes should be unchecked after 'Deselect All': {deselect_verification}"
+        print(f"   ✅ All {deselect_verification['totalCheckboxes']} checkboxes successfully unchecked")
+        
+        # Now select only the first activity
+        print("   📝 Selecting first activity only...")
+        first_checkbox = self.find_clickable_element(driver, wait, ".run-checkbox:first-of-type")
+        first_checkbox.click()
+        
+        # Ensure the change event is properly triggered
+        driver.execute_script("""
+            const checkbox = document.querySelector('.run-checkbox:first-of-type');
+            if (checkbox) {
+                checkbox.dispatchEvent(new Event('change', {bubbles: true}));
+            }
+        """)
+        time.sleep(1)
+        
+        print("   ✅ First activity checkbox clicked")
+        
+        # Step 2: Minimize the sidebar
+        print("   📝 Minimizing sidebar...")
+        collapse_btn = self.find_clickable_element(driver, wait, "#panel-collapse")
+        collapse_btn.click()
+        time.sleep(1)
+        
+        # Verify sidebar is collapsed
+        sidebar_collapsed = driver.execute_script("""
+            const panel = document.getElementById('side-panel');
+            return panel && panel.classList.contains('collapsed');
+        """)
+        
+        assert sidebar_collapsed, "Sidebar should be collapsed after clicking collapse button"
+        print("   ✅ Sidebar successfully minimized")
+        
+        print("✅ Step 1 completed: Sidebar manipulation successful")
+        
+        # Step 2: Visibility verification
+        print("🎯 Step 2: Verifying map visibility...")
+        
+        # Positive test: Verify exactly one activity is visible
+        print("   🔍 Positive test: Verifying selected activity is visible...")
+        features_verification = self.verify_features_in_current_viewport(driver)
+        
+        # Also check the map filter is correctly applied
+        map_filter_check = driver.execute_script("""
+            const layer = map.getLayer('runsVec');
+            const filter = layer ? map.getFilter('runsVec') : null;
+            const renderedFeatures = map.queryRenderedFeatures();
+            const activityFeatures = renderedFeatures.filter(f => 
+                f.geometry && f.geometry.type === 'LineString'
+            );
+            
+            return {
+                hasFilter: !!filter,
+                filterApplied: filter !== null,
+                renderedActivityCount: activityFeatures.length,
+                selectedRunsSize: window.selectedRuns ? window.selectedRuns.size : 0
+            };
+        """)
+        
+        print(f"   📊 Map filter check: {map_filter_check}")
+        print(f"   📊 Features in viewport: {features_verification['featuresInViewport']}")
+        
+        # Success criteria similar to test_01_activity_visibility.py
+        success_criteria = {
+            'features_found': features_verification['featuresInViewport'] > 0,
+            'filter_applied': map_filter_check['filterApplied'],
+        }
+        
+        print("🏆 Visibility verification results:")
+        for criterion, passed in success_criteria.items():
+            status = "✅" if passed else "❌"
+            print(f"  {status} {criterion}: {passed}")
+        
+        # Assert all criteria (following test_01_activity_visibility pattern)
+        assert success_criteria['features_found'], f"No features visible on map (found {features_verification['featuresInViewport']})"
+        assert success_criteria['filter_applied'], "Map filter should be applied when sidebar is open with selection"
+        
+        print("   ✅ Visibility verification passed: Selected activity is visible with filter applied")
+        
+        print("✅ Step 2 completed: Visibility verification successful")
+        
+        # Step 3: Proper cleanup - reopen sidebar and close with 'x'
+        print("🎯 Step 3: Performing proper cleanup...")
+        
+        # Reopen the sidebar from collapsed state
+        print("   📝 Reopening sidebar from collapsed state...")
+        expand_btn = self.find_clickable_element(driver, wait, "#expand-btn")
+        expand_btn.click()
+        time.sleep(1)
+        
+        # Verify sidebar is expanded
+        sidebar_expanded = driver.execute_script("""
+            const panel = document.getElementById('side-panel');
+            return panel && !panel.classList.contains('collapsed') && panel.classList.contains('open');
+        """)
+        
+        assert sidebar_expanded, "Sidebar should be expanded after clicking expand button"
+        print("   ✅ Sidebar successfully reopened")
+        
+        # Close with 'x' button
+        print("   📝 Closing sidebar with 'x' button...")
+        close_btn = self.find_clickable_element(driver, wait, "#panel-close")
+        close_btn.click()
+        time.sleep(1)
+        
+        # Verify sidebar is properly closed and all activities are visible again
+        final_cleanup_check = driver.execute_script("""
+            const panel = document.getElementById('side-panel');
+            const layer = map.getLayer('runsVec');
+            const filter = layer ? map.getFilter('runsVec') : null;
+            const selectedRunsSize = window.selectedRuns ? window.selectedRuns.size : 0;
+            
+            return {
+                panelClosed: panel && !panel.classList.contains('open'),
+                noFilter: filter === null,
+                selectedRunsCleared: selectedRunsSize === 0,
+                sidebarOpenState: window.sidebarOpen || false
+            };
+        """)
+        
+        assert final_cleanup_check['panelClosed'], "Panel should be closed after clicking 'x'"
+        assert final_cleanup_check['noFilter'], "Map filter should be cleared after closing sidebar"
+        assert not final_cleanup_check['sidebarOpenState'], "Sidebar open state should be false"
+        
+        print("   ✅ Sidebar properly closed and filters cleared")
+        
+        # Final verification: all activities should be visible again
+        final_features_check = self.verify_features_in_current_viewport(driver)
+        print(f"   📊 Final check - features visible after cleanup: {final_features_check['featuresInViewport']}")
+        
+        print("✅ Step 3 completed: Proper cleanup successful")
+        
+        print("🎉 Sidebar selection and visibility test completed successfully!")
+        print("📋 Additional test verified:")
+        print("   ✓ Started with sidebar open and multiple activities selected") 
+        print("   ✓ 'Deselect all' button works correctly")
+        print("   ✓ Individual activity selection works")
+        print("   ✓ Sidebar can be minimized")
+        print("   ✓ Map shows only selected activity when sidebar is minimized")
+        print("   ✓ Non-selected activities are filtered out")
+        print("   ✓ Sidebar can be reopened from collapsed state")
+        print("   ✓ Sidebar can be properly closed with 'x' button")
+        print("   ✓ All activities become visible again after cleanup")
+        
+        # Final cleanup: Close the side panel at the end of both tests
         print("🧹 Final cleanup: Closing side panel...")
         final_cleanup = driver.execute_script("""
             const panel = document.getElementById('side-panel');

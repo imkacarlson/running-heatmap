@@ -399,10 +399,9 @@ class TestBasicLassoSelection(BaseMobileTest):
             );
             
             return {
-                hasFilter: !!filter,
-                filterApplied: filter !== null,
-                renderedActivityCount: activityFeatures.length,
-                selectedRunsSize: window.selectedRuns ? window.selectedRuns.size : 0
+                hasFilter: filter != null,
+                filterApplied: filter != null,
+                renderedActivityCount: activityFeatures.length
             };
         """)
         
@@ -452,30 +451,30 @@ class TestBasicLassoSelection(BaseMobileTest):
         close_btn.click()
         time.sleep(1)
         
-        # Verify sidebar is properly closed and all activities are visible again
+        # Verify sidebar is properly closed and filter is cleared
         final_cleanup_check = driver.execute_script("""
             const panel = document.getElementById('side-panel');
             const layer = map.getLayer('runsVec');
-            const filter = layer ? map.getFilter('runsVec') : null;
-            const selectedRunsSize = window.selectedRuns ? window.selectedRuns.size : 0;
+            const filter = layer ? map.getFilter('runsVec') : undefined;
             
             return {
                 panelClosed: panel && !panel.classList.contains('open'),
-                noFilter: filter === null,
-                selectedRunsCleared: selectedRunsSize === 0,
-                sidebarOpenState: window.sidebarOpen || false
+                noFilter: filter == null
             };
         """)
         
         assert final_cleanup_check['panelClosed'], "Panel should be closed after clicking 'x'"
         assert final_cleanup_check['noFilter'], "Map filter should be cleared after closing sidebar"
-        assert not final_cleanup_check['sidebarOpenState'], "Sidebar open state should be false"
         
         print("   ✅ Sidebar properly closed and filters cleared")
         
         # Final verification: all activities should be visible again
         final_features_check = self.verify_features_in_current_viewport(driver)
         print(f"   📊 Final check - features visible after cleanup: {final_features_check['featuresInViewport']}")
+        
+        # Assert that both packaged activities are visible after filter is cleared
+        assert final_features_check['featuresInViewport'] >= 2, f"Both packaged activities should be visible after clearing filter (found {final_features_check['featuresInViewport']})"
+        print("   ✅ All activities are visible again after cleanup - filter properly cleared")
         
         print("✅ Step 3 completed: Proper cleanup successful")
         

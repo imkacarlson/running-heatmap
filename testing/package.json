@@ -1,0 +1,19 @@
+{
+  "name": "running-heatmap-tests",
+  "version": "1.0.0",
+  "description": "Testing framework for running heatmap app",
+  "scripts": {
+    "appium": "appium --base-path /wd/hub",
+    "test": "python -m pytest -v",
+    "test-html": "python -m pytest --html=reports/report.html --self-contained-html"
+  },
+  "devDependencies": {
+    "appium": "^2.4.1",
+    "appium-chromium-driver": "^1.5.1",
+    "appium-doctor": "^1.16.2",
+    "appium-uiautomator2-driver": "^4.2.7"
+  },
+  "dependencies": {
+    "chromedriver": "^101.0.0"
+  }
+}

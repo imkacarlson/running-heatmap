@@ -38,3 +38,19 @@ capacitor.config.json
 www/
 *.apk
 *.aab
+
+# Testing framework
+testing/node_modules/
+testing/.pytest_cache/
+testing/__pycache__/
+testing/screenshots/
+testing/reports/
+testing/chromedriver_linux64.zip
+testing/test_venv/
+testing/vetted-drivers/chromedriver-*
+testing/setup_emulator.sh
+testing/emulator.log
+
+# Claude Code artifacts (but keep commands)
+.claude/*
+!.claude/commands/

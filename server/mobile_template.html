@@ -1010,35 +1010,50 @@
     }
 
     async function queryUnifiedRunsInPolygon(polygonCoords) {
-      const runs = [];
-      
-      // Query PMTiles runs (server-synced runs)
-      try {
-        const pmtilesRuns = await window.spatialIndex.queryPMTilesInPolygon(polygonCoords);
-        runs.push(...pmtilesRuns);
-      } catch (error) {
-        console.warn('[HEATMAP-DEBUG] PMTiles query failed:', error);
-      }
-      
-      // Query local runs (uploaded but not yet synced)
-      try {
-        const localRuns = window.spatialIndex.getRunsInPolygon(polygonCoords);
-        runs.push(...localRuns);
-      } catch (error) {
-        console.warn('[HEATMAP-DEBUG] Local runs query failed:', error);
-      }
-      
-      // Remove duplicates based on ID (in case run exists in both sources)
-      const uniqueRuns = [];
-      const seenIds = new Set();
-      runs.forEach(run => {
-        if (!seenIds.has(run.id)) {
-          seenIds.add(run.id);
-          uniqueRuns.push(run);
+      // Guards for older bundles
+      if (!window.spatialIndex ||
+          !window.spatialIndex.queryPMTilesInPolygon ||
+          !window.spatialIndex.getRunsInPolygon) {
+        console.error('[LASSO] spatialIndex helpers missing; cannot query locally');
+        if (window.showStatusForDebug) {
+          window.showStatusForDebug('Local lasso unavailable in this build.', 3000);
         }
+        return [];
+      }
+
+      // 1) Packaged runs rendered from PMTiles
+      let pmtilesRuns = [];
+      try {
+        pmtilesRuns = await window.spatialIndex.queryPMTilesInPolygon(polygonCoords);
+      } catch (error) {
+        console.warn('[LASSO] PMTiles query failed:', error);
+      }
+
+      // 2) On-device uploads (persisted/session)
+      let localRuns = [];
+      try {
+        localRuns = window.spatialIndex.getRunsInPolygon(polygonCoords);
+      } catch (error) {
+        console.warn('[LASSO] Local runs query failed:', error);
+      }
+
+      // 3) Union - source-aware merge to avoid accidental drops
+      const runs = [
+        ...pmtilesRuns.map(r => ({ ...r, _source: 'pmtiles' })),
+        ...localRuns.map(r => ({ ...r, _source: 'local' })),
+      ];
+
+      // Add logging to confirm sources (helps debug if it still fails)
+      console.log('[LASSO]', {
+        pmtiles: pmtilesRuns.map(r => r.id),
+        local: localRuns.map(r => r.id),
+        union: runs.map(r => r.id),
       });
+      console.log('[LASSO] pmtilesRuns=', pmtilesRuns.length,
+                  'localRuns=', localRuns.length,
+                  'union=', runs.length);
       
-      return uniqueRuns;
+      return runs;
     }
 
     function displayRunsInPanel(runs) {
@@ -1493,9 +1508,38 @@
             metadata.source_file = file.name;
             console.log(`[HEATMAP-DEBUG] Parsed ${coords.length} coordinates from ${file.name}`);
 
+            // Get the ID that will be assigned by addRun (before calling it)
+            const futureId = window.spatialIndex.nextId;
+            
             await window.spatialIndex.addRun(coords, metadata);
+            
+            // Ensure the uploaded run is immediately available for local lasso queries
+            // The addRun method should have already added it, but let's verify and add if missing
+            const existsLocally = window.spatialIndex.userRuns.some(r => r.id === String(futureId));
+            if (!existsLocally) {
+              console.log(`[HEATMAP-DEBUG] Run ${futureId} missing from local index, adding manually`);
+              
+              // Create run structure matching addRun's format
+              const bbox = window.spatialIndex.getPolygonBbox(coords);
+              const geoms = {
+                full: { type: 'LineString', coordinates: coords },
+                high: { type: 'LineString', coordinates: window.spatialIndex.simplify(coords, 0.0001) },
+                mid: { type: 'LineString', coordinates: window.spatialIndex.simplify(coords, 0.0005) },
+                low: { type: 'LineString', coordinates: window.spatialIndex.simplify(coords, 0.001) }
+              };
+              const run = { id: String(futureId), geoms, bbox, metadata };
+              
+              // Add using the new helper method
+              if (window.spatialIndex.addLocalRun) {
+                window.spatialIndex.addLocalRun(run);
+              } else if (window.spatialIndex.userRuns) {
+                window.spatialIndex.userRuns.push(run);
+                if (window.spatialIndex.rebuildLocalIndex) window.spatialIndex.rebuildLocalIndex();
+              }
+            }
+            
             successCount++;
-            console.log(`[HEATMAP-DEBUG] Successfully added run from ${file.name}`);
+            console.log(`[HEATMAP-DEBUG] Successfully added run from ${file.name} with ID=${futureId}`);
           }
 
           if (successCount > 0) {

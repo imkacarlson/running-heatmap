@@ -36,7 +36,10 @@ class SpatialIndex {
       this.spatialIndex = [];
       this.loadUserRuns();
 
-      this.nextId = this.userRuns.reduce((m, r) => Math.max(m, parseInt(r.id)), 0) + 1;
+      // Give local uploads an ID space that cannot collide with PMTiles
+      const LOCAL_ID_BASE = 1_000_000; // anything comfortably above PMTiles IDs
+      const maxLocal = this.userRuns.reduce((m, r) => Math.max(m, parseInt(r.id) || 0), 0);
+      this.nextId = Math.max(maxLocal + 1, LOCAL_ID_BASE);
 
       this.loaded = true;
       console.log(`[HEATMAP-DEBUG] SpatialIndex.loadData complete. Found ${this.userRuns.length} user runs.`);
@@ -233,20 +236,10 @@ class SpatialIndex {
       try {
         await this.reloadPMTiles();
         
-        // Only clear local data if PMTiles reload succeeds
-        localStorage.removeItem('userRuns');
+        // Only clear local copy if we can verify the run appears in PMTiles
+        await this.maybeClearLocalCopyAfterReload(run);
         
-        // Remove the uploaded run from local storage since it's now in PMTiles
-        const indexToRemove = this.spatialIndex.findIndex(entry => entry.id === parseInt(id));
-        if (indexToRemove !== -1) {
-          this.spatialIndex.splice(indexToRemove, 1);
-        }
-        const runToRemove = this.userRuns.findIndex(r => r.id === id.toString());
-        if (runToRemove !== -1) {
-          this.userRuns.splice(runToRemove, 1);
-        }
-        
-        console.log('[HEATMAP-DEBUG] Successfully synced with server, run moved to PMTiles');
+        console.log('[HEATMAP-DEBUG] Successfully synced with server, local cleanup completed');
         
       } catch (pmtilesError) {
         console.error('[HEATMAP-DEBUG] PMTiles reload failed, keeping run in local storage:', pmtilesError);
@@ -497,6 +490,86 @@ class SpatialIndex {
     if (o3 === 0 && onSegment(p3, p1, p4)) return true;
     if (o4 === 0 && onSegment(p3, p2, p4)) return true;
     return false;
+  }
+
+  // Local indexing helpers for immediate upload integration
+  addLocalRun(run) {
+    // Add to local index used by getRunsInPolygon()
+    this.spatialIndex.push({ id: parseInt(run.id), bbox: run.bbox });
+    this.userRuns.push(run);
+    
+    // Update nextId if necessary
+    const num = parseInt(run.id);
+    if (num >= this.nextId) this.nextId = num + 1;
+    
+    console.log(`[HEATMAP-DEBUG] Added local run to index: ID=${run.id}`);
+  }
+
+  removeLocalRun(runId) {
+    // Remove from spatial index
+    const indexToRemove = this.spatialIndex.findIndex(entry => entry.id === parseInt(runId));
+    if (indexToRemove !== -1) {
+      this.spatialIndex.splice(indexToRemove, 1);
+    }
+    
+    // Remove from user runs
+    const runToRemove = this.userRuns.findIndex(r => r.id === String(runId));
+    if (runToRemove !== -1) {
+      this.userRuns.splice(runToRemove, 1);
+    }
+    
+    console.log(`[HEATMAP-DEBUG] Removed local run from index: ID=${runId}`);
+  }
+
+  rebuildLocalIndex() {
+    // Rebuild spatial index from userRuns
+    this.spatialIndex = this.spatialIndex.filter(item => 
+      !this.userRuns.some(run => run.id === String(item.id))
+    );
+    
+    this.userRuns.forEach(run => {
+      this.spatialIndex.push({ id: parseInt(run.id), bbox: run.bbox });
+    });
+    
+    console.log(`[HEATMAP-DEBUG] Rebuilt local index with ${this.userRuns.length} runs`);
+  }
+
+  async maybeClearLocalCopyAfterReload(run) {
+    try {
+      // Verify the run appears in rendered features near the run's bbox center
+      const center = run.geoms.full.coordinates[Math.floor(run.geoms.full.coordinates.length/2)];
+      const px = window.map.project(center);
+      
+      // Wait a moment for tiles to load after PMTiles reload
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      const features = window.map.queryRenderedFeatures(
+        [[px.x-4, px.y-4],[px.x+4, px.y+4]],
+        { layers: ['runsVec'] } // packaged-runs layer id
+      );
+      
+      const found = features.some(f => String(f.properties?.id) === String(run.id));
+      
+      if (found) {
+        // Safe to clear local shadow copy
+        console.log(`[HEATMAP-DEBUG] Run ${run.id} verified in PMTiles, clearing local copy`);
+        
+        // Remove from local storage and clear all local user runs
+        localStorage.removeItem('userRuns');
+        
+        // Remove the uploaded run from local arrays
+        this.removeLocalRun(run.id);
+        
+      } else {
+        console.warn(`[HEATMAP-DEBUG] Run ${run.id} not found in PMTiles rendering, keeping local copy`);
+        // Keep local copy and save to localStorage
+        this.saveUserRuns();
+      }
+    } catch (e) {
+      console.warn('[HEATMAP-DEBUG] PMTiles verification failed; keeping local copy', e);
+      // Keep local copy and save to localStorage
+      this.saveUserRuns();
+    }
   }
 
 }

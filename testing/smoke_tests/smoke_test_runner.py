@@ -27,7 +27,7 @@ class TestFailure:
     """Represents a test failure with detailed information"""
     test_name: str
     error_message: str
-    component: str  # 'server', 'api', 'web', 'data', 'build', 'mobile'
+    component: str  # 'data', 'build', 'mobile'
     suggestion: Optional[str] = None
 
 
@@ -76,9 +76,9 @@ class SmokeTestRunner:
         """
         self.start_time = time.time()
         
-        # Default to all components if none specified
+        # Default to mobile components if none specified
         if components is None:
-            components = ['data', 'server', 'api', 'web', 'build', 'mobile']
+            components = ['data', 'build', 'mobile']
         
         print("🚀 Running smoke tests for mobile app...")
         print(f"📋 Components: {', '.join(components)}")
@@ -95,18 +95,12 @@ class SmokeTestRunner:
             try:
                 if component == 'data':
                     result = self._run_data_tests()
-                elif component == 'server':
-                    result = self._run_server_tests()
-                elif component == 'api':
-                    result = self._run_api_tests()
-                elif component == 'web':
-                    result = self._run_web_tests()
                 elif component == 'build':
                     result = self._run_build_tests()
                 elif component == 'mobile':
                     result = self._run_mobile_tests()
                 else:
-                    print(f"⚠️  Unknown component: {component}")
+                    print(f"⚠️  Unknown component: {component} (mobile-only testing)")
                     continue
                 
                 component_results[component] = result['success']
@@ -175,95 +169,7 @@ class SmokeTestRunner:
             'failures': failures
         }
     
-    def _run_server_tests(self) -> Dict[str, Any]:
-        """Test server startup and basic functionality"""
-        failures = []
-        tests = [
-            ("test_server_dependencies", self._test_server_dependencies),
-            ("test_server_files_exist", self._test_server_files_exist)
-        ]
-        
-        passed = 0
-        for test_name, test_func in tests:
-            try:
-                test_func()
-                passed += 1
-                print(f"   ✅ {test_name}")
-            except Exception as e:
-                failures.append(TestFailure(
-                    test_name=test_name,
-                    error_message=str(e),
-                    component='server',
-                    suggestion="Check server setup and Python dependencies"
-                ))
-                print(f"   ❌ {test_name}: {str(e)}")
-        
-        return {
-            'success': len(failures) == 0,
-            'total': len(tests),
-            'passed': passed,
-            'failures': failures
-        }
-    
-    def _run_api_tests(self) -> Dict[str, Any]:
-        """Test API endpoints (requires server to be running)"""
-        # For now, just validate API test structure exists
-        failures = []
-        tests = [
-            ("test_api_test_structure", self._test_api_test_structure)
-        ]
-        
-        passed = 0
-        for test_name, test_func in tests:
-            try:
-                test_func()
-                passed += 1
-                print(f"   ✅ {test_name}")
-            except Exception as e:
-                failures.append(TestFailure(
-                    test_name=test_name,
-                    error_message=str(e),
-                    component='api',
-                    suggestion="API tests require server to be running"
-                ))
-                print(f"   ❌ {test_name}: {str(e)}")
-        
-        return {
-            'success': len(failures) == 0,
-            'total': len(tests),
-            'passed': passed,
-            'failures': failures
-        }
-    
-    def _run_web_tests(self) -> Dict[str, Any]:
-        """Test web interface components"""
-        failures = []
-        tests = [
-            ("test_web_files_exist", self._test_web_files_exist),
-            ("test_web_dependencies", self._test_web_dependencies)
-        ]
-        
-        passed = 0
-        for test_name, test_func in tests:
-            try:
-                test_func()
-                passed += 1
-                print(f"   ✅ {test_name}")
-            except Exception as e:
-                failures.append(TestFailure(
-                    test_name=test_name,
-                    error_message=str(e),
-                    component='web',
-                    suggestion="Check web interface files and dependencies"
-                ))
-                print(f"   ❌ {test_name}: {str(e)}")
-        
-        return {
-            'success': len(failures) == 0,
-            'total': len(tests),
-            'passed': passed,
-            'failures': failures
-        }
+
     
     def _run_build_tests(self) -> Dict[str, Any]:
         """Test mobile build process and artifacts"""
@@ -372,54 +278,7 @@ class SmokeTestRunner:
         if runs_pkl_found:
             print(f"      Found and validated runs.pkl")
     
-    def _test_server_dependencies(self):
-        """Test that server dependencies are available"""
-        try:
-            import flask
-            import pickle
-        except ImportError as e:
-            raise Exception(f"Missing server dependency: {str(e)}")
-    
-    def _test_server_files_exist(self):
-        """Test that essential server files exist"""
-        server_dir = self.project_root / "server"
-        essential_files = [
-            "app.py",
-            "import_runs.py", 
-            "make_pmtiles.py",
-            "build_mobile.py"
-        ]
-        
-        for file_name in essential_files:
-            file_path = server_dir / file_name
-            if not file_path.exists():
-                raise Exception(f"Essential server file missing: {file_path}")
-    
-    def _test_api_test_structure(self):
-        """Test that API test structure is ready"""
-        # This is a placeholder - actual API tests will be implemented in later tasks
-        pass
-    
-    def _test_web_files_exist(self):
-        """Test that web interface files exist"""
-        web_dir = self.project_root / "web"
-        essential_files = ["index.html", "main.js"]
-        
-        for file_name in essential_files:
-            file_path = web_dir / file_name
-            if not file_path.exists():
-                raise Exception(f"Essential web file missing: {file_path}")
-    
-    def _test_web_dependencies(self):
-        """Test web dependencies (basic check)"""
-        # For now, just check that web files contain expected content
-        web_dir = self.project_root / "web"
-        index_html = web_dir / "index.html"
-        
-        if index_html.exists():
-            content = index_html.read_text()
-            if "map" not in content.lower():
-                raise Exception("index.html doesn't appear to contain map-related content")
+
     
     def _test_build_scripts_exist(self):
         """Test that mobile build scripts exist"""
@@ -573,8 +432,8 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description="Run smoke tests for Running Heatmap mobile app")
     parser.add_argument('--components', nargs='+', 
-                       choices=['data', 'server', 'api', 'web', 'build', 'mobile'],
-                       help='Specific components to test')
+                       choices=['data', 'build', 'mobile'],
+                       help='Specific mobile components to test')
     parser.add_argument('--verbose', '-v', action='store_true',
                        help='Verbose output')
     parser.add_argument('--pytest', action='store_true',

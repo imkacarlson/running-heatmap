@@ -17,6 +17,34 @@ import argparse
 import webbrowser
 from pathlib import Path
 
+def check_dependencies():
+    """Check if required mobile testing dependencies are available"""
+    missing_deps = []
+    
+    # Check pytest
+    try:
+        import pytest
+    except ImportError:
+        missing_deps.append("pytest")
+    
+    # Check Appium (for mobile tests)
+    try:
+        import appium
+    except ImportError:
+        missing_deps.append("appium-python-client")
+    
+    if missing_deps:
+        print("❌ Missing required mobile testing dependencies:")
+        for dep in missing_deps:
+            print(f"   - {dep}")
+        print("\n🔧 To install dependencies:")
+        print("   pip install -r requirements.txt")
+        print("   # OR run the setup script:")
+        print("   python setup_test_env.py")
+        return False
+    
+    return True
+
 def parse_arguments():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(
@@ -1069,6 +1097,15 @@ def main():
     
     print("📱 Enhanced Running Heatmap Mobile App Test Runner")
     print("=" * 60)
+    
+    # Check dependencies first
+    mobile_only = getattr(args, 'smoke', False)
+    if not check_dependencies(mobile_only=mobile_only):
+        print("\n💡 For mobile-only tests:")
+        print("   ./test_mobile.sh")
+        print("\n💡 Run setup script to install all dependencies:")
+        print("   python setup_test_env.py")
+        sys.exit(1)
     
     # Handle test selection BEFORE infrastructure setup
     if getattr(args, 'one_test', False):

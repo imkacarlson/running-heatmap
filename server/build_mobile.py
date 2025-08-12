@@ -214,7 +214,7 @@ def check_runs_pkl():
         return True
 
     print(f"❌ Error: runs.pkl not found in '{SCRIPT_DIR}'.", file=sys.stderr)
-    print(f"Please run 'python {os.path.join(SCRIPT_DIR, 'import_runs.py')}' to generate it.", file=sys.stderr)
+    print(f"Please run 'python {os.path.join(SCRIPT_DIR, 'process_data.py')}' to generate it.", file=sys.stderr)
     return False
 
 # --- Build Steps ---
@@ -262,10 +262,11 @@ def create_mobile_files(mobile_dir):
         shutil.copy(os.path.join(SCRIPT_DIR, 'spatial.worker.js'), os.path.join(mobile_dir, 'spatial.worker.js'))
         print("   - Updated spatial.worker.js")
         
-        rbush_path = os.path.join(PROJECT_ROOT, 'rbush.min.js')
+        # Copy rbush.min.js from node_modules (since root copy was removed)
+        rbush_path = os.path.join(PROJECT_ROOT, 'node_modules', 'rbush', 'rbush.min.js')
         if os.path.exists(rbush_path):
             shutil.copy(rbush_path, os.path.join(mobile_dir, 'rbush.min.js'))
-            print("   - Updated rbush.min.js")
+            print("   - Updated rbush.min.js from node_modules")
 
         server_script = os.path.join(SCRIPT_DIR, 'app.py')
         if os.path.exists(server_script):

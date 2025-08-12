@@ -113,7 +113,7 @@ def session_setup(fast_mode):
         
         # Copy essential server files
         essential_files = [
-            "import_runs.py", "make_pmtiles.py", "build_mobile.py",
+            "process_data.py", "build_mobile.py",
             "mobile_template.html", "mobile_main.js", "sw_template.js", 
             "spatial.worker.js", "AndroidManifest.xml.template", 
             "MainActivity.java.template", "HttpRangeServerPlugin.java.template",
@@ -154,23 +154,14 @@ def session_setup(fast_mode):
         # Use main project's .venv Python which has all server dependencies
         main_venv_python = project_root / ".venv" / "bin" / "python"
         
-        print("   🔄 Running GPX import...")
-        # Run import_runs.py first to process GPX data
+        print("   🔄 Running consolidated data processing...")
+        # Run process_data.py to handle both import and PMTiles generation
         result = subprocess.run([
-            str(main_venv_python), "import_runs.py"
+            str(main_venv_python), "process_data.py"
         ], cwd=server_dir, text=True, timeout=120)
         
         if result.returncode != 0:
-            raise Exception(f"GPX import failed with return code {result.returncode}")
-        
-        print("   🗜️ Running PMTiles generation...")
-        # Run PMTiles generation
-        result = subprocess.run([
-            str(main_venv_python), "make_pmtiles.py"
-        ], cwd=server_dir, text=True, timeout=120)
-        
-        if result.returncode != 0:
-            raise Exception(f"PMTiles generation failed with return code {result.returncode}")
+            raise Exception(f"Data processing failed with return code {result.returncode}")
         
         print("   ✅ Test data processing complete.")
         

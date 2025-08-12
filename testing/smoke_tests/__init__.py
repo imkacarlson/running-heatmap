@@ -1,0 +1,1 @@
+# Smoke test package for Running Heatmap mobile app

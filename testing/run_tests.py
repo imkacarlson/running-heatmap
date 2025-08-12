@@ -24,6 +24,9 @@ def parse_arguments():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
+  python run_tests.py --smoke                  # Fast smoke tests (< 5 seconds, no emulator)
+  python run_tests.py --smoke --smoke-server   # Server smoke tests only
+  python run_tests.py --smoke --smoke-mobile   # Mobile smoke tests only
   python run_tests.py                          # Core tests with auto-emulator (most common)
   python run_tests.py --fast                   # Core tests in fast mode
   python run_tests.py --mobile                 # Full mobile test suite
@@ -37,6 +40,8 @@ Examples:
     
     # Test suite selection (defaults to core tests)
     suite_group = parser.add_mutually_exclusive_group()
+    suite_group.add_argument('--smoke', action='store_true',
+                           help='Run fast smoke tests only (< 5 seconds, no emulator required)')
     suite_group.add_argument('--mobile', action='store_true',
                            help='Run all mobile tests (default: core tests)')
     suite_group.add_argument('--legacy', action='store_true',
@@ -45,6 +50,20 @@ Examples:
                            help='Run integration tests only (default: core tests)')
     suite_group.add_argument('--one-test', action='store_true',
                            help='Interactive selection of a single test to run (always includes test_00 setup)')
+    
+    # Smoke test component selection (only valid with --smoke)
+    parser.add_argument('--smoke-server', action='store_true',
+                       help='Run server smoke tests only (use with --smoke)')
+    parser.add_argument('--smoke-api', action='store_true',
+                       help='Run API smoke tests only (use with --smoke)')
+    parser.add_argument('--smoke-web', action='store_true',
+                       help='Run web smoke tests only (use with --smoke)')
+    parser.add_argument('--smoke-data', action='store_true',
+                       help='Run data pipeline smoke tests only (use with --smoke)')
+    parser.add_argument('--smoke-build', action='store_true',
+                       help='Run build smoke tests only (use with --smoke)')
+    parser.add_argument('--smoke-mobile', action='store_true',
+                       help='Run mobile smoke tests only (use with --smoke)')
     
     # Test execution options
     parser.add_argument('--fast', action='store_true',
@@ -403,6 +422,32 @@ def build_pytest_command(args):
     if args.tests:
         # Specific test files provided
         cmd.extend(args.tests)
+    elif getattr(args, 'smoke', False):
+        # Smoke tests mode
+        cmd.extend(['smoke_tests/'])  # Run tests from smoke_tests directory
+        
+        # Determine which smoke test components to run
+        smoke_components = []
+        if args.smoke_server:
+            smoke_components.append('smoke_server')
+        if args.smoke_api:
+            smoke_components.append('smoke_api')
+        if args.smoke_web:
+            smoke_components.append('smoke_web')
+        if args.smoke_data:
+            smoke_components.append('smoke_data')
+        if args.smoke_build:
+            smoke_components.append('smoke_build')
+        if args.smoke_mobile:
+            smoke_components.append('smoke_mobile')
+        
+        if smoke_components:
+            # Run specific smoke test components
+            marker_expr = ' or '.join(smoke_components)
+            cmd.extend(['-m', marker_expr])
+        else:
+            # Run all smoke tests
+            cmd.extend(['-m', 'smoke'])
     elif getattr(args, 'one_test', False):
         # one_test mode - tests will be set by discover_and_select_test()
         if hasattr(args, 'selected_tests') and args.selected_tests:
@@ -447,7 +492,27 @@ def build_pytest_command(args):
 def run_tests(args):
     """Enhanced test execution with intelligent discovery"""
     # Determine what we're running
-    if getattr(args, 'one_test', False):
+    if getattr(args, 'smoke', False):
+        # Smoke tests mode
+        smoke_components = []
+        if args.smoke_server:
+            smoke_components.append('server')
+        if args.smoke_api:
+            smoke_components.append('api')
+        if args.smoke_web:
+            smoke_components.append('web')
+        if args.smoke_data:
+            smoke_components.append('data')
+        if args.smoke_build:
+            smoke_components.append('build')
+        if args.smoke_mobile:
+            smoke_components.append('mobile')
+        
+        if smoke_components:
+            suite_name = f"smoke tests ({', '.join(smoke_components)})"
+        else:
+            suite_name = "smoke tests (all components)"
+    elif getattr(args, 'one_test', False):
         # Test selection already done in main()
         if hasattr(args, 'selected_tests') and args.selected_tests:
             suite_name = f"selected tests ({', '.join(args.selected_tests)})"
@@ -465,7 +530,10 @@ def run_tests(args):
     else:
         suite_name = "core tests"
     
-    mode_desc = " (fast mode)" if args.fast else " (full build mode)"
+    if getattr(args, 'smoke', False):
+        mode_desc = " (< 5 seconds, no emulator required)"
+    else:
+        mode_desc = " (fast mode)" if args.fast else " (full build mode)"
     print(f"🧪 Running {suite_name}{mode_desc}...")
     
     # Set up environment for testing
@@ -1014,6 +1082,34 @@ def main():
         print(f"🎯 Proceeding with infrastructure setup for: {', '.join(selected_tests)}")
         print()
     
+    # Handle smoke tests - bypass emulator and Appium setup
+    if getattr(args, 'smoke', False):
+        print("🚀 Smoke test mode: Bypassing emulator and Appium setup")
+        
+        # Create reports directory
+        reports_dir = Path(__file__).parent / Path(args.report_file).parent
+        reports_dir.mkdir(exist_ok=True)
+        
+        try:
+            # Run smoke tests directly
+            exit_code = run_tests(args)
+            
+            # Print summary
+            print_test_summary(exit_code, args)
+            
+            # Open test report
+            open_test_report(args.report_file, not args.browser)
+            
+        except KeyboardInterrupt:
+            print("\n⏹️  Smoke tests interrupted by user")
+            exit_code = 1
+        except Exception as e:
+            print(f"❌ Smoke test execution failed: {e}")
+            exit_code = 1
+        
+        sys.exit(exit_code)
+    
+    # Regular tests - full infrastructure setup
     # Check prerequisites
     if not check_prerequisites(args):
         sys.exit(1)

@@ -46,14 +46,24 @@
     - Validate responsive design and mobile-specific functionality
     - _Requirements: 4.4, 1.1_
 
-- [ ] 5. Implement mobile app smoke tests
-  - [ ] 5.1 Create test_smoke_mobile.py with APK validation
+- [x] 5. Implement mobile app smoke tests
+
+
+
+
+
+
+  - [x] 5.1 Create test_smoke_mobile.py with APK validation
+
+
     - Write test to verify cached test APK exists and is valid
     - Implement APK installation verification without full emulator startup
     - Test mobile build artifacts and dependencies are present
     - _Requirements: 4.4, 1.1_
 
-  - [ ] 5.2 Add mobile data pipeline validation
+  - [x] 5.2 Add mobile data pipeline validation
+
+
     - Test PMTiles generation from sample data completes successfully
     - Validate mobile app bundle contains required test data
     - Implement mobile-specific configuration validation
@@ -105,7 +115,9 @@
     - Implement basic reporting and exit codes for CI/CD
     - _Requirements: 2.1, 2.2_
 
-  - [ ] 9.2 Add performance monitoring and optimization
+  - [x] 9.2 Add performance monitoring and optimization
+
+
     - Implement execution time tracking for each test phase
     - Add memory usage monitoring during test execution
     - Create performance regression detection
@@ -113,9 +125,9 @@
 
 - [ ] 10. Update documentation and integration
   - [ ] 10.1 Update testing framework documentation
-    - Modify testing/README.md with dual-tier testing explanation
-    - Add decision matrix for when to use smoke vs comprehensive tests
-    - Create troubleshooting guide for smoke test failures
+    - Add dual-tier testing explanation to testing/README.md
+    - Create decision matrix for when to use smoke vs comprehensive tests
+    - Add smoke test examples and troubleshooting guide
     - _Requirements: 6.1, 6.2_
 
   - [ ] 10.2 Create developer workflow integration

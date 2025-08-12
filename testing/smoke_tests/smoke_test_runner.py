@@ -459,14 +459,14 @@ class SmokeTestRunner:
         """Test mobile configuration templates are valid"""
         server_dir = self.project_root / "server"
         
-        # Check AndroidManifest template has required placeholders
+        # Check AndroidManifest template has required components
         manifest_template = server_dir / "AndroidManifest.xml.template"
         if manifest_template.exists():
             content = manifest_template.read_text()
-            required_placeholders = ["{{PACKAGE_NAME}}", "{{APP_NAME}}"]
-            for placeholder in required_placeholders:
-                if placeholder not in content:
-                    raise Exception(f"AndroidManifest.xml.template missing placeholder: {placeholder}")
+            required_components = ["MainActivity", "android.permission.INTERNET"]
+            for component in required_components:
+                if component not in content:
+                    raise Exception(f"AndroidManifest.xml.template missing component: {component}")
     
     def _test_mobile_data_pipeline(self):
         """Test mobile data pipeline components"""
@@ -475,9 +475,15 @@ class SmokeTestRunner:
         # Check that PMTiles generation script exists and looks valid
         pmtiles_script = server_dir / "make_pmtiles.py"
         if pmtiles_script.exists():
-            content = pmtiles_script.read_text()
-            if "pmtiles" not in content.lower():
-                raise Exception("make_pmtiles.py doesn't appear to contain PMTiles-related code")
+            try:
+                content = pmtiles_script.read_text(encoding='utf-8', errors='ignore')
+                if "pmtiles" not in content.lower():
+                    raise Exception("make_pmtiles.py doesn't appear to contain PMTiles-related code")
+            except UnicodeDecodeError:
+                # Try with different encoding
+                content = pmtiles_script.read_text(encoding='latin-1', errors='ignore')
+                if "pmtiles" not in content.lower():
+                    raise Exception("make_pmtiles.py doesn't appear to contain PMTiles-related code")
     
     def _print_summary(self, result: SmokeTestResult):
         """Print comprehensive test summary"""

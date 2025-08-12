@@ -32,17 +32,18 @@
     - Implement build artifact size and integrity checks
     - _Requirements: 4.3, 1.3_
 
-- [ ] 4. Implement API and web interface smoke tests
-  - [ ] 4.1 Create test_smoke_api.py with API endpoint validation
+- [x] 4. Implement API and mobile web interface smoke tests
+  - [x] 4.1 Create test_smoke_api.py with API endpoint validation
     - Write tests for key API endpoints (/api/last_activity, /api/runs_in_area)
     - Implement API response format validation
     - Test API error handling and timeout behavior
     - _Requirements: 4.2, 1.1_
 
-  - [ ] 4.2 Create test_smoke_web.py with web interface validation
-    - Write tests for web page loading without JavaScript errors
-    - Implement DOM structure validation (map container, required elements)
-    - Test external library loading (MapLibre, PMTiles)
+  - [x] 4.2 Create test_smoke_web.py with mobile web interface validation
+    - Write tests for mobile web page loading without JavaScript errors
+    - Implement DOM structure validation for mobile viewport (map container, mobile UI elements)
+    - Test external library loading (MapLibre, PMTiles) for mobile app packaging
+    - Validate responsive design and mobile-specific functionality
     - _Requirements: 4.4, 1.1_
 
 - [ ] 5. Implement mobile app smoke tests
@@ -71,27 +72,27 @@
     - Add smoke test timing and performance reporting
     - _Requirements: 2.1, 5.3_
 
-- [ ] 7. Create mobile test data and configuration management
-  - [ ] 7.1 Set up minimal mobile test dataset for smoke tests
+- [x] 7. Create mobile test data and configuration management
+  - [x] 7.1 Set up minimal mobile test dataset for smoke tests
     - Create lightweight sample GPX files for mobile testing
     - Generate minimal runs.pkl file for mobile app data pipeline
     - Implement mobile test data validation and integrity checks
     - _Requirements: 4.2, 1.1_
 
-  - [ ] 7.2 Implement mobile smoke test configuration system
+  - [x] 7.2 Implement mobile smoke test configuration system
     - Create SmokeTestConfig class with mobile-specific timeout and path settings
     - Add mobile build environment configuration overrides
     - Implement mobile APK and data validation error handling
     - _Requirements: 2.1, 1.3_
 
-- [ ] 8. Add error handling and reporting enhancements
-  - [ ] 8.1 Implement comprehensive error categorization
+- [x] 8. Add error handling and reporting enhancements
+  - [x] 8.1 Implement comprehensive error categorization
     - Create TestFailure dataclass with detailed error information
     - Add component-specific error messages and suggestions
     - Implement graceful degradation for missing dependencies
     - _Requirements: 1.3, 5.4_
 
-  - [ ] 8.2 Enhance reporting and debugging capabilities
+  - [x] 8.2 Enhance reporting and debugging capabilities
     - Add detailed timing information for each test category
     - Create actionable error messages with troubleshooting steps
     - Implement verbose mode for smoke test debugging

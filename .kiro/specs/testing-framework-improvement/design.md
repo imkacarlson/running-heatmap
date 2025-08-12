@@ -14,9 +14,10 @@ This design implements a dual-tier testing strategy for the Running Heatmap mobi
 ├─────────────────────────────────────────────────────────────┤
 │  Tier 1: Smoke Tests (< 5 seconds)                        │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐ │
-│  │   Server Tests  │  │  API Tests      │  │  Web Tests  │ │
-│  │   - Startup     │  │  - Endpoints    │  │  - Loading  │ │
-│  │   - Data Load   │  │  - Responses    │  │  - JS Errors│ │
+│  │   Server Tests  │  │  API Tests      │  │Mobile Web   │ │
+│  │   - Startup     │  │  - Endpoints    │  │Interface    │ │
+│  │   - Data Load   │  │  - Responses    │  │- Loading    │ │
+│  │   - Build Ready │  │  - Mobile APIs  │  │- Mobile UI  │ │
 │  └─────────────────┘  └─────────────────┘  └─────────────┘ │
 ├─────────────────────────────────────────────────────────────┤
 │  Tier 2: Comprehensive Tests (30s - 10+ min)              │
@@ -109,28 +110,34 @@ class TestAPISmoke:
         # Verify API responses have expected JSON structure
 ```
 
-### 4. Web Interface Smoke Tests (`test_smoke_web.py`)
+### 4. Mobile Web Interface Smoke Tests (`test_smoke_web.py`)
 
-**Purpose**: Validate web interface loads without critical errors
+**Purpose**: Validate mobile web interface loads without critical errors and renders properly for mobile app packaging
 
 **Test Cases**:
-- HTML page loads successfully
+- HTML page loads successfully in mobile viewport
 - JavaScript executes without console errors
-- Map container element exists
+- Map container element exists and is properly sized
 - Required external libraries load (MapLibre, PMTiles)
+- Mobile-specific UI elements are present and functional
+- Touch/gesture event handlers are properly attached
+- Responsive design works for mobile screen sizes
 
 **Sample Test Structure**:
 ```python
 @pytest.mark.smoke
 class TestWebSmoke:
-    def test_page_loads_without_errors(self):
-        # Load page in headless browser, check for JS errors
+    def test_mobile_page_loads_without_errors(self):
+        # Load page in headless browser with mobile viewport, check for JS errors
         
-    def test_map_container_exists(self):
-        # Verify #map element is present
+    def test_mobile_map_container_exists(self):
+        # Verify #map element is present and properly sized for mobile
+        
+    def test_mobile_ui_elements_present(self):
+        # Verify mobile-specific controls and interface elements
         
     def test_external_libraries_load(self):
-        # Verify MapLibre and PMTiles are available
+        # Verify MapLibre and PMTiles are available for mobile packaging
 ```
 
 ### 5. Enhanced Test Runner Integration
@@ -234,15 +241,16 @@ class SmokeTestConfig:
    └── Verify basic routes
 
 3. API Tests (1.5s)
-   ├── Test key endpoints
-   ├── Validate response formats
-   └── Check error handling
+   ├── Test key mobile API endpoints
+   ├── Validate response formats for mobile consumption
+   └── Check error handling for mobile scenarios
 
-4. Web Tests (1s)
-   ├── Load page in headless browser
-   ├── Check for JS errors
-   ├── Verify DOM structure
-   └── Test external library loading
+4. Mobile Web Interface Tests (1s)
+   ├── Load page in headless browser with mobile viewport
+   ├── Check for JS errors that would affect mobile app
+   ├── Verify mobile-optimized DOM structure
+   ├── Test external library loading for mobile packaging
+   └── Validate responsive design for mobile screens
 
 5. Cleanup (< 0.5s)
    ├── Stop test server

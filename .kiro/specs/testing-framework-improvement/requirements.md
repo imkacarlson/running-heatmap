@@ -2,7 +2,7 @@
 
 ## Introduction
 
-This feature aims to improve the testing framework for the Running Heatmap mobile app by creating a dual-tier testing strategy. The current testing framework relies heavily on comprehensive mobile emulator tests that are thorough but time-consuming (10+ minutes for full builds, 30+ seconds for fast mode). This improvement will introduce lightweight smoke tests that can run frequently (under 5 seconds) while maintaining the existing comprehensive emulator tests for thorough validation.
+This feature aims to improve the testing framework for the Running Heatmap mobile app by creating a dual-tier testing strategy. The current testing framework relies heavily on comprehensive mobile emulator tests that are thorough but time-consuming (10+ minutes for full builds, 30+ seconds for fast mode). This improvement will introduce lightweight smoke tests that can run frequently (under 5 seconds) to validate the core mobile web interface and backend services before running expensive mobile emulator tests.
 
 ## Requirements
 
@@ -41,14 +41,14 @@ This feature aims to improve the testing framework for the Running Heatmap mobil
 
 ### Requirement 4
 
-**User Story:** As a developer, I want smoke tests to validate the core data pipeline and web interface, so that I can ensure the fundamental system components work before running expensive mobile tests.
+**User Story:** As a developer, I want smoke tests to validate the core data pipeline and mobile web interface, so that I can ensure the fundamental system components work before running expensive mobile emulator tests.
 
 #### Acceptance Criteria
 
 1. WHEN smoke tests run THEN they SHALL validate that the Flask server can start successfully
 2. WHEN smoke tests run THEN they SHALL verify that sample data can be loaded and processed
 3. WHEN smoke tests run THEN they SHALL check that key API endpoints return expected responses
-4. WHEN smoke tests run THEN they SHALL validate that the web interface loads without JavaScript errors
+4. WHEN smoke tests run THEN they SHALL validate that the mobile web interface loads without JavaScript errors and renders properly on mobile viewports
 
 ### Requirement 5
 

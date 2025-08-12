@@ -1,16 +1,24 @@
 # Mobile App Testing Framework
 
-This directory contains the **enhanced automated testing framework** for the Running Heatmap mobile app using Appium and Python.
+This directory contains the **enhanced automated testing framework** for the Running Heatmap mobile app using a **dual-tier testing strategy** with both lightweight smoke tests and comprehensive emulator tests.
 
-## 🚀 **NEW: Single Command Test Runner** 
+## 🚀 **NEW: Dual-Tier Testing Strategy**
 
-**Just run one command and the framework handles everything automatically:**
+**Two complementary testing approaches for different development needs:**
 
+### ⚡ **Tier 1: Smoke Tests (< 5 seconds)**
 ```bash
-python run_tests.py --core --fast
+python smoke_tests.py                    # All smoke tests
+python run_tests.py --smoke              # Integrated smoke tests
+```
+
+### 🔄 **Tier 2: Comprehensive Tests (30s - 10+ minutes)**
+```bash
+python run_tests.py --core --fast        # Quick comprehensive tests
 ```
 
 **Key Features:**
+- ⚡ **Lightning Fast Feedback**: Smoke tests validate core functionality in under 5 seconds
 - 🎯 **Single Command Testing**: Automatically starts emulator, Appium server, runs tests, generates report, and opens it in your browser
 - 🔄 **End-to-End Testing**: GPX → PMTiles → APK → Mobile visualization  
 - 🏗️ **Isolated Build Environment**: Never touches production data
@@ -21,6 +29,7 @@ python run_tests.py --core --fast
 ---
 
 ## 📚 Table of Contents
+- [⚡ Dual-Tier Testing Strategy](#-dual-tier-testing-strategy-explained) - When to use smoke vs comprehensive tests
 - [🚀 Quick Start](#-complete-setup-guide-first-time-users) - Get running in 5 minutes
 - [🎯 Running Tests](#-running-tests---enhanced-single-command-approach) - All command options
 - [🔧 Troubleshooting](#-troubleshooting) - Solutions to common issues
@@ -29,8 +38,157 @@ python run_tests.py --core --fast
 
 ---
 
+## ⚡ **Dual-Tier Testing Strategy Explained**
+
+### **When to Use Each Testing Tier**
+
+| Scenario | Recommended Approach | Command | Time |
+|----------|---------------------|---------|------|
+| 🔄 **Active Development** | Smoke tests for immediate feedback | `python smoke_tests.py` | < 5s |
+| 🐛 **Bug Fixes** | Smoke tests first, then targeted comprehensive | `python smoke_tests.py` → `python run_tests.py --core --fast` | 5s + 30s |
+| 🚀 **Pre-commit** | Smoke tests for quick validation | `python smoke_tests.py` | < 5s |
+| 📦 **Pre-release** | Full comprehensive test suite | `python run_tests.py --core` | 10+ min |
+| 🔧 **CI/CD Pipeline** | Smoke tests → Comprehensive tests | Both tiers | 5s + 10+ min |
+| 🎯 **Feature Development** | Smoke tests during development, comprehensive for validation | `python smoke_tests.py` → `python run_tests.py --core --fast` | 5s + 30s |
+
+### **Decision Matrix: Smoke vs Comprehensive Tests**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    DECISION MATRIX                          │
+├─────────────────────────────────────────────────────────────┤
+│  SMOKE TESTS (< 5 seconds)                                 │
+│  ✅ Server starts and responds                             │
+│  ✅ API endpoints return expected data                     │
+│  ✅ Mobile web interface loads without errors              │
+│  ✅ Core data pipeline processes sample data               │
+│  ✅ Build artifacts are generated correctly                │
+│                                                             │
+│  USE WHEN:                                                  │
+│  • Making frequent code changes                            │
+│  • Need immediate feedback                                  │
+│  • Validating basic functionality                          │
+│  • Running in pre-commit hooks                             │
+│  • First-level CI/CD validation                            │
+├─────────────────────────────────────────────────────────────┤
+│  COMPREHENSIVE TESTS (30s - 10+ minutes)                   │
+│  ✅ Full mobile app installation and testing               │
+│  ✅ End-to-end user workflows                              │
+│  ✅ UI interaction validation                              │
+│  ✅ Cross-device compatibility                             │
+│  ✅ Performance and memory testing                         │
+│                                                             │
+│  USE WHEN:                                                  │
+│  • Preparing for release                                   │
+│  • Validating complex features                             │
+│  • Testing UI/UX changes                                   │
+│  • Final CI/CD validation                                  │
+│  • Debugging mobile-specific issues                        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### **Smoke Test Examples**
+
+#### **Quick Development Workflow**
+```bash
+# 1. Make code changes
+# 2. Run smoke tests for immediate feedback
+python smoke_tests.py
+
+# 3. If smoke tests pass, continue development
+# 4. If smoke tests fail, fix issues immediately
+```
+
+#### **Pre-commit Validation**
+```bash
+# Before committing changes
+python smoke_tests.py
+# Only commit if smoke tests pass
+```
+
+#### **Granular Smoke Testing**
+```bash
+# Test specific components
+python run_tests.py --smoke --server     # Server startup only
+python run_tests.py --smoke --api        # API endpoints only  
+python run_tests.py --smoke --web        # Web interface only
+python run_tests.py --smoke --mobile     # Mobile build validation
+```
+
+#### **Development + Validation Workflow**
+```bash
+# 1. Development phase - use smoke tests
+python smoke_tests.py
+
+# 2. Feature complete - validate with comprehensive tests
+python run_tests.py --core --fast
+
+# 3. Pre-release - full validation
+python run_tests.py --core
+```
+
+### **Smoke Test Troubleshooting Guide**
+
+#### **Server Startup Failures**
+```bash
+# Error: "Server failed to start within timeout"
+# Solutions:
+1. Check if port 5000 is already in use: netstat -an | grep 5000
+2. Verify Python dependencies: pip install -r requirements.txt
+3. Check for missing data files: ls -la data/
+4. Run with verbose output: python smoke_tests.py --verbose
+```
+
+#### **API Response Failures**
+```bash
+# Error: "API endpoint returned unexpected response"
+# Solutions:
+1. Verify server is running: curl http://localhost:5000/
+2. Check API endpoint directly: curl http://localhost:5000/api/last_activity
+3. Validate test data exists: ls -la testing/test_data/
+4. Check server logs for errors
+```
+
+#### **Web Interface Failures**
+```bash
+# Error: "JavaScript errors detected in mobile web interface"
+# Solutions:
+1. Check browser console for specific errors
+2. Verify external libraries load: Check MapLibre, PMTiles availability
+3. Test in different browser: Chrome vs Firefox
+4. Validate mobile viewport rendering
+```
+
+#### **Mobile Build Failures**
+```bash
+# Error: "Mobile build artifacts missing or invalid"
+# Solutions:
+1. Run full build: python server/build_mobile.py
+2. Check build dependencies: npm install (in server directory)
+3. Verify PMTiles generation: ls -la server/*.pmtiles
+4. Validate mobile template files exist
+```
+
+---
+
 ## ⚡ **Most Important Commands**
 
+### **Smoke Tests (< 5 seconds) - Use During Development**
+```bash
+# ⚡ FASTEST: All smoke tests
+python smoke_tests.py
+
+# 🎯 GRANULAR: Specific component smoke tests
+python run_tests.py --smoke --server     # Server startup only
+python run_tests.py --smoke --api        # API endpoints only
+python run_tests.py --smoke --web        # Web interface only
+python run_tests.py --smoke --mobile     # Mobile build validation
+
+# 🔍 DEBUGGING: Verbose smoke test output
+python smoke_tests.py --verbose
+```
+
+### **Comprehensive Tests - Use for Validation**
 ```bash
 # 🏆 COMPLETE AUTOMATION: Tests + automatic cleanup 
 python run_tests.py --core --fast --auto-emulator
@@ -202,6 +360,24 @@ The manual testing script uses the same robust infrastructure as `run_tests.py` 
 
 ### **All Available Commands**
 
+#### **Smoke Tests (Tier 1)**
+```bash
+# ⚡ All smoke tests (< 5 seconds)
+python smoke_tests.py                          # Standalone smoke test runner
+python run_tests.py --smoke                    # Integrated smoke tests
+
+# 🎯 Granular smoke tests
+python run_tests.py --smoke --server           # Server startup validation
+python run_tests.py --smoke --api              # API endpoint validation
+python run_tests.py --smoke --web              # Web interface validation
+python run_tests.py --smoke --mobile           # Mobile build validation
+
+# 🔍 Smoke test debugging
+python smoke_tests.py --verbose                # Detailed smoke test output
+python smoke_tests.py --help                   # Smoke test options
+```
+
+#### **Comprehensive Tests (Tier 2)**
 ```bash
 # 🏆 RECOMMENDED: Core tests (essential functionality)
 python run_tests.py --core --fast              # Quick core tests (30 seconds)
@@ -547,6 +723,482 @@ python run_tests.py --core --verbose
 # (automatically opens in browser, or manually open reports/test_report.html)
 ```
 
+## 🔄 **Developer Workflow Integration**
+
+### **Recommended Development Workflows**
+
+#### **Daily Development Workflow**
+```bash
+# 1. Start development session
+git checkout -b feature/my-new-feature
+
+# 2. Make code changes
+# ... edit files ...
+
+# 3. Quick validation with smoke tests (< 5 seconds)
+python smoke_tests.py
+
+# 4. Continue development if smoke tests pass
+# 5. Repeat steps 2-4 as needed
+
+# 6. Before committing - run smoke tests again
+python smoke_tests.py
+
+# 7. Commit changes if smoke tests pass
+git add .
+git commit -m "Add new feature"
+
+# 8. Before pushing - validate with comprehensive tests
+python run_tests.py --core --fast
+
+# 9. Push if comprehensive tests pass
+git push origin feature/my-new-feature
+```
+
+#### **Feature Development Workflow**
+```bash
+# Phase 1: Rapid Development (use smoke tests)
+while developing:
+    # Make changes
+    python smoke_tests.py  # < 5 seconds feedback
+    # Fix issues immediately if smoke tests fail
+
+# Phase 2: Feature Validation (use comprehensive tests)  
+python run_tests.py --core --fast  # 30 seconds validation
+
+# Phase 3: Pre-release Validation (full test suite)
+python run_tests.py --core  # 10+ minutes thorough testing
+```
+
+#### **Bug Fix Workflow**
+```bash
+# 1. Reproduce issue
+python manual_test.py --fast  # Interactive testing
+
+# 2. Identify root cause
+python smoke_tests.py --verbose  # Quick component validation
+
+# 3. Fix issue
+# ... make changes ...
+
+# 4. Validate fix
+python smoke_tests.py  # Quick validation
+python run_tests.py --core --fast  # Comprehensive validation
+
+# 5. Commit fix
+git commit -m "Fix: issue description"
+```
+
+### **Pre-commit Hook Integration**
+
+#### **Option 1: Simple Pre-commit Hook (Recommended)**
+
+Create `.git/hooks/pre-commit`:
+```bash
+#!/bin/bash
+# Simple pre-commit hook using smoke tests
+
+echo "Running smoke tests before commit..."
+cd testing
+python smoke_tests.py
+
+if [ $? -ne 0 ]; then
+    echo "❌ Smoke tests failed! Commit aborted."
+    echo "Fix the issues and try again."
+    exit 1
+fi
+
+echo "✅ Smoke tests passed! Proceeding with commit."
+exit 0
+```
+
+Make it executable:
+```bash
+chmod +x .git/hooks/pre-commit
+```
+
+#### **Option 2: Advanced Pre-commit Hook with Granular Testing**
+
+Create `.git/hooks/pre-commit`:
+```bash
+#!/bin/bash
+# Advanced pre-commit hook with component-specific testing
+
+echo "🔍 Analyzing changed files..."
+cd testing
+
+# Check which components were modified
+CHANGED_FILES=$(git diff --cached --name-only)
+SERVER_CHANGED=$(echo "$CHANGED_FILES" | grep -E "(server/|app\.py)" | wc -l)
+WEB_CHANGED=$(echo "$CHANGED_FILES" | grep -E "(web/|\.html|\.js)" | wc -l)
+API_CHANGED=$(echo "$CHANGED_FILES" | grep -E "(api|routes)" | wc -l)
+
+# Run targeted smoke tests based on changes
+if [ $SERVER_CHANGED -gt 0 ]; then
+    echo "🖥️  Server changes detected - running server smoke tests..."
+    python run_tests.py --smoke --server
+    [ $? -ne 0 ] && echo "❌ Server smoke tests failed!" && exit 1
+fi
+
+if [ $API_CHANGED -gt 0 ]; then
+    echo "🔌 API changes detected - running API smoke tests..."
+    python run_tests.py --smoke --api
+    [ $? -ne 0 ] && echo "❌ API smoke tests failed!" && exit 1
+fi
+
+if [ $WEB_CHANGED -gt 0 ]; then
+    echo "🌐 Web changes detected - running web smoke tests..."
+    python run_tests.py --smoke --web
+    [ $? -ne 0 ] && echo "❌ Web smoke tests failed!" && exit 1
+fi
+
+# Always run full smoke tests as final check
+echo "⚡ Running full smoke test suite..."
+python smoke_tests.py
+
+if [ $? -ne 0 ]; then
+    echo "❌ Smoke tests failed! Commit aborted."
+    echo "Run 'python smoke_tests.py --verbose' for detailed error information."
+    exit 1
+fi
+
+echo "✅ All smoke tests passed! Proceeding with commit."
+exit 0
+```
+
+#### **Option 3: Using pre-commit Framework**
+
+Install pre-commit:
+```bash
+pip install pre-commit
+```
+
+Create `.pre-commit-config.yaml`:
+```yaml
+repos:
+  - repo: local
+    hooks:
+      - id: smoke-tests
+        name: Run smoke tests
+        entry: python testing/smoke_tests.py
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [commit]
+```
+
+Install the hook:
+```bash
+pre-commit install
+```
+
+### **CI/CD Integration Patterns**
+
+#### **GitHub Actions Integration**
+
+Create `.github/workflows/testing.yml`:
+```yaml
+name: Testing Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  smoke-tests:
+    runs-on: ubuntu-latest
+    name: Smoke Tests (< 5s)
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        cd testing
+        pip install -r requirements.txt
+    
+    - name: Run smoke tests
+      run: |
+        cd testing
+        python smoke_tests.py --verbose
+    
+    - name: Upload smoke test results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: smoke-test-results
+        path: testing/reports/
+
+  comprehensive-tests:
+    runs-on: ubuntu-latest
+    needs: smoke-tests
+    name: Comprehensive Tests (30s+)
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Set up Android SDK
+      uses: android-actions/setup-android@v2
+    
+    - name: Install dependencies
+      run: |
+        cd testing
+        pip install -r requirements.txt
+        npm install
+    
+    - name: Run comprehensive tests
+      run: |
+        cd testing
+        python run_tests.py --core --fast --auto-emulator
+    
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: comprehensive-test-results
+        path: testing/reports/
+```
+
+#### **GitLab CI Integration**
+
+Create `.gitlab-ci.yml`:
+```yaml
+stages:
+  - smoke-tests
+  - comprehensive-tests
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+
+cache:
+  paths:
+    - .cache/pip/
+    - testing/node_modules/
+
+smoke-tests:
+  stage: smoke-tests
+  image: python:3.9
+  script:
+    - cd testing
+    - pip install -r requirements.txt
+    - python smoke_tests.py --verbose
+  artifacts:
+    when: always
+    reports:
+      junit: testing/reports/smoke-test-results.xml
+    paths:
+      - testing/reports/
+  only:
+    - merge_requests
+    - main
+    - develop
+
+comprehensive-tests:
+  stage: comprehensive-tests
+  image: python:3.9
+  needs: ["smoke-tests"]
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq git curl unzip
+    # Install Android SDK (simplified for CI)
+    - export ANDROID_HOME=/opt/android-sdk
+    - mkdir -p $ANDROID_HOME
+  script:
+    - cd testing
+    - pip install -r requirements.txt
+    - npm install
+    - python run_tests.py --core --fast
+  artifacts:
+    when: always
+    reports:
+      junit: testing/reports/test-results.xml
+    paths:
+      - testing/reports/
+  only:
+    - main
+    - develop
+```
+
+#### **Jenkins Pipeline Integration**
+
+Create `Jenkinsfile`:
+```groovy
+pipeline {
+    agent any
+    
+    stages {
+        stage('Smoke Tests') {
+            steps {
+                dir('testing') {
+                    sh 'pip install -r requirements.txt'
+                    sh 'python smoke_tests.py --verbose'
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'testing/reports/**', allowEmptyArchive: true
+                }
+            }
+        }
+        
+        stage('Comprehensive Tests') {
+            when {
+                anyOf {
+                    branch 'main'
+                    branch 'develop'
+                }
+            }
+            steps {
+                dir('testing') {
+                    sh 'npm install'
+                    sh 'python run_tests.py --core --fast --auto-emulator'
+                }
+            }
+            post {
+                always {
+                    publishHTML([
+                        allowMissing: false,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'testing/reports',
+                        reportFiles: 'test_report.html',
+                        reportName: 'Test Report'
+                    ])
+                }
+            }
+        }
+    }
+}
+```
+
+### **IDE Integration Examples**
+
+#### **VS Code Integration**
+
+Create `.vscode/tasks.json`:
+```json
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Run Smoke Tests",
+            "type": "shell",
+            "command": "python",
+            "args": ["smoke_tests.py"],
+            "options": {
+                "cwd": "${workspaceFolder}/testing"
+            },
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Run Comprehensive Tests",
+            "type": "shell",
+            "command": "python",
+            "args": ["run_tests.py", "--core", "--fast"],
+            "options": {
+                "cwd": "${workspaceFolder}/testing"
+            },
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        }
+    ]
+}
+```
+
+Create `.vscode/launch.json`:
+```json
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug Smoke Tests",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/testing/smoke_tests.py",
+            "args": ["--verbose"],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/testing"
+        }
+    ]
+}
+```
+
+#### **PyCharm Integration**
+
+1. **Run Configuration for Smoke Tests**:
+   - Go to Run → Edit Configurations
+   - Add new Python configuration
+   - Script path: `testing/smoke_tests.py`
+   - Parameters: `--verbose`
+   - Working directory: `testing/`
+
+2. **External Tool for Quick Testing**:
+   - Go to File → Settings → Tools → External Tools
+   - Add new tool:
+     - Name: "Quick Smoke Tests"
+     - Program: `python`
+     - Arguments: `smoke_tests.py`
+     - Working directory: `$ProjectFileDir$/testing`
+
+### **Team Development Guidelines**
+
+#### **Code Review Checklist**
+- [ ] Smoke tests pass locally before creating PR
+- [ ] PR includes relevant test updates if needed
+- [ ] CI/CD pipeline shows green smoke tests
+- [ ] Comprehensive tests pass for main/develop branches
+
+#### **Release Process Integration**
+```bash
+# 1. Feature freeze - run full test suite
+python run_tests.py --core
+
+# 2. Release candidate - validate with smoke tests
+python smoke_tests.py
+
+# 3. Production deployment - final smoke test validation
+python smoke_tests.py --verbose
+```
+
+#### **Debugging Workflow**
+```bash
+# 1. Issue reported - quick component validation
+python run_tests.py --smoke --server --api --web --mobile
+
+# 2. Identify failing component - detailed investigation
+python smoke_tests.py --verbose
+
+# 3. Fix and validate
+python smoke_tests.py
+
+# 4. Comprehensive validation before deployment
+python run_tests.py --core --fast
+```
+
 ## Advanced Usage
 
 ### Custom Device Configuration
@@ -563,7 +1215,12 @@ ANDROID_CAPABILITIES = {
 
 ### Running Tests in CI/CD
 
-The framework is designed to work in CI environments. See `.github/workflows/android-tests.yml` for GitHub Actions setup.
+The framework is designed to work in CI environments with the dual-tier approach:
+
+1. **Smoke Tests**: Run on every commit/PR for immediate feedback
+2. **Comprehensive Tests**: Run on main branches and releases
+
+See the CI/CD integration examples above for specific platform configurations.
 
 ### Performance Testing
 

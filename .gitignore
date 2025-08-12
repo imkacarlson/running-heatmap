@@ -10,6 +10,7 @@ data/processed/*
 
 # Ignore processed run data (contains personal GPS data)
 runs.pkl
+runs_test.pkl
 
 # Ignore generated mobile app directory and all contents
 mobile/

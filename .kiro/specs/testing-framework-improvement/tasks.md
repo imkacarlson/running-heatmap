@@ -6,19 +6,30 @@
 
 
 
+
+
   - Create smoke test directory structure and base classes focused on mobile testing
   - Implement SmokeTestRunner class with mobile-focused test discovery and execution
   - Create pytest markers and configuration for mobile smoke tests
   - _Requirements: 1.1, 2.1, 5.1_
 
 - [ ] 2. Implement mobile data pipeline smoke tests
-  - [ ] 2.1 Create test_smoke_data_pipeline.py with data processing validation
+
+
+
+
+
+  - [x] 2.1 Create test_smoke_data_pipeline.py with data processing validation
+
+
     - Write test for runs.pkl loading and validation within 2-second timeout
     - Implement PMTiles generation verification from sample data
     - Create spatial index building validation test
     - _Requirements: 4.1, 1.1_
 
-  - [ ] 2.2 Add mobile build artifact validation tests
+  - [x] 2.2 Add mobile build artifact validation tests
+
+
     - Test mobile data directory structure and required files exist
     - Validate PMTiles file integrity and basic metadata
     - Implement graceful failure handling for missing or corrupt data files

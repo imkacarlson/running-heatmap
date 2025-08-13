@@ -37,27 +37,12 @@ def parse_manual_arguments():
 Examples:
   python manual_test.py                     # Auto-start emulator, full setup
   python manual_test.py --fast              # Use existing APK, skip build
-  python manual_test.py --manual-emulator   # Use manually started emulator
-  python manual_test.py --keep-emulator     # Don't shutdown emulator when done
-  python manual_test.py --keep-app          # Don't uninstall app when done
         """
     )
     
     # Build options
     parser.add_argument('--fast', action='store_true',
                        help='Skip APK build and tile generation (use existing APK)')
-    parser.add_argument('--verbose', '-v', action='store_true',
-                       help='Enable verbose output for debugging')
-    
-    # Emulator management
-    parser.add_argument('--manual-emulator', action='store_true',
-                       help='Use manually started emulator (don\'t auto-start)')
-    parser.add_argument('--emulator-name', default='TestDevice',
-                       help='Name of AVD to start (default: TestDevice)')
-    parser.add_argument('--keep-emulator', action='store_true',
-                       help='Keep emulator running after manual testing session')
-    parser.add_argument('--keep-app', action='store_true',
-                       help='Keep test app installed after session ends')
     
     return parser.parse_args()
 
@@ -73,12 +58,12 @@ def setup_test_environment(args):
     
     # Check and start emulator
     print("\nStep 2: Setting up emulator...")
-    if not run_tests.check_and_start_emulator(args):
+    if not run_tests.check_and_start_emulator():
         return False, None
     
     # Start Appium server
     print("\nStep 3: Starting Appium server...")
-    appium_process = run_tests.start_appium_server(args.verbose)
+    appium_process = run_tests.start_appium_server()
     if appium_process is None:
         print("❌ Failed to start Appium server")
         return False, None
@@ -274,7 +259,7 @@ def main():
         print("=" * 60)
         
         # Use the comprehensive cleanup from run_tests.py
-        run_tests.cleanup_resources(appium_process, args, args.verbose)
+        run_tests.cleanup_resources(appium_process)
         
         print("\n✅ Cleanup complete!")
         print("🎉 Manual testing session finished")

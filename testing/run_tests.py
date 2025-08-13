@@ -20,53 +20,23 @@ from pathlib import Path
 def parse_arguments():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(
-        description="Enhanced test runner for Running Heatmap mobile app (defaults: core tests, auto-emulator, no browser)",
+        description="Simplified test runner for Running Heatmap mobile app",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python run_tests.py                          # Core tests with auto-emulator (most common)
-  python run_tests.py --fast                   # Core tests in fast mode
-  python run_tests.py --mobile                 # Full mobile test suite
+  python run_tests.py                          # Run all mobile tests
+  python run_tests.py --fast                   # Run tests in fast mode (skip APK builds)
   python run_tests.py --one-test               # Interactive single test selection
   python run_tests.py --one-test --fast        # Interactive single test selection in fast mode
-  python run_tests.py --browser                # Core tests with browser report
-  python run_tests.py --manual-emulator        # Core tests with manual emulator
-  python run_tests.py --legacy --keep-app      # Legacy tests, keep app installed
+  python run_tests.py test_basic_lasso_selection.py  # Run specific test file
         """
     )
-    
-    # Test suite selection (defaults to core tests)
-    suite_group = parser.add_mutually_exclusive_group()
-    suite_group.add_argument('--mobile', action='store_true',
-                           help='Run all mobile tests (default: core tests)')
-    suite_group.add_argument('--legacy', action='store_true',
-                           help='Run legacy tests only (default: core tests)')
-    suite_group.add_argument('--integration', action='store_true',
-                           help='Run integration tests only (default: core tests)')
-    suite_group.add_argument('--one-test', action='store_true',
-                           help='Interactive selection of a single test to run (always includes test_00 setup)')
     
     # Test execution options
     parser.add_argument('--fast', action='store_true',
                        help='Skip expensive operations (APK builds, tile generation)')
-    parser.add_argument('--verbose', '-v', action='store_true',
-                       help='Enable verbose output')
-    
-    # Infrastructure management
-    parser.add_argument('--manual-emulator', action='store_true',
-                       help='Disable automatic emulator startup (default: auto-start emulator if needed)')
-    parser.add_argument('--emulator-name', default='TestDevice',
-                       help='Name of AVD to start (default: TestDevice)')
-    parser.add_argument('--keep-emulator', action='store_true',
-                       help='Keep emulator running after tests (default: shutdown auto-started emulator)')
-    parser.add_argument('--keep-app', action='store_true',
-                       help='Keep test app installed after tests (default: uninstall for fresh runs)')
-    
-    # Reporting options
-    parser.add_argument('--browser', action='store_true',
-                       help='Automatically open test report in browser (default: no browser)')
-    parser.add_argument('--report-file', default='reports/test_report.html',
-                       help='Path for HTML test report (default: reports/test_report.html)')
+    parser.add_argument('--one-test', action='store_true',
+                       help='Interactive selection of a single test to run (always includes test_00 setup)')
     
     # Specific test files
     parser.add_argument('tests', nargs='*',
@@ -94,9 +64,9 @@ def check_prerequisites(args):
     if not args.fast:
         # In full mode, we need project structure for APK building
         project_root = Path(__file__).parent.parent
-        server_dir = project_root / "server"
-        if not server_dir.exists():
-            print("❌ Server directory not found. Are you in the right project?")
+        mobile_dir = project_root / "mobile"
+        if not mobile_dir.exists():
+            print("❌ Mobile directory not found. Are you in the right project?")
             return False
         print("✅ Project structure verified for APK building")
     else:
@@ -104,13 +74,13 @@ def check_prerequisites(args):
         apk_path = Path(__file__).parent.parent / "mobile/android/app/build/outputs/apk/debug/app-debug.apk"
         if not apk_path.exists():
             print("❌ APK not found for --fast mode. Please run without --fast first:")
-            print("   python run_tests.py --core")
+            print("   python run_tests.py")
             return False
         print(f"✅ APK found for fast mode: {apk_path}")
     
     return True
 
-def check_and_start_emulator(args):
+def check_and_start_emulator():
     """Check for devices and optionally start emulator"""
     print("📱 Checking for connected devices...")
     
@@ -124,17 +94,9 @@ def check_and_start_emulator(args):
             print(f"   - {device}")
         return True
     
-    if args.manual_emulator:
-        print("❌ No Android devices/emulators connected")
-        print("   Manual emulator mode enabled. Options:")
-        print("   1. Start an Android emulator manually")
-        print("   2. Connect a physical device")
-        print("   3. Remove --manual-emulator flag for automatic startup")
-        print("   4. Run ./setup_emulator.sh for guided setup")
-        return False
-    
-    # Auto-start emulator
-    print(f"🚀 No devices found. Starting emulator: {args.emulator_name}")
+    # Auto-start emulator with default name
+    emulator_name = 'TestDevice'
+    print(f"🚀 No devices found. Starting emulator: {emulator_name}")
     
     # Check if emulator command is available
     try:
@@ -148,18 +110,18 @@ def check_and_start_emulator(args):
     result = subprocess.run(['emulator', '-list-avds'], capture_output=True, text=True)
     avds = [line.strip() for line in result.stdout.split('\n') if line.strip()]
     
-    if args.emulator_name not in avds:
-        print(f"❌ AVD '{args.emulator_name}' not found")
+    if emulator_name not in avds:
+        print(f"❌ AVD '{emulator_name}' not found")
         print("   Available AVDs:")
         for avd in avds:
             print(f"     - {avd}")
-        print("   Create an AVD in Android Studio or use --emulator-name with an existing AVD")
+        print("   Create an AVD named 'TestDevice' in Android Studio")
         return False
     
     # Start emulator
-    print(f"   Starting {args.emulator_name} with WSL-compatible settings...")
+    print(f"   Starting {emulator_name} with WSL-compatible settings...")
     emulator_process = subprocess.Popen([
-        'emulator', '-avd', args.emulator_name, 
+        'emulator', '-avd', emulator_name, 
         '-no-audio', '-gpu', 'swiftshader_indirect', 
         '-skin', '1080x1920'
     ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -243,7 +205,7 @@ def cleanup_existing_appium_servers():
     except Exception:
         pass
 
-def start_appium_server(verbose=False):
+def start_appium_server():
     """Enhanced Appium server startup with health checks"""
     print("🚀 Starting Appium server...")
     
@@ -257,31 +219,23 @@ def start_appium_server(verbose=False):
         if npx_check.returncode != 0:
             print("❌ npx not available - please install Node.js")
             return None
-        if verbose:
-            print(f"   npx version: {npx_check.stdout.strip()}")
             
         # Check if appium is available
         appium_check = subprocess.run(['npx', 'appium', '--version'], capture_output=True, text=True)
         if appium_check.returncode != 0:
             print("❌ Appium not available - please run 'npm install' in testing directory")
             return None
-        if verbose:
-            print(f"   Appium version: {appium_check.stdout.strip()}")
             
     except Exception as e:
         print(f"❌ Error checking prerequisites: {e}")
         return None
     
     # Try to start Appium with multiple port strategies
-    log_level = 'debug' if verbose else 'info'
     ports_to_try = [4723, 4724, 4725]  # Try alternative ports if 4723 fails
     
     for port in ports_to_try:
         base_path = '/wd/hub' if port == 4723 else f'/wd/hub-{port}'
-        cmd = ['npx', 'appium', '--base-path', base_path, '--port', str(port), '--log-level', log_level]
-        if verbose:
-            print(f"   Trying port {port} with command: {' '.join(cmd)}")
-            print(f"   Working directory: {Path(__file__).parent}")
+        cmd = ['npx', 'appium', '--base-path', base_path, '--port', str(port), '--log-level', 'info']
         
         try:
             process = subprocess.Popen(
@@ -298,8 +252,6 @@ def start_appium_server(verbose=False):
             if process.poll() is not None:
                 stdout, stderr = process.communicate()
                 if "EADDRINUSE" in stderr:
-                    if verbose:
-                        print(f"   Port {port} is in use, trying next port...")
                     continue
                 else:
                     # Some other error occurred
@@ -311,8 +263,6 @@ def start_appium_server(verbose=False):
                     continue
             
             # Process is still running, break out of port-trying loop
-            if verbose:
-                print(f"   Successfully started Appium on port {port}")
             break
             
         except Exception as e:
@@ -334,9 +284,6 @@ def start_appium_server(verbose=False):
     server_port = port  # Use the port from the successful loop above
     base_path_part = base_path  # Use the base_path from the successful loop above
     server_url = f"http://localhost:{server_port}{base_path_part}/status"
-    
-    if verbose:
-        print(f"   Health checking server at: {server_url}")
     
     while attempt < max_attempts:
         time.sleep(1)
@@ -372,13 +319,11 @@ def start_appium_server(verbose=False):
                 process.appium_port = server_port
                 process.appium_base_path = base_path_part
                 return process
-        except requests.exceptions.RequestException as e:
+        except requests.exceptions.RequestException:
             # Server not ready yet, continue waiting
-            if verbose and attempt % 10 == 0:
-                print(f"   Connection attempt failed: {e}")
-        except Exception as e:
-            if verbose and attempt % 10 == 0:
-                print(f"   Unexpected error checking server: {e}")
+            pass
+        except Exception:
+            pass
         
         if attempt % 5 == 0:
             print(f"   Still waiting... ({attempt}/{max_attempts})")
@@ -399,7 +344,7 @@ def build_pytest_command(args):
     """Build pytest command based on arguments"""
     cmd = [sys.executable, '-m', 'pytest']
     
-    # Test selection based on markers or specific files
+    # Test selection based on specific files or one-test mode
     if args.tests:
         # Specific test files provided
         cmd.extend(args.tests)
@@ -410,37 +355,20 @@ def build_pytest_command(args):
         else:
             print("❌ No tests selected for one-test mode")
             return None
-        if args.fast:
-            cmd.append('--fast')
-    elif args.mobile:
-        cmd.extend(['-m', 'mobile'])
-        if args.fast:
-            cmd.append('--fast')
-    elif args.legacy:
-        cmd.extend(['-m', 'legacy'])
-        if args.fast:
-            cmd.append('--fast')
-    elif args.integration:
-        cmd.extend(['-m', 'integration'])
-        if args.fast:
-            cmd.append('--fast')
-    else:
-        # Default: run core tests
-        cmd.extend(['-m', 'core'])
-        if args.fast:
-            cmd.append('--fast')
+    # If no specific tests, run all tests (no marker filtering)
+    
+    # Add fast flag if specified
+    if args.fast:
+        cmd.append('--fast')
     
     # Verbosity
-    if args.verbose:
-        cmd.append('-vv')
-    else:
-        cmd.append('-v')
+    cmd.append('-v')
     
     # Error display
     cmd.append('--tb=short')
     
     # HTML reporting
-    cmd.extend(['--html', args.report_file, '--self-contained-html'])
+    cmd.extend(['--html', 'reports/test_report.html', '--self-contained-html'])
     
     return cmd
 
@@ -456,14 +384,8 @@ def run_tests(args):
             return 1
     elif args.tests:
         suite_name = "custom tests"
-    elif args.mobile:
-        suite_name = "mobile tests"
-    elif args.legacy:
-        suite_name = "legacy tests"
-    elif args.integration:
-        suite_name = "integration tests"
     else:
-        suite_name = "core tests"
+        suite_name = "all mobile tests"
     
     mode_desc = " (fast mode)" if args.fast else " (full build mode)"
     print(f"🧪 Running {suite_name}{mode_desc}...")
@@ -478,21 +400,14 @@ def run_tests(args):
     if cmd is None:
         return 1  # Error in building command
     
-    if args.verbose:
-        print(f"   Command: {' '.join(cmd)}")
-    
     # Run pytest
     result = subprocess.run(cmd, cwd=Path(__file__).parent, env=env)
     
     return result.returncode
 
-def open_test_report(report_path, no_browser=False):
+def open_test_report(report_path):
     """Open test report in browser with improved WSL detection"""
     abs_report_path = Path(__file__).parent / report_path
-    
-    if no_browser:
-        print(f"📊 Test report available at: {abs_report_path}")
-        return
     
     if not abs_report_path.exists():
         print(f"📊 Test report was not generated: {report_path}")
@@ -531,10 +446,9 @@ def open_test_report(report_path, no_browser=False):
             webbrowser.open(file_url)
             print(f"📊 Test report opened in browser: {report_path}")
             
-    except Exception as e:
+    except Exception:
         print(f"📊 Test report available at: {abs_report_path}")
         print(f"   💡 In WSL? Copy path to Windows and open in browser manually")
-        print(f"   💡 Or use: --no-browser flag to skip auto-opening")
 
 def extract_test_description(test_file_path):
     """Extract a description from the test file by looking at docstrings or class names"""
@@ -673,7 +587,7 @@ def print_test_summary(exit_code, args):
         print("❌ RESULT: Some tests failed")
     
     # Test configuration
-    suite = "mobile" if args.mobile else "legacy" if args.legacy else "integration" if args.integration else "custom" if args.tests else "core"
+    suite = "custom" if args.tests else "selected" if getattr(args, 'one_test', False) else "all mobile"
     mode = "fast mode" if args.fast else "full build mode"
     print(f"🧪 SUITE: {suite}")
     print(f"⚡ MODE: {mode}")
@@ -683,12 +597,8 @@ def print_test_summary(exit_code, args):
     
     print("=" * 60)
 
-def cleanup_test_app(args, verbose=False):
+def cleanup_test_app():
     """Clean up test app and data from emulator"""
-    if args.keep_app:
-        print("📱 Keeping test app installed (--keep-app flag)")
-        return
-        
     try:
         print("🧹 Cleaning up test app and data...")
         
@@ -700,9 +610,6 @@ def cleanup_test_app(args, verbose=False):
             print("   ✅ Test app uninstalled")
         elif "not installed" in result.stderr.lower():
             print("   ℹ️  Test app was not installed")
-        else:
-            if verbose:
-                print(f"   ⚠️  App uninstall warning: {result.stderr}")
         
         # Clear any uploaded test files
         print("   📁 Clearing test files from device...")
@@ -712,11 +619,10 @@ def cleanup_test_app(args, verbose=False):
                       capture_output=True)
         print("   ✅ Test files cleared")
         
-    except Exception as e:
-        if verbose:
-            print(f"   ⚠️  Cleanup warning: {e}")
+    except Exception:
+        pass
 
-def find_emulator_processes(verbose=False):
+def find_emulator_processes():
     """Find running emulator processes by name"""
     emulator_processes = []
     
@@ -741,18 +647,15 @@ def find_emulator_processes(verbose=False):
                                 'name': process_name,
                                 'details': ps_result.stdout.strip()
                             })
-                            if verbose:
-                                print(f"   Found emulator process: PID {pid} ({process_name})")
             except:
                 continue
                 
-    except Exception as e:
-        if verbose:
-            print(f"   Process detection error: {e}")
+    except Exception:
+        pass
     
     return emulator_processes
 
-def kill_emulator_processes(processes, verbose=False):
+def kill_emulator_processes(processes):
     """Kill emulator processes by PID"""
     success = True
     
@@ -769,30 +672,18 @@ def kill_emulator_processes(processes, verbose=False):
                                         capture_output=True)
             if check_result.returncode == 0:
                 # Process still exists, force kill (SIGKILL)
-                if verbose:
-                    print(f"      Process {process['pid']} still running, force killing...")
                 subprocess.run(['kill', '-9', process['pid']], capture_output=True)
                 time.sleep(1)
             
             print(f"   ✅ Process {process['pid']} terminated")
             
-        except Exception as e:
-            if verbose:
-                print(f"   ⚠️  Failed to kill process {process['pid']}: {e}")
+        except Exception:
             success = False
     
     return success
 
-def shutdown_emulator(args, verbose=False):
+def shutdown_emulator():
     """Enhanced multi-method emulator shutdown"""
-    if args.manual_emulator:
-        print("📱 Emulator was manually started - leaving it running")
-        return
-        
-    if args.keep_emulator:
-        print("📱 Keeping auto-started emulator running (--keep-emulator flag)")
-        return
-    
     print("🔌 Shutting down auto-started emulator...")
     
     # First, check if emulator is running
@@ -802,10 +693,10 @@ def shutdown_emulator(args, verbose=False):
     if not devices:
         print("   ℹ️  No emulator devices found in ADB")
         # Still check for processes in case ADB connection is broken
-        processes = find_emulator_processes(verbose)
+        processes = find_emulator_processes()
         if processes:
             print(f"   🔍 Found {len(processes)} emulator process(es) despite no ADB devices")
-            kill_emulator_processes(processes, verbose)
+            kill_emulator_processes(processes)
         return
     
     emulator_serial = devices[0].split('\t')[0]
@@ -834,15 +725,11 @@ def shutdown_emulator(args, verbose=False):
                     print(f"      Clean shutdown in progress... ({(i+1)*2}s)")
             
             print("   ⏳ Clean shutdown taking longer than expected, trying next method...")
-        else:
-            if verbose:
-                print(f"   ⚠️  Clean shutdown failed: {clean_shutdown.stderr}")
     
     except subprocess.TimeoutExpired:
         print("   ⏳ Clean shutdown timed out, trying next method...")
-    except Exception as e:
-        if verbose:
-            print(f"   ⚠️  Clean shutdown error: {e}")
+    except Exception:
+        pass
     
     # Method 2: Original ADB emu kill (with shorter timeout)
     print("   ⚡ Method 2: ADB emulator kill (adb emu kill)")
@@ -866,23 +753,19 @@ def shutdown_emulator(args, verbose=False):
                     print(f"      ADB kill in progress... ({(i+1)*2}s)")
                     
             print("   ⏳ ADB kill incomplete, trying process-based method...")
-        else:
-            if verbose:
-                print(f"   ⚠️  ADB kill failed: {emu_kill.stderr}")
     
     except subprocess.TimeoutExpired:
         print("   ⏳ ADB kill timed out (common issue), trying process-based method...")
-    except Exception as e:
-        if verbose:
-            print(f"   ⚠️  ADB kill error: {e}")
+    except Exception:
+        pass
     
     # Method 3: Process-based killing
     print("   🔪 Method 3: Process-based termination")
-    processes = find_emulator_processes(verbose)
+    processes = find_emulator_processes()
     
     if processes:
         print(f"   🎯 Found {len(processes)} emulator process(es)")
-        if kill_emulator_processes(processes, verbose):
+        if kill_emulator_processes(processes):
             # Wait a moment for processes to fully terminate
             time.sleep(3)
             
@@ -909,10 +792,8 @@ def shutdown_emulator(args, verbose=False):
         print("   ✅ Emulator appears to be shut down (no ADB devices)")
     else:
         print("   ⚠️  Emulator may still be running - manual closure may be needed")
-        if verbose:
-            print("   💡 Consider using --keep-emulator flag if shutdown issues persist")
 
-def cleanup_appium_server(appium_process, verbose=False):
+def cleanup_appium_server(appium_process):
     """Enhanced Appium server cleanup with port verification"""
     if not appium_process:
         return
@@ -928,18 +809,14 @@ def cleanup_appium_server(appium_process, verbose=False):
         appium_process.wait(timeout=8)
         print("✅ Appium server stopped gracefully")
     except subprocess.TimeoutExpired:
-        if verbose:
-            print("   Graceful shutdown timed out, force-killing Appium server...")
         try:
             appium_process.kill()
             appium_process.wait(timeout=3)
             print("✅ Appium server stopped (force-killed)")
-        except Exception as e:
-            if verbose:
-                print(f"   Warning: Error force-killing Appium server: {e}")
-    except Exception as e:
-        if verbose:
-            print(f"   Warning: Error stopping Appium server: {e}")
+        except Exception:
+            pass
+    except Exception:
+        pass
     
     # Verify the port is actually free and clean up if needed
     try:
@@ -968,30 +845,22 @@ def cleanup_appium_server(appium_process, verbose=False):
                             subprocess.run(['kill', '-9', pid], capture_output=True)
                     time.sleep(1)
                     print(f"✅ Port {server_port} cleanup completed")
-                else:
-                    if verbose:
-                        print(f"   ℹ️  No processes found using port {server_port}")
-            except Exception as e:
-                if verbose:
-                    print(f"   ⚠️  Port cleanup error: {e}")
-        else:
-            if verbose:
-                print(f"   ✅ Port {server_port} is properly released")
+            except Exception:
+                pass
                 
-    except Exception as e:
-        if verbose:
-            print(f"   ⚠️  Port verification error: {e}")
+    except Exception:
+        pass
 
-def cleanup_resources(appium_process, args, verbose=False):
+def cleanup_resources(appium_process):
     """Enhanced cleanup with app cleanup and emulator shutdown"""
     # 1. Stop Appium server with enhanced port cleanup
-    cleanup_appium_server(appium_process, verbose)
+    cleanup_appium_server(appium_process)
     
     # 2. Clean up test app and data
-    cleanup_test_app(args, verbose)
+    cleanup_test_app()
     
     # 3. Shutdown emulator if auto-started
-    shutdown_emulator(args, verbose)
+    shutdown_emulator()
 
 
 def main():
@@ -999,7 +868,7 @@ def main():
     # Parse arguments first to handle help and early exits
     args = parse_arguments()
     
-    print("📱 Enhanced Running Heatmap Mobile App Test Runner")
+    print("📱 Simplified Running Heatmap Mobile App Test Runner")
     print("=" * 60)
     
     # Handle test selection BEFORE infrastructure setup
@@ -1019,20 +888,19 @@ def main():
         sys.exit(1)
     
     # Check and start emulator if needed
-    if not check_and_start_emulator(args):
+    if not check_and_start_emulator():
         sys.exit(1)
     
     # Create reports directory
-    reports_dir = Path(__file__).parent / Path(args.report_file).parent
+    reports_dir = Path(__file__).parent / "reports"
     reports_dir.mkdir(exist_ok=True)
-    
     
     appium_process = None
     exit_code = 1
     
     try:
         # Start Appium server
-        appium_process = start_appium_server(args.verbose)
+        appium_process = start_appium_server()
         if appium_process is None:
             print("❌ Failed to start Appium server")
             sys.exit(1)
@@ -1044,8 +912,7 @@ def main():
         print_test_summary(exit_code, args)
         
         # Open test report
-        open_test_report(args.report_file, not args.browser)
-        
+        open_test_report('reports/test_report.html')
         
     except KeyboardInterrupt:
         print("\n⏹️  Tests interrupted by user")
@@ -1053,18 +920,13 @@ def main():
         
     except Exception as e:
         print(f"\n❌ Unexpected error: {e}")
-        if args.verbose:
-            import traceback
-            traceback.print_exc()
         exit_code = 1
         
     finally:
         # Enhanced cleanup with app cleanup and emulator shutdown
-        cleanup_resources(appium_process, args, args.verbose)
+        cleanup_resources(appium_process)
         
         # Final port cleanup - ensure all Appium ports are released
-        if args.verbose:
-            print("🧹 Final port cleanup check...")
         for port in [4723, 4724, 4725]:
             try:
                 lsof_result = subprocess.run(['lsof', '-t', f'-i:{port}'], 
@@ -1072,8 +934,6 @@ def main():
                 if lsof_result.returncode == 0 and lsof_result.stdout.strip():
                     for pid in lsof_result.stdout.strip().split('\n'):
                         if pid:
-                            if args.verbose:
-                                print(f"   🔪 Final cleanup: killing process {pid} on port {port}")
                             subprocess.run(['kill', '-9', pid], capture_output=True)
             except Exception:
                 pass

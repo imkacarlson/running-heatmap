@@ -17,7 +17,7 @@ class TestDataPipeline:
         env = isolated_test_environment
         
         # Verify runs.pkl exists and has content
-        runs_pkl = env['server_dir'] / "runs.pkl"
+        runs_pkl = env['mobile_dir'] / "runs.pkl"
         assert runs_pkl.exists(), "runs.pkl should be created"
         
         import pickle

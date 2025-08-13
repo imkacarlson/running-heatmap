@@ -1,7 +1,0 @@
-Flask
-gpxpy
-fitdecode
-shapely
-rtree
-
-tqdm

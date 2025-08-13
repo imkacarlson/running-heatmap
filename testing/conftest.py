@@ -102,34 +102,43 @@ def session_setup(fast_mode):
     print("\n🏗️ Infrastructure Setup: Building test environment and APK with sample data...")
     
     test_env = Path(tempfile.mkdtemp(prefix="heatmap_master_session_"))
-    server_dir = test_env / "server"
+    mobile_dir = test_env / "mobile"
     raw_data_dir = test_env / "data" / "raw"
     
     try:
         # 1. Create isolated environment and copy necessary files
         print("   📁 Creating isolated test environment with sample GPX data...")
-        server_dir.mkdir(parents=True)
+        mobile_dir.mkdir(parents=True)
         raw_data_dir.mkdir(parents=True)
         
-        # Copy essential server files
+        # Copy essential mobile files
         essential_files = [
-            "import_runs.py", "make_pmtiles.py", "build_mobile.py",
+            "data_processor.py", "build.py", "api.py"
+        ]
+        
+        for file_name in essential_files:
+            src_file = project_root / "mobile" / file_name
+            if src_file.exists():
+                shutil.copy2(src_file, mobile_dir / file_name)
+        
+        # Copy essential server template files (still needed for mobile build)
+        server_template_files = [
             "mobile_template.html", "mobile_main.js", "sw_template.js", 
             "spatial.worker.js", "AndroidManifest.xml.template", 
             "MainActivity.java.template", "HttpRangeServerPlugin.java.template",
             "network_security_config.xml.template"
         ]
         
-        for file_name in essential_files:
+        for file_name in server_template_files:
             src_file = project_root / "server" / file_name
             if src_file.exists():
-                shutil.copy2(src_file, server_dir / file_name)
+                shutil.copy2(src_file, mobile_dir / file_name)
         
-        # Copy essential directories
+        # Copy essential directories from server (still needed for mobile build)
         essential_dirs = ["templates", "static"]
         for dir_name in essential_dirs:
             src_dir = project_root / "server" / dir_name
-            dest_dir = server_dir / dir_name
+            dest_dir = mobile_dir / dir_name
             if src_dir.exists():
                 if src_dir.is_dir():
                     shutil.copytree(src_dir, dest_dir)
@@ -154,23 +163,14 @@ def session_setup(fast_mode):
         # Use main project's .venv Python which has all server dependencies
         main_venv_python = project_root / ".venv" / "bin" / "python"
         
-        print("   🔄 Running GPX import...")
-        # Run import_runs.py first to process GPX data
+        print("   🔄 Running data processing...")
+        # Run data_processor.py to process GPX data and generate PMTiles
         result = subprocess.run([
-            str(main_venv_python), "import_runs.py"
-        ], cwd=server_dir, text=True, timeout=120)
+            str(main_venv_python), "data_processor.py", "--all"
+        ], cwd=mobile_dir, text=True, timeout=120)
         
         if result.returncode != 0:
-            raise Exception(f"GPX import failed with return code {result.returncode}")
-        
-        print("   🗜️ Running PMTiles generation...")
-        # Run PMTiles generation
-        result = subprocess.run([
-            str(main_venv_python), "make_pmtiles.py"
-        ], cwd=server_dir, text=True, timeout=120)
-        
-        if result.returncode != 0:
-            raise Exception(f"PMTiles generation failed with return code {result.returncode}")
+            raise Exception(f"Data processing failed with return code {result.returncode}")
         
         print("   ✅ Test data processing complete.")
         
@@ -183,8 +183,8 @@ def session_setup(fast_mode):
         build_env['MOBILE_BUILD_AUTO'] = '1'  # Enable auto mode
         
         build_process = subprocess.Popen([
-            str(main_venv_python), "build_mobile.py"
-        ], cwd=server_dir, stdin=subprocess.PIPE, 
+            str(main_venv_python), "build.py"
+        ], cwd=mobile_dir, stdin=subprocess.PIPE, 
            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, 
            text=True, env=build_env)
         
@@ -232,7 +232,7 @@ def session_setup(fast_mode):
             print(f"   📱 Cached test APK: {cached_apk_path}")
             
             # Copy PMTiles data to cache
-            pmtiles_source = server_dir / "runs.pmtiles"
+            pmtiles_source = mobile_dir / "runs.pmtiles"
             if pmtiles_source.exists():
                 cached_pmtiles_path = cached_data_dir / "runs.pmtiles"
                 shutil.copy2(pmtiles_source, cached_pmtiles_path)
@@ -246,9 +246,9 @@ def session_setup(fast_mode):
         session_data = {
             'package_name': 'com.run.heatmap',
             'apk_path': str(apk_path),
-            'pmtiles_path': str(server_dir / "runs.pmtiles"),
+            'pmtiles_path': str(mobile_dir / "runs.pmtiles"),
             'test_env': str(test_env),
-            'server_dir': str(server_dir)
+            'mobile_dir': str(mobile_dir)
         }
         
         yield session_data

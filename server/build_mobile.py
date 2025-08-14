@@ -339,8 +339,8 @@ def setup_www_directory(mobile_dir, quick_build):
     return all_moved
 
 def fix_java_compatibility(mobile_dir):
-    """Fix Java compatibility issues by adding compileOptions to both app and root build.gradle."""
-    print("\n🔧 Configuring Java compatibility...")
+    """Fix Java compatibility issues and add compiler warnings to both app and root build.gradle."""
+    print("\n🔧 Configuring Java compatibility and compiler warnings...")
     
     # Fix app/build.gradle
     app_build_gradle = os.path.join(mobile_dir, 'android', 'app', 'build.gradle')
@@ -352,7 +352,7 @@ def fix_java_compatibility(mobile_dir):
         if 'compileOptions' not in content:
             import re
             pattern = r'(compileSdk\s+[^\n]+\n)'
-            replacement = r'\1    \n    compileOptions {\n        sourceCompatibility JavaVersion.VERSION_17\n        targetCompatibility JavaVersion.VERSION_17\n    }\n    '
+            replacement = r'\1    \n    compileOptions {\n        sourceCompatibility JavaVersion.VERSION_17\n        targetCompatibility JavaVersion.VERSION_17\n    }\n    \n    // Add compiler arguments for better warnings\n    tasks.withType(JavaCompile) {\n        options.compilerArgs += ["-Xlint:unchecked", "-Xlint:deprecation"]\n    }\n    '
             new_content = re.sub(pattern, replacement, content)
             
             if new_content != content:
@@ -369,7 +369,7 @@ def fix_java_compatibility(mobile_dir):
         
         if 'subprojects {' not in content:
             # Add subprojects configuration before the clean task
-            subprojects_config = '''\nsubprojects {\n    afterEvaluate { project ->\n        if (project.hasProperty('android')) {\n            project.android {\n                compileOptions {\n                    sourceCompatibility JavaVersion.VERSION_17\n                    targetCompatibility JavaVersion.VERSION_17\n                }\n            }\n        }\n    }\n}\n'''
+            subprojects_config = '''\nsubprojects {\n    afterEvaluate { project ->\n        if (project.hasProperty('android')) {\n            project.android {\n                compileOptions {\n                    sourceCompatibility JavaVersion.VERSION_17\n                    targetCompatibility JavaVersion.VERSION_17\n                }\n            }\n        }\n        // Add compiler arguments for all Java compilation tasks\n        tasks.withType(JavaCompile) {\n            options.compilerArgs += ["-Xlint:unchecked", "-Xlint:deprecation"]\n        }\n    }\n}\n'''
             # Insert before the clean task
             pattern = r'(task clean\(type: Delete\))'
             replacement = subprojects_config + r'\n\1'
@@ -381,10 +381,10 @@ def fix_java_compatibility(mobile_dir):
                 root_fixed = True
     
     if app_fixed or root_fixed:
-        print("   - Added Java 17 compatibility configuration")
+        print("   - Added Java 17 compatibility and -Xlint compiler warnings")
         return True
     else:
-        print("   - Java compatibility already configured")
+        print("   - Java compatibility and compiler warnings already configured")
         return True
 
 # --- Android Packaging ---

@@ -100,7 +100,7 @@ def check_prerequisites(args):
     return True
 
 def check_and_start_emulator():
-    """Check for devices and prompt user if none found"""
+    """Check for devices and auto-start emulator if needed"""
     print("📱 Checking for connected devices...")
     
     # Check for connected devices
@@ -111,11 +111,83 @@ def check_and_start_emulator():
         print(f"✅ Found {len(devices)} connected device(s)")
         for device in devices:
             print(f"   - {device}")
-        return True
+        return {'started_emulator': False}  # Didn't start emulator
     
-    print("❌ No Android devices/emulators connected")
-    print("   Please connect a device or start an emulator manually")
-    return False
+    # Auto-start emulator
+    emulator_name = 'TestDevice'
+    print(f"🚀 No devices found. Starting emulator: {emulator_name}")
+    
+    # Check if emulator command is available
+    try:
+        subprocess.run(['emulator', '-help'], capture_output=True, check=False)
+    except FileNotFoundError:
+        print("❌ Android emulator not found. Please install Android SDK")
+        print("   Or start emulator manually and run tests again")
+        return False
+    
+    # Check if AVD exists
+    result = subprocess.run(['emulator', '-list-avds'], capture_output=True, text=True)
+    avds = [line.strip() for line in result.stdout.split('\n') if line.strip()]
+    
+    if emulator_name not in avds:
+        print(f"❌ AVD '{emulator_name}' not found")
+        print("   Available AVDs:")
+        for avd in avds:
+            print(f"     - {avd}")
+        print("   Create an AVD or run ./setup_emulator.sh for setup")
+        return False
+    
+    # Start emulator
+    print(f"   Starting {emulator_name} with WSL-compatible settings...")
+    emulator_process = subprocess.Popen([
+        'emulator', '-avd', emulator_name, 
+        '-no-audio', '-gpu', 'swiftshader_indirect', 
+        '-skin', '1080x1920'
+    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    
+    # Wait for emulator to boot
+    print("⏳ Waiting for emulator to boot (this may take 2-3 minutes)...")
+    timeout = 300  # 5 minutes
+    counter = 0
+    
+    while counter < timeout:
+        try:
+            result = subprocess.run(['adb', 'devices'], capture_output=True, text=True, timeout=5)
+            devices = [line for line in result.stdout.split('\n') if '\tdevice' in line]
+            
+            if devices:
+                # Device found, now check if it's fully booted
+                try:
+                    boot_result = subprocess.run(['adb', 'shell', 'getprop', 'sys.boot_completed'], 
+                                              capture_output=True, text=True, timeout=5)
+                    if boot_result.returncode == 0 and '1' in boot_result.stdout.strip():
+                        print("✅ Emulator is ready!")
+                        time.sleep(3)  # Give it a moment to fully settle
+                        return {'started_emulator': True, 'emulator_process': emulator_process}
+                    elif counter % 15 == 0:  # Show boot progress occasionally
+                        print(f"   Emulator detected, waiting for boot completion... ({counter}s)")
+                except subprocess.TimeoutExpired:
+                    if counter % 15 == 0:
+                        print(f"   Emulator detected, checking boot status... ({counter}s)")
+            else:
+                # Try restarting ADB if no devices after reasonable time
+                if counter >= 30 and counter % 30 == 0:
+                    print(f"   Restarting ADB server to refresh device detection... ({counter}s)")
+                    subprocess.run(['adb', 'kill-server'], capture_output=True)
+                    subprocess.run(['adb', 'start-server'], capture_output=True)
+                elif counter % 15 == 0:
+                    print(f"   Still waiting for emulator to appear in ADB... ({counter}s)")
+                    
+        except subprocess.TimeoutExpired:
+            if counter % 15 == 0:
+                print(f"   ADB timeout, retrying... ({counter}s)")
+        
+        time.sleep(3)
+        counter += 3
+    
+    print("❌ Emulator failed to start within timeout")
+    emulator_process.terminate()
+    return {'started_emulator': False}
 
 def start_appium_server():
     """Start Appium server"""
@@ -237,10 +309,10 @@ def build_pytest_command(args):
     if args.fast:
         cmd.append('--fast')
     
-    # Standard options
+    # Standard options - pytest.ini now includes -rw for warnings
     cmd.extend(['-v', '--tb=short'])
     
-    # HTML reporting
+    # HTML reporting with warnings included  
     cmd.extend(['--html', args.report_file, '--self-contained-html'])
     
     return cmd
@@ -280,36 +352,82 @@ def cleanup_appium_server(appium_process):
     except Exception as e:
         print(f"⚠️  Warning: Error stopping Appium server: {e}")
 
+def shutdown_emulator(emulator_info):
+    """Shut down auto-started emulator"""
+    if not emulator_info.get('started_emulator', False):
+        return
+        
+    print("🔌 Shutting down auto-started emulator...")
+    
+    # Check current emulator devices
+    result = subprocess.run(['adb', 'devices'], capture_output=True, text=True)
+    devices = [line for line in result.stdout.split('\n') if 'emulator-' in line and '\tdevice' in line]
+    
+    if not devices:
+        print("   ✅ No emulator devices found")
+        return
+    
+    emulator_serial = devices[0].split('\t')[0]
+    print(f"   📱 Shutting down emulator: {emulator_serial}")
+    
+    # Try clean shutdown first
+    try:
+        result = subprocess.run(['adb', '-s', emulator_serial, 'emu', 'kill'], 
+                              capture_output=True, text=True, timeout=10)
+        if result.returncode == 0:
+            print("   ✅ Emulator shutdown command sent")
+            
+            # Wait for shutdown
+            for i in range(5):
+                time.sleep(2)
+                result = subprocess.run(['adb', 'devices'], capture_output=True, text=True)
+                devices = [line for line in result.stdout.split('\n') if 'emulator-' in line and '\tdevice' in line]
+                if not devices:
+                    print("   ✅ Emulator shut down successfully!")
+                    return
+            
+            print("   ⏳ Emulator shutdown in progress...")
+        else:
+            print("   ⚠️  Emulator shutdown command failed, trying process termination...")
+    except subprocess.TimeoutExpired:
+        print("   ⏳ Emulator shutdown timed out, trying process termination...")
+    except Exception as e:
+        print(f"   ⚠️  Emulator shutdown error: {e}")
+    
+    # Try to terminate the emulator process directly
+    if 'emulator_process' in emulator_info:
+        try:
+            emulator_process = emulator_info['emulator_process']
+            emulator_process.terminate()
+            emulator_process.wait(timeout=5)
+            print("   ✅ Emulator process terminated!")
+        except subprocess.TimeoutExpired:
+            emulator_process.kill()
+            print("   ✅ Emulator process killed!")
+        except Exception as e:
+            print(f"   ⚠️  Process termination failed: {e}")
+
 def open_test_report(report_path):
-    """Open test report if it exists"""
+    """Report test report location without auto-opening"""
     abs_report_path = Path(__file__).parent / report_path
     
     if not abs_report_path.exists():
         print(f"📊 Test report was not generated: {report_path}")
         return
     
-    # Check if we're in WSL
-    is_wsl = os.path.exists('/proc/version') and 'microsoft' in open('/proc/version').read().lower()
+    print(f"📊 Test report saved: {abs_report_path}")
     
-    try:
-        if is_wsl:
-            # In WSL, try to open with Windows browser
+    # Check if we're in WSL and provide helpful path conversion
+    is_wsl = os.path.exists('/proc/version') and 'microsoft' in open('/proc/version').read().lower()
+    if is_wsl:
+        try:
             windows_path = subprocess.run(
                 ['wslpath', '-w', str(abs_report_path)], 
                 capture_output=True, text=True
             ).stdout.strip()
-            
-            subprocess.run(f'cmd.exe /c start "{windows_path}"', 
-                         shell=True, check=True, capture_output=True)
-            print(f"📊 Test report opened in Windows browser: {report_path}")
-        else:
-            # Non-WSL: use standard webbrowser
-            file_url = abs_report_path.as_uri()
-            webbrowser.open(file_url)
-            print(f"📊 Test report opened in browser: {report_path}")
-            
-    except Exception:
-        print(f"📊 Test report available at: {abs_report_path}")
+            print(f"   💡 Windows path: {windows_path}")
+        except:
+            print(f"   💡 Open in browser manually")
 
 def main():
     """Main test runner function"""
@@ -336,7 +454,8 @@ def main():
         sys.exit(1)
     
     # Check for devices
-    if not check_and_start_emulator():
+    emulator_info = check_and_start_emulator()
+    if not emulator_info:
         sys.exit(1)
     
     # Create reports directory
@@ -376,6 +495,7 @@ def main():
     finally:
         # Cleanup
         cleanup_appium_server(appium_process)
+        shutdown_emulator(emulator_info)
     
     sys.exit(exit_code)
 

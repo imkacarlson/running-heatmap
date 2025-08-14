@@ -125,6 +125,23 @@ def session_setup(fast_mode):
             if src_file.exists():
                 shutil.copy2(src_file, server_dir / file_name)
         
+        # Copy package.json and node_modules for mobile build dependencies
+        package_json = project_root / "package.json"
+        if package_json.exists():
+            shutil.copy2(package_json, test_env / "package.json")
+            
+        node_modules = project_root / "node_modules"
+        if node_modules.exists():
+            # Only copy the specific modules we need to avoid large copy operation
+            test_node_modules = test_env / "node_modules"
+            test_node_modules.mkdir(exist_ok=True)
+            
+            # Copy rbush module specifically
+            rbush_module = node_modules / "rbush"
+            if rbush_module.exists():
+                shutil.copytree(rbush_module, test_node_modules / "rbush")
+                print("   📦 Copied rbush dependency for mobile build")
+        
         # Copy essential directories
         essential_dirs = ["templates", "static"]
         for dir_name in essential_dirs:
@@ -274,10 +291,12 @@ def mobile_driver(session_setup):
     if session_setup.get('apk_path'):
         capabilities['appium:app'] = session_setup['apk_path']
     
-    # Create WebDriver instance
+    # Create WebDriver instance using modern Appium options API
+    from appium.options.android import UiAutomator2Options
+    options = UiAutomator2Options().load_capabilities(capabilities)
     driver = webdriver.Remote(
         config.TestConfig.APPIUM_SERVER,
-        capabilities
+        options=options
     )
     
     # Set implicit wait

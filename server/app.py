@@ -4,7 +4,6 @@ from flask import (
     Flask,
     request,
     jsonify,
-    send_from_directory,
 )
 from shapely.geometry import mapping, Polygon, LineString
 import gpxpy
@@ -21,16 +20,7 @@ idx = index.Index()
 for rid, run in runs.items():
     idx.insert(rid, run['bbox'])
 
-app = Flask(__name__, static_folder='../web', static_url_path='')
-
-@app.route('/')
-def root():
-    return send_from_directory(app.static_folder, 'index.html')
-
-
-@app.route('/runs.pmtiles')
-def pmtiles():
-    return send_from_directory('.', 'runs.pmtiles')
+app = Flask(__name__)
 
 
 def quantize(val, digits=3):
@@ -294,7 +284,7 @@ def update_runs():
         with open(pkl_path, 'wb') as f:
             pickle.dump(existing, f)
 
-        result = subprocess.run(['python', 'make_pmtiles.py'], capture_output=True, text=True)
+        result = subprocess.run(['python', 'process_data.py', '--pmtiles-only'], capture_output=True, text=True)
         if result.returncode != 0:
             return jsonify({'error': 'PMTiles regeneration failed'}), 500
 

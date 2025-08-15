@@ -1,11 +1,20 @@
+#!/usr/bin/env python3
+"""
+Consolidated GPS data processing script.
+Combines import_runs.py and make_pmtiles.py functionality into a single workflow.
+"""
 import os
 import gzip
 import pickle
 import tempfile
 import zipfile
 import xml.etree.ElementTree as ET
+import json
+import subprocess
+import sys
+import argparse
 from datetime import datetime
-from shapely.geometry import LineString
+from shapely.geometry import LineString, mapping
 import gpxpy
 from fitdecode import FitReader, FitDataMessage
 from tqdm import tqdm
@@ -280,7 +289,10 @@ def count_total_artifacts(files):
     return total
 
 
-def main():
+def import_gps_data():
+    """Import GPS data from raw files and create runs.pkl"""
+    print("🔍 Importing GPS data...")
+    
     runs = {}
     rid = 0
     skipped_count = 0
@@ -393,9 +405,118 @@ def main():
     print(f"Imported {len(runs)} runs → {OUTPUT_PKL}")
     if skipped_count > 0:
         print(f"Skipped {skipped_count} artifacts (no GPS coordinates found)")
+    
+    return runs
+
+
+def generate_pmtiles(runs):
+    """Generate PMTiles from runs data"""
+    print("🗜️  Generating PMTiles...")
+    
+    print(f"📊 Processing {len(runs)} runs...")
+    feats = []
+    for rid, run in tqdm(runs.items(), desc="Converting runs", unit="run"):
+        # Use only one feature per run with the highest detail
+        # Let tippecanoe handle the simplification automatically
+        geom = run['geoms']['full']  # Always use full resolution
+        meta = run.get('metadata', {})
+        start = meta.get('start_time')
+        if hasattr(start, 'isoformat'):
+            start = start.isoformat()
+        elif start is None:
+            start = ''
+
+        props = {
+            'id': rid,
+            'start_time': start,
+            'distance': meta.get('distance', 0) or 0,
+            'duration': meta.get('duration', 0) or 0,
+            'activity_type': meta.get('activity_type', 'other') or 'other',
+            'activity_raw': meta.get('activity_raw', '') or ''
+        }
+
+        feats.append({
+            'type': 'Feature',
+            'geometry': mapping(geom),
+            'properties': props
+        })
+    
+    print("💾 Writing GeoJSON file...")
+    fc = {'type': 'FeatureCollection', 'features': feats}
+    with open('runs.geojson', 'w') as f:
+        json.dump(fc, f)
+    
+    # Check if PMTiles file exists and remove it
+    if os.path.exists('runs.pmtiles'):
+        print("🗑️  Removing existing runs.pmtiles...")
+        os.remove('runs.pmtiles')
+    
+    print("🗜️  Running tippecanoe to generate PMTiles directly...")
+    # Generate PMTiles directly with latest tippecanoe (v2.78.0+)
+    result = subprocess.run([
+        'tippecanoe',
+        '-o', 'runs.pmtiles',
+        '-l', 'runs',
+        '-Z', '5',          # Min zoom
+        '-z', '16',         # Max zoom (higher for more detail)
+        '--buffer=16',      # Extra geometry around tile edges
+        '--simplification=2',  # Aggressive simplification for speed
+        '--no-tile-size-limit',
+        '--drop-densest-as-needed',  # Auto-drop features when too dense
+        '--extend-zooms-if-still-dropping',  # Keep trying to fit data
+        '--simplify-only-low-zooms',  # Keep detail at high zooms
+        '--progress-interval=1',  # Show progress every second
+        'runs.geojson'
+    ], check=True)
+    
+    print("✅ PMTiles generation complete!")
+    
+    # Show file sizes
+    geojson_size = os.path.getsize('runs.geojson') / (1024*1024)
+    pmtiles_size = os.path.getsize('runs.pmtiles') / (1024*1024)
+    print(f"📈 GeoJSON: {geojson_size:.1f}MB → PMTiles: {pmtiles_size:.1f}MB")
+    print(f"🎯 Compression ratio: {geojson_size/pmtiles_size:.1f}x")
+
+
+def main():
+    """Main function to orchestrate the entire data processing pipeline"""
+    parser = argparse.ArgumentParser(description='Process GPS data: import raw files and generate PMTiles')
+    parser.add_argument('--import-only', action='store_true', 
+                       help='Only import GPS data, skip PMTiles generation')
+    parser.add_argument('--pmtiles-only', action='store_true',
+                       help='Only generate PMTiles from existing runs.pkl, skip import')
+    
+    args = parser.parse_args()
+    
+    if args.import_only and args.pmtiles_only:
+        print("❌ Error: Cannot specify both --import-only and --pmtiles-only")
+        sys.exit(1)
+    
+    print("🚀 Starting GPS data processing pipeline...")
+    
+    runs = None
+    
+    if not args.pmtiles_only:
+        # Import GPS data
+        runs = import_gps_data()
+    
+    if not args.import_only:
+        # Generate PMTiles
+        if runs is None:
+            # Load existing runs.pkl
+            print("🔍 Loading existing runs data...")
+            try:
+                with open(OUTPUT_PKL, 'rb') as f:
+                    runs = pickle.load(f)
+                print(f"Loaded {len(runs)} runs from {OUTPUT_PKL}")
+            except FileNotFoundError:
+                print(f"❌ Error: {OUTPUT_PKL} not found. Run import first or use --import-only.")
+                sys.exit(1)
+        
+        generate_pmtiles(runs)
+    
+    print("🎉 Data processing complete!")
 
 
 if __name__ == '__main__':
     main()
-
-

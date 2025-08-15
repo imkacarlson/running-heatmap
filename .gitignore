@@ -54,3 +54,9 @@ testing/emulator.log
 # Claude Code artifacts (but keep commands)
 .claude/*
 !.claude/commands/
+
+# Spec workflow approvals (temporary files)
+.spec-workflow/approvals/
+
+# Spec logs
+logs/

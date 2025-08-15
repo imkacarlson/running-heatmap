@@ -69,12 +69,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Fail fast if not authenticated via env var (keeps it deterministic for unattended runs)
-if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
-  log "Error: ANTHROPIC_API_KEY is not set. Export it or run inside a session where Claude CLI is already logged in."
-  exit 1
-fi
-
 TOOL_MANAGE="mcp__${MCP_SERVER_ALIAS}__manage-tasks"
 TOOL_SPECLIST="mcp__${MCP_SERVER_ALIAS}__spec-list"
 

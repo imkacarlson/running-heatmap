@@ -11,6 +11,88 @@ import time
 from pathlib import Path
 import pytest_html
 
+# Modularized cleanup utilities for reuse across scripts
+def cleanup_test_environment(test_env_path):
+    """
+    Clean up isolated test environment.
+    Reusable utility for cleaning up temporary test directories.
+    """
+    try:
+        if test_env_path and Path(test_env_path).exists():
+            shutil.rmtree(test_env_path)
+            print(f"✅ Test environment cleaned up: {test_env_path}")
+    except Exception as e:
+        print(f"⚠️ Warning: Could not clean up test environment {test_env_path}: {e}")
+
+def cleanup_mobile_driver(driver):
+    """
+    Clean up mobile driver instance.
+    Reusable utility for driver cleanup that can be shared between scripts.
+    """
+    try:
+        if driver:
+            driver.quit()
+            print("✅ Mobile driver cleanup completed")
+    except Exception as e:
+        print(f"⚠️ Mobile driver cleanup warning: {e}")
+
+def cleanup_app_installation(package_name=None):
+    """
+    Clean up mobile app installation.
+    Reusable utility for removing test app from emulator.
+    """
+    try:
+        if package_name:
+            result = subprocess.run([
+                "adb", "uninstall", package_name
+            ], capture_output=True, text=True, timeout=30)
+            
+            if result.returncode == 0:
+                print(f"✅ App uninstalled: {package_name}")
+            else:
+                print(f"⚠️ App uninstall warning: {result.stderr.strip()}")
+    except Exception as e:
+        print(f"⚠️ App uninstall warning: {e}")
+
+def cleanup_emulator_state():
+    """
+    Clean up emulator state for consistent testing.
+    Reusable utility for clearing emulator state between test runs.
+    """
+    try:
+        # Clear logcat
+        subprocess.run(["adb", "logcat", "-c"], capture_output=True, timeout=10)
+        
+        # Clear cached data if needed
+        subprocess.run([
+            "adb", "shell", "pm", "clear", "com.android.providers.downloads"
+        ], capture_output=True, timeout=10)
+        
+        print("✅ Emulator state cleaned")
+    except Exception as e:
+        print(f"⚠️ Emulator state cleanup warning: {e}")
+
+def cleanup_all_test_artifacts(package_name="com.run.heatmap", test_env_path=None, driver=None):
+    """
+    Comprehensive cleanup utility that combines all cleanup operations.
+    Suitable for use in both isolated and persistent test modes.
+    """
+    print("🧹 Starting comprehensive test cleanup...")
+    
+    # Clean up driver
+    cleanup_mobile_driver(driver)
+    
+    # Clean up app
+    cleanup_app_installation(package_name)
+    
+    # Clean up emulator state
+    cleanup_emulator_state()
+    
+    # Clean up test environment
+    cleanup_test_environment(test_env_path)
+    
+    print("✅ Comprehensive cleanup completed")
+
 def configure_emulator_stability():
     """
     Configure emulator settings for deterministic test behavior.
@@ -377,11 +459,8 @@ def session_setup(fast_mode):
         yield session_data
         
     finally:
-        # Cleanup
-        try:
-            shutil.rmtree(test_env)
-        except Exception as e:
-            print(f"Warning: Could not clean up test environment: {e}")
+        # Cleanup using modularized cleanup utility
+        cleanup_test_environment(str(test_env))
 
 @pytest.fixture(scope="function")
 def mobile_driver(session_setup):
@@ -429,12 +508,8 @@ def mobile_driver(session_setup):
         'session_data': session_setup
     }
     
-    # Cleanup
-    try:
-        driver.quit()
-        print("✅ Mobile driver cleanup completed")
-    except Exception as e:
-        print(f"⚠️ Mobile driver cleanup warning: {e}")
+    # Cleanup using modularized cleanup utility
+    cleanup_mobile_driver(driver)
 
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item, call):

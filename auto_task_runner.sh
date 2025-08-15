@@ -16,7 +16,7 @@ for ((i=1; i<=TASK_LIMIT; i++)); do
     echo "--- Task Iteration $i/$TASK_LIMIT ---"
     
     # Simple, direct command - let Claude handle the MCP workflow naturally
-    claude -p "Work on the next pending task for spec '$SPEC_NAME'" --max-turns 10 --dangerously-skip-permissions
+    claude -p "Work on the next pending task for spec '$SPEC_NAME'" --max-turns 20 --dangerously-skip-permissions
     
     exit_code=$?
     if [ $exit_code -ne 0 ]; then

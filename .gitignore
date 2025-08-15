@@ -57,3 +57,6 @@ testing/emulator.log
 
 # Spec workflow approvals (temporary files)
 .spec-workflow/approvals/
+
+# Spec logs
+logs/

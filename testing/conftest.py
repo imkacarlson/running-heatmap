@@ -71,9 +71,19 @@ def session_setup(fast_mode):
     - Builds mobile APK with test data
     - Installs APK on emulator
     This runs only ONCE per test session unless in --fast mode.
+    
+    Now includes automatic change detection to skip expensive operations when unchanged:
+    - Skip APK build when source files unchanged, use existing APK
+    - Skip data processing when GPX files unchanged, use existing PMTiles
     """
     # Define project_root at the top so it's available for both modes
     project_root = Path(__file__).parent.parent
+    
+    # Import change detector for automatic optimization
+    from .change_detector import ChangeDetector, BuildOptimization
+    
+    # Initialize change detector
+    change_detector = ChangeDetector(project_root)
     
     if fast_mode:
         print("\n⚡ Fast mode: Using cached test APK from previous full build.")
@@ -98,8 +108,38 @@ def session_setup(fast_mode):
             'pmtiles_path': str(cached_pmtiles_path) if cached_pmtiles_path.exists() else None
         }
         return
+    
+    # Automatic optimization mode: analyze what needs to be built
+    print("\n🔍 Analyzing changes to optimize test build process...")
+    optimization = change_detector.get_build_optimization()
+    
+    print(f"   📊 Build Analysis:")
+    print(f"      APK exists: {optimization.apk_exists}")
+    print(f"      Source unchanged: {optimization.source_unchanged}")
+    print(f"      Data unchanged: {optimization.data_unchanged}")
+    print(f"      Can skip build: {optimization.can_skip_build}")
+    print(f"      Can skip data: {optimization.can_skip_data}")
+    
+    # If we can use cached artifacts, use them directly
+    if optimization.can_skip_build and optimization.can_skip_data:
+        print("\n⚡ Optimization: All cached artifacts are up-to-date, using existing APK and data.")
+        cached_apk_path = project_root / "testing" / "cached_test_apk" / "app-debug.apk"
+        cached_pmtiles_path = project_root / "testing" / "cached_test_data" / "runs.pmtiles"
+        
+        yield {
+            'package_name': 'com.run.heatmap',
+            'apk_path': str(cached_apk_path),
+            'pmtiles_path': str(cached_pmtiles_path) if cached_pmtiles_path.exists() else None
+        }
+        return
 
-    print("\n🏗️ Infrastructure Setup: Building test environment and APK with sample data...")
+    # Determine what needs to be built based on optimization analysis
+    need_apk_build = not optimization.can_skip_build
+    need_data_processing = not optimization.can_skip_data
+    
+    print(f"\n🏗️ Infrastructure Setup: Building test environment")
+    print(f"   📱 APK build needed: {need_apk_build}")
+    print(f"   🗂️ Data processing needed: {need_data_processing}")
     
     test_env = Path(tempfile.mkdtemp(prefix="heatmap_master_session_"))
     server_dir = test_env / "server"
@@ -166,50 +206,115 @@ def session_setup(fast_mode):
                     print(f"   ⏭️  Excluding {gpx_file.name} from APK (manual upload testing only)")
         
         # 2. Process test data (GPX import and PMTiles generation)
-        print("   🗂️ Processing test data (GPX import and PMTiles generation)...")
-        
-        # Use main project's .venv Python which has all server dependencies
-        main_venv_python = project_root / ".venv" / "bin" / "python"
-        
-        print("   🔄 Running consolidated data processing...")
-        # Run process_data.py to handle both import and PMTiles generation
-        result = subprocess.run([
-            str(main_venv_python), "process_data.py"
-        ], cwd=server_dir, text=True, timeout=120)
-        
-        if result.returncode != 0:
-            raise Exception(f"Data processing failed with return code {result.returncode}")
-        
-        print("   ✅ Test data processing complete.")
+        if need_data_processing:
+            print("   🗂️ Processing test data (GPX import and PMTiles generation)...")
+            
+            # Use main project's .venv Python which has all server dependencies
+            main_venv_python = project_root / ".venv" / "bin" / "python"
+            
+            print("   🔄 Running consolidated data processing...")
+            # Run process_data.py to handle both import and PMTiles generation
+            result = subprocess.run([
+                str(main_venv_python), "process_data.py"
+            ], cwd=server_dir, text=True, timeout=120)
+            
+            if result.returncode != 0:
+                raise Exception(f"Data processing failed with return code {result.returncode}")
+            
+            print("   ✅ Test data processing complete.")
+        else:
+            print("   ⚡ Skipping data processing: Using cached PMTiles (data unchanged)")
+            # Copy cached PMTiles to test environment
+            cached_pmtiles_path = project_root / "testing" / "cached_test_data" / "runs.pmtiles"
+            if cached_pmtiles_path.exists():
+                shutil.copy2(cached_pmtiles_path, server_dir / "runs.pmtiles")
+                print(f"   📋 Using cached PMTiles: {cached_pmtiles_path}")
+            else:
+                print("   ⚠️ Warning: No cached PMTiles found, falling back to data processing")
+                need_data_processing = True  # Force data processing if cache missing
+                
+                # Run the data processing that was skipped
+                print("   🗂️ Processing test data (GPX import and PMTiles generation)...")
+                main_venv_python = project_root / ".venv" / "bin" / "python"
+                print("   🔄 Running consolidated data processing...")
+                result = subprocess.run([
+                    str(main_venv_python), "process_data.py"
+                ], cwd=server_dir, text=True, timeout=120)
+                
+                if result.returncode != 0:
+                    raise Exception(f"Data processing failed with return code {result.returncode}")
+                
+                print("   ✅ Test data processing complete.")
         
         # 3. Build mobile APK with test data
-        print("   📱 Building mobile APK with test data (this may take 5-10 minutes)...")
-        print("   🔍 APK Build Output (verbose mode):")
-        
-        # Run mobile build with auto mode and stdin input for prompts
-        build_env = os.environ.copy()
-        build_env['MOBILE_BUILD_AUTO'] = '1'  # Enable auto mode
-        
-        build_process = subprocess.Popen([
-            str(main_venv_python), "build_mobile.py"
-        ], cwd=server_dir, stdin=subprocess.PIPE, 
-           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, 
-           text=True, env=build_env)
-        
-        # Automatically answer "y" to any prompts
-        stdout, _ = build_process.communicate(input="y\ny\n", timeout=600)
-        
-        # Show the output
-        print(stdout)
-        
-        if build_process.returncode != 0:
-            raise Exception(f"Mobile APK build failed with return code {build_process.returncode}")
-        
-        print("   ✅ Mobile APK built successfully.")
+        if need_apk_build:
+            print("   📱 Building mobile APK with test data (this may take 5-10 minutes)...")
+            print("   🔍 APK Build Output (verbose mode):")
+            
+            # Run mobile build with auto mode and stdin input for prompts
+            build_env = os.environ.copy()
+            build_env['MOBILE_BUILD_AUTO'] = '1'  # Enable auto mode
+            
+            build_process = subprocess.Popen([
+                str(main_venv_python), "build_mobile.py"
+            ], cwd=server_dir, stdin=subprocess.PIPE, 
+               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, 
+               text=True, env=build_env)
+            
+            # Automatically answer "y" to any prompts
+            stdout, _ = build_process.communicate(input="y\ny\n", timeout=600)
+            
+            # Show the output
+            print(stdout)
+            
+            if build_process.returncode != 0:
+                raise Exception(f"Mobile APK build failed with return code {build_process.returncode}")
+            
+            print("   ✅ Mobile APK built successfully.")
+            
+            # Use the newly built APK
+            apk_path = test_env / "mobile/android/app/build/outputs/apk/debug/app-debug.apk"
+        else:
+            print("   ⚡ Skipping APK build: Using cached APK (source unchanged)")
+            # Copy cached APK to test environment for consistency
+            cached_apk_path = project_root / "testing" / "cached_test_apk" / "app-debug.apk"
+            if cached_apk_path.exists():
+                apk_destination = test_env / "mobile/android/app/build/outputs/apk/debug"
+                apk_destination.mkdir(parents=True, exist_ok=True)
+                apk_path = apk_destination / "app-debug.apk"
+                shutil.copy2(cached_apk_path, apk_path)
+                print(f"   📋 Using cached APK: {cached_apk_path}")
+            else:
+                print("   ⚠️ Warning: No cached APK found, falling back to build")
+                need_apk_build = True  # Force APK build if cache missing
+                
+                # Run the APK build that was skipped
+                print("   📱 Building mobile APK with test data (this may take 5-10 minutes)...")
+                print("   🔍 APK Build Output (verbose mode):")
+                
+                build_env = os.environ.copy()
+                build_env['MOBILE_BUILD_AUTO'] = '1'  # Enable auto mode
+                
+                build_process = subprocess.Popen([
+                    str(main_venv_python), "build_mobile.py"
+                ], cwd=server_dir, stdin=subprocess.PIPE, 
+                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT, 
+                   text=True, env=build_env)
+                
+                # Automatically answer "y" to any prompts
+                stdout, _ = build_process.communicate(input="y\ny\n", timeout=600)
+                
+                # Show the output
+                print(stdout)
+                
+                if build_process.returncode != 0:
+                    raise Exception(f"Mobile APK build failed with return code {build_process.returncode}")
+                
+                print("   ✅ Mobile APK built successfully.")
+                apk_path = test_env / "mobile/android/app/build/outputs/apk/debug/app-debug.apk"
         
         # 4. Install APK on emulator
         print("   📲 Installing test APK on emulator...")
-        apk_path = test_env / "mobile/android/app/build/outputs/apk/debug/app-debug.apk"
         
         if not apk_path.exists():
             raise Exception(f"APK not found at expected path: {apk_path}")
@@ -224,8 +329,8 @@ def session_setup(fast_mode):
         
         print("   ✅ Test APK installed successfully.")
         
-        # 5. Cache test APK and data for future fast mode runs
-        print("   💾 Caching test APK and data for future fast mode runs...")
+        # 5. Cache test APK and data for future optimization runs
+        print("   💾 Caching test APK and data for future optimization runs...")
         cached_apk_dir = project_root / "testing" / "cached_test_apk"
         cached_data_dir = project_root / "testing" / "cached_test_data"
         
@@ -234,19 +339,29 @@ def session_setup(fast_mode):
             cached_apk_dir.mkdir(parents=True, exist_ok=True)
             cached_data_dir.mkdir(parents=True, exist_ok=True)
             
-            # Copy test APK to cache
-            cached_apk_path = cached_apk_dir / "app-debug.apk"
-            shutil.copy2(apk_path, cached_apk_path)
-            print(f"   📱 Cached test APK: {cached_apk_path}")
+            # Only cache APK if we built it (or needed to re-copy)
+            if need_apk_build or not (cached_apk_dir / "app-debug.apk").exists():
+                cached_apk_path = cached_apk_dir / "app-debug.apk"
+                shutil.copy2(apk_path, cached_apk_path)
+                print(f"   📱 Cached test APK: {cached_apk_path}")
             
-            # Copy PMTiles data to cache
-            pmtiles_source = server_dir / "runs.pmtiles"
-            if pmtiles_source.exists():
-                cached_pmtiles_path = cached_data_dir / "runs.pmtiles"
-                shutil.copy2(pmtiles_source, cached_pmtiles_path)
-                print(f"   🗺️ Cached PMTiles data: {cached_pmtiles_path}")
+            # Only cache PMTiles if we processed data (or needed to re-copy)
+            if need_data_processing or not (cached_data_dir / "runs.pmtiles").exists():
+                pmtiles_source = server_dir / "runs.pmtiles"
+                if pmtiles_source.exists():
+                    cached_pmtiles_path = cached_data_dir / "runs.pmtiles"
+                    shutil.copy2(pmtiles_source, cached_pmtiles_path)
+                    print(f"   🗺️ Cached PMTiles data: {cached_pmtiles_path}")
                 
-            print("   ✅ Test artifacts cached for fast mode")
+            print("   ✅ Test artifacts cached for optimization")
+            
+            # Update change detection baseline if we built or processed anything
+            if need_apk_build or need_data_processing:
+                print("   🔄 Updating change detection baseline...")
+                change_detector.update_baseline()
+            else:
+                print("   ⚡ No baseline update needed (used cached artifacts)")
+                
         except Exception as e:
             print(f"   ⚠️ Warning: Could not cache test artifacts: {e}")
         

@@ -46,27 +46,10 @@ start_infrastructure() {
     check_dependencies
     activate_venv
     
-    echo -e "${BLUE}Setting up emulator and Appium services...${NC}"
-    python "$SCRIPT_DIR/service_manager.py" --setup
+    echo -e "${BLUE}Starting persistent infrastructure using proven working setup...${NC}"
+    python "$SCRIPT_DIR/persist_infrastructure.py"
     
-    if [ $? -eq 0 ]; then
-        echo
-        echo -e "${GREEN}✅ Persistent infrastructure is now running!${NC}"
-        echo
-        echo -e "${YELLOW}📋 Usage:${NC}"
-        echo -e "   ${GREEN}./test.sh${NC}                    # Run tests against persistent infrastructure"
-        echo -e "   ${GREEN}./persist_tests.sh status${NC}    # Check infrastructure status"
-        echo -e "   ${GREEN}./persist_tests.sh stop${NC}      # Stop persistent infrastructure"
-        echo
-        echo -e "${YELLOW}💡 The emulator and Appium server will remain running for faster subsequent test runs${NC}"
-        echo -e "${YELLOW}   Use './persist_tests.sh stop' when you're done testing${NC}"
-        return 0
-    else
-        echo
-        echo -e "${RED}❌ Failed to start persistent infrastructure${NC}"
-        echo -e "${YELLOW}💡 Check the error messages above and try again${NC}"
-        return 1
-    fi
+    return $?
 }
 
 stop_infrastructure() {
@@ -74,15 +57,11 @@ stop_infrastructure() {
     echo -e "${YELLOW}🔌 Stopping persistent test infrastructure...${NC}"
     echo
     
-    check_dependencies
-    activate_venv
-    
-    echo -e "${BLUE}Cleaning up emulator and Appium services...${NC}"
-    python "$SCRIPT_DIR/service_manager.py" --cleanup
-    
+    echo -e "${BLUE}Stopping persistent infrastructure...${NC}"
+    echo -e "${YELLOW}💡 Infrastructure will stop when you press Enter or Ctrl+C in the running terminal${NC}"
+    echo -e "${YELLOW}💡 If no infrastructure is running, there's nothing to stop${NC}"
     echo
-    echo -e "${GREEN}✅ Persistent infrastructure stopped${NC}"
-    echo -e "${YELLOW}💡 Run './persist_tests.sh start' to restart persistent infrastructure${NC}"
+    echo -e "${GREEN}✅ Stop command completed${NC}"
 }
 
 check_status() {
@@ -90,19 +69,33 @@ check_status() {
     echo -e "${BLUE}📊 Checking persistent infrastructure status...${NC}"
     echo
     
-    check_dependencies
-    activate_venv
+    echo -e "${BLUE}Checking for running infrastructure...${NC}"
     
-    python "$SCRIPT_DIR/service_manager.py" --status
+    # Check for emulator
+    if adb devices 2>/dev/null | grep -q "emulator.*device"; then
+        echo -e "${GREEN}✅ Emulator: Running${NC}"
+        EMULATOR_RUNNING=1
+    else
+        echo -e "${RED}❌ Emulator: Not running${NC}"
+        EMULATOR_RUNNING=0
+    fi
     
-    if [ $? -eq 0 ]; then
-        echo
+    # Check for Appium
+    if curl -s http://localhost:4723/wd/hub/status 2>/dev/null | grep -q "ready"; then
+        echo -e "${GREEN}✅ Appium: Running${NC}"
+        APPIUM_RUNNING=1
+    else
+        echo -e "${RED}❌ Appium: Not running${NC}"
+        APPIUM_RUNNING=0
+    fi
+    
+    echo
+    if [ "${EMULATOR_RUNNING}" -eq 1 ] && [ "${APPIUM_RUNNING}" -eq 1 ]; then
         echo -e "${GREEN}✅ Infrastructure is healthy and ready for testing${NC}"
         echo -e "${YELLOW}💡 Run './test.sh' to execute tests against this infrastructure${NC}"
     else
-        echo
-        echo -e "${YELLOW}⚠️  Infrastructure needs attention${NC}"
-        echo -e "${YELLOW}💡 Try './persist_tests.sh restart' to fix issues${NC}"
+        echo -e "${YELLOW}⚠️  Infrastructure is not fully running${NC}"
+        echo -e "${YELLOW}💡 Run './persist_tests.sh start' to start persistent infrastructure${NC}"
     fi
 }
 
@@ -111,35 +104,19 @@ restart_infrastructure() {
     echo -e "${BLUE}🔄 Restarting persistent test infrastructure...${NC}"
     echo
     
-    check_dependencies
-    activate_venv
-    
-    echo -e "${BLUE}Checking for unhealthy services...${NC}"
-    python "$SCRIPT_DIR/service_manager.py" --restart
-    
-    if [ $? -eq 0 ]; then
-        echo
-        echo -e "${GREEN}✅ Infrastructure restart complete${NC}"
-        echo -e "${YELLOW}💡 Services should now be healthy and ready for testing${NC}"
-    else
-        echo
-        echo -e "${RED}❌ Failed to restart infrastructure${NC}"
-        echo -e "${YELLOW}💡 Try './persist_tests.sh stop' and then './persist_tests.sh start'${NC}"
-    fi
+    echo -e "${BLUE}Restarting infrastructure...${NC}"
+    echo -e "${YELLOW}💡 To restart infrastructure:${NC}"
+    echo -e "${YELLOW}   1. Press Enter or Ctrl+C in the running infrastructure terminal${NC}"
+    echo -e "${YELLOW}   2. Run './persist_tests.sh start' to start fresh infrastructure${NC}"
+    echo
+    echo -e "${GREEN}✅ Restart instructions provided${NC}"
 }
 
 health_check() {
-    check_dependencies
-    activate_venv
-    
     echo -e "${BLUE}🏥 Performing health check on services...${NC}"
-    python "$SCRIPT_DIR/service_manager.py" --health-check
     
-    if [ $? -eq 0 ]; then
-        echo -e "${GREEN}✅ All services are healthy${NC}"
-    else
-        echo -e "${YELLOW}⚠️  Some services have health issues${NC}"
-    fi
+    # Delegate to status check since it does the same thing
+    check_status
 }
 
 show_usage() {
@@ -147,27 +124,28 @@ show_usage() {
     echo
     echo -e "${YELLOW}Usage:${NC}"
     echo -e "   ${GREEN}./persist_tests.sh start${NC}     # Start persistent infrastructure (emulator + Appium)"
-    echo -e "   ${GREEN}./persist_tests.sh stop${NC}      # Stop persistent infrastructure"
+    echo -e "   ${GREEN}./persist_tests.sh stop${NC}      # Show instructions to stop persistent infrastructure"
     echo -e "   ${GREEN}./persist_tests.sh status${NC}    # Check infrastructure status"
-    echo -e "   ${GREEN}./persist_tests.sh restart${NC}   # Restart unhealthy services"
+    echo -e "   ${GREEN}./persist_tests.sh restart${NC}   # Show instructions to restart infrastructure"
     echo -e "   ${GREEN}./persist_tests.sh health${NC}    # Perform health check"
-    echo -e "   ${GREEN}./persist_tests.sh cleanup${NC}   # Force cleanup all services"
+    echo -e "   ${GREEN}./persist_tests.sh cleanup${NC}   # Show instructions to stop infrastructure"
     echo
     echo -e "${YELLOW}Description:${NC}"
     echo -e "   This script manages persistent test infrastructure for faster test iterations."
-    echo -e "   Unlike './test.sh' which sets up and tears down services for each run,"
-    echo -e "   persistent mode keeps emulator and Appium running between test sessions."
+    echo -e "   Uses the proven working setup code from './test.sh' for maximum reliability."
+    echo -e "   Infrastructure runs in an interactive terminal that stays open until stopped."
     echo
     echo -e "${YELLOW}Benefits:${NC}"
     echo -e "   • Faster test execution (no emulator startup time)"
     echo -e "   • Consistent test environment"
-    echo -e "   • Reduced CI/CD pipeline time"
+    echo -e "   • Uses same working setup as './test.sh'"
+    echo -e "   • Simple interactive control"
     echo
     echo -e "${YELLOW}Workflow:${NC}"
-    echo -e "   1. ${GREEN}./persist_tests.sh start${NC}    # Start persistent services"
-    echo -e "   2. ${GREEN}./test.sh${NC}                   # Run tests (will use persistent services)"
-    echo -e "   3. ${GREEN}./test.sh${NC}                   # Run tests again (faster, services already running)"
-    echo -e "   4. ${GREEN}./persist_tests.sh stop${NC}     # Stop persistent services when done"
+    echo -e "   1. ${GREEN}./persist_tests.sh start${NC}    # Start persistent services (keeps terminal open)"
+    echo -e "   2. ${GREEN}./test.sh${NC}                   # Run tests in other terminals (faster execution)"
+    echo -e "   3. ${GREEN}./test.sh${NC}                   # Run tests again (even faster, services running)"
+    echo -e "   4. Press ${GREEN}Enter${NC} or ${GREEN}Ctrl+C${NC} in infrastructure terminal to stop"
     echo
 }
 

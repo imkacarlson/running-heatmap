@@ -4,9 +4,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Paths - define at module level for easy access
+PROJECT_ROOT = Path(__file__).parent.parent
+
 class TestConfig:
     # Paths
-    PROJECT_ROOT = Path(__file__).parent.parent
+    PROJECT_ROOT = PROJECT_ROOT
     APK_PATH = PROJECT_ROOT / "mobile/android/app/build/outputs/apk/debug/app-debug.apk"
     TEST_DATA_PATH = PROJECT_ROOT / "testing/test_data"
     

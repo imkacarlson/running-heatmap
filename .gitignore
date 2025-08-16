@@ -50,6 +50,7 @@ testing/test_venv/
 testing/vetted-drivers/chromedriver-*
 testing/setup_emulator.sh
 testing/emulator.log
+testing/.change_detector_cache/
 
 # Claude Code artifacts (but keep commands)
 .claude/*

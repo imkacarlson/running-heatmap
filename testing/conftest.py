@@ -162,7 +162,7 @@ def session_setup(fast_mode):
     project_root = Path(__file__).parent.parent
     
     # Import change detector for automatic optimization
-    from .change_detector import ChangeDetector, BuildOptimization
+    from change_detector import ChangeDetector, BuildOptimization
     
     # Initialize change detector
     change_detector = ChangeDetector(project_root)

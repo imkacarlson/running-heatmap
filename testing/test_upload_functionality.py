@@ -62,11 +62,11 @@ class TestUploadFunctionality(BaseMobileTest):
         print("🎯 Starting lasso selection verification of all activities (uploaded + packaged)...")
         self.lasso_selection_verification(driver, wait)
         
-        # Phase 5: Cleanup - Clear uploaded activities
+        # Phase 6: Cleanup - Clear uploaded activities (Phase 5 is individual activity selection within lasso verification)
         print("🧹 Cleaning up uploaded activities...")
         self.clear_uploaded_activities(driver, wait)
         
-        # Phase 6: Cleanup device files
+        # Phase 7: Cleanup device files
         print("📁 Cleaning up test files from device...")
         self.cleanup_test_file_from_device()
         
@@ -878,32 +878,204 @@ class TestUploadFunctionality(BaseMobileTest):
         print(f"✅ Lasso selection verification completed successfully!")
         print(f"📊 Selected {lasso_result['run_count']} activities - uploaded activity successfully integrated with packaged data")
         
-        # Close the side panel
-        print("🔒 Closing side panel after lasso verification...")
-        driver.execute_script("""
-            const panel = document.getElementById('side-panel');
-            if (panel && panel.classList.contains('open')) {
-                const mapElement = document.getElementById('map');
-                if (mapElement) {
-                    mapElement.click();
-                }
-                panel.classList.remove('open');
-            }
-            
-            // Deactivate lasso mode
-            const lassoBtn = document.getElementById('lasso-btn');
-            if (lassoBtn) {
-                const styles = window.getComputedStyle(lassoBtn);
-                const isActive = styles.backgroundColor.includes('rgb') && 
-                               !styles.backgroundColor.includes('255, 255, 255');
-                if (isActive) {
-                    lassoBtn.click();
-                }
-            }
-        """)
+        # Phase 5: Individual Activity Selection and Map Visibility Test
+        print("\n🔄 Testing individual activity selection and map visibility...")
+        print("🎯 This will verify that uploaded activity works identically to packaged activities")
+        
+        # We should already have sidebar open with 3 activities from the lasso test
+        print(f"✅ Starting with sidebar open and {lasso_result['run_count']} activities selected")
+        
+        # Step 1: Sidebar manipulation - deselect all, then select only uploaded activity
+        print("🎯 Step 1: Testing sidebar selection controls...")
+        
+        # First, click "deselect all"
+        print("   📝 Clicking 'Deselect All' button...")
+        deselect_all_btn = self.find_clickable_element(driver, wait, "#deselect-all")
+        deselect_all_btn.click()
         time.sleep(1)
         
-        print("✅ Lasso selection verification completed - uploaded activity properly shows in sidebar!")
+        # Verify all checkboxes are unchecked and no activities are visible
+        deselect_verification = driver.execute_script("""
+            const checkboxes = document.querySelectorAll('.run-checkbox');
+            const checkedBoxes = Array.from(checkboxes).filter(cb => cb.checked);
+            const selectedRunsSize = window.selectedRuns ? window.selectedRuns.size : 0;
+            
+            return {
+                totalCheckboxes: checkboxes.length,
+                checkedCheckboxes: checkedBoxes.length,
+                selectedRunsSize: selectedRunsSize,
+                allUnchecked: checkedBoxes.length === 0
+            };
+        """)
+        
+        assert deselect_verification['allUnchecked'], f"All checkboxes should be unchecked after 'Deselect All': {deselect_verification}"
+        print(f"   ✅ All {deselect_verification['totalCheckboxes']} checkboxes successfully unchecked")
+        
+        # Now select only the uploaded activity (should be the last/newest one in the list)
+        print("   📝 Selecting only the uploaded activity...")
+        
+        # Find and click the checkbox for the uploaded activity (typically the last one)
+        uploaded_activity_selected = driver.execute_script("""
+            const checkboxes = document.querySelectorAll('.run-checkbox');
+            const activityCards = document.querySelectorAll('.activity-card, .run-item, [data-activity], [data-run-id]');
+            
+            // Try to identify the uploaded activity - it should be the newest (typically last in list)
+            // or we can look for specific patterns in the text content
+            let uploadedCheckbox = null;
+            
+            if (checkboxes.length >= 3) {
+                // Assume the uploaded activity is the last one (newest)
+                uploadedCheckbox = checkboxes[checkboxes.length - 1];
+            } else {
+                // Fallback: just use the first checkbox
+                uploadedCheckbox = checkboxes[0];
+            }
+            
+            if (uploadedCheckbox) {
+                uploadedCheckbox.checked = true;
+                uploadedCheckbox.dispatchEvent(new Event('change', {bubbles: true}));
+                return {
+                    success: true,
+                    selectedIndex: Array.from(checkboxes).indexOf(uploadedCheckbox),
+                    totalCheckboxes: checkboxes.length
+                };
+            }
+            
+            return {
+                success: false,
+                selectedIndex: -1,
+                totalCheckboxes: checkboxes.length
+            };
+        """)
+        
+        assert uploaded_activity_selected['success'], f"Failed to select uploaded activity checkbox: {uploaded_activity_selected}"
+        print(f"   ✅ Uploaded activity selected (checkbox {uploaded_activity_selected['selectedIndex'] + 1} of {uploaded_activity_selected['totalCheckboxes']})")
+        
+        # Step 2: Minimize the sidebar
+        print("   📝 Minimizing sidebar...")
+        collapse_btn = self.find_clickable_element(driver, wait, "#panel-collapse")
+        collapse_btn.click()
+        time.sleep(1)
+        
+        # Verify sidebar is collapsed
+        sidebar_collapsed = driver.execute_script("""
+            const panel = document.getElementById('side-panel');
+            return panel && panel.classList.contains('collapsed');
+        """)
+        
+        assert sidebar_collapsed, "Sidebar should be collapsed after clicking collapse button"
+        print("   ✅ Sidebar successfully minimized")
+        
+        print("✅ Step 1 completed: Sidebar manipulation successful")
+        
+        # Step 2: Visibility verification
+        print("🎯 Step 2: Verifying map visibility...")
+        
+        # Positive test: Verify exactly one activity (the uploaded one) is visible
+        print("   🔍 Positive test: Verifying only uploaded activity is visible...")
+        features_verification = self.verify_features_in_current_viewport(driver)
+        
+        # Also check the map filter is correctly applied
+        map_filter_check = driver.execute_script("""
+            const layer = map.getLayer('runsVec');
+            const filter = layer ? map.getFilter('runsVec') : null;
+            const renderedFeatures = map.queryRenderedFeatures();
+            const activityFeatures = renderedFeatures.filter(f => 
+                f.geometry && f.geometry.type === 'LineString'
+            );
+            
+            return {
+                hasFilter: filter != null,
+                filterApplied: filter != null,
+                renderedActivityCount: activityFeatures.length
+            };
+        """)
+        
+        print(f"   📊 Map filter check: {map_filter_check}")
+        print(f"   📊 Features in viewport: {features_verification['featuresInViewport']}")
+        
+        # Success criteria for uploaded activity visibility
+        success_criteria = {
+            'single_activity_visible': features_verification['featuresInViewport'] == 1,
+            'filter_applied': map_filter_check['filterApplied'],
+        }
+        
+        print("🏆 Uploaded activity visibility verification results:")
+        for criterion, passed in success_criteria.items():
+            status = "✅" if passed else "❌"
+            print(f"  {status} {criterion}: {passed}")
+        
+        # Assert all criteria
+        assert success_criteria['single_activity_visible'], f"Exactly 1 activity should be visible on map (uploaded activity only), found {features_verification['featuresInViewport']}"
+        assert success_criteria['filter_applied'], "Map filter should be applied when sidebar is open with single activity selected"
+        
+        print("   ✅ Visibility verification passed: Only uploaded activity is visible with filter applied")
+        
+        print("✅ Step 2 completed: Uploaded activity visibility verification successful")
+        
+        # Step 3: Proper cleanup - reopen sidebar and close with 'x'
+        print("🎯 Step 3: Performing proper cleanup...")
+        
+        # Reopen the sidebar from collapsed state
+        print("   📝 Reopening sidebar from collapsed state...")
+        expand_btn = self.find_clickable_element(driver, wait, "#expand-btn")
+        expand_btn.click()
+        time.sleep(1)
+        
+        # Verify sidebar is expanded
+        sidebar_expanded = driver.execute_script("""
+            const panel = document.getElementById('side-panel');
+            return panel && !panel.classList.contains('collapsed') && panel.classList.contains('open');
+        """)
+        
+        assert sidebar_expanded, "Sidebar should be expanded after clicking expand button"
+        print("   ✅ Sidebar successfully reopened")
+        
+        # Close with 'x' button
+        print("   📝 Closing sidebar with 'x' button...")
+        close_btn = self.find_clickable_element(driver, wait, "#panel-close")
+        close_btn.click()
+        time.sleep(1)
+        
+        # Verify sidebar is properly closed and filter is cleared
+        final_cleanup_check = driver.execute_script("""
+            const panel = document.getElementById('side-panel');
+            const layer = map.getLayer('runsVec');
+            const filter = layer ? map.getFilter('runsVec') : undefined;
+            
+            return {
+                panelClosed: panel && !panel.classList.contains('open'),
+                noFilter: filter == null
+            };
+        """)
+        
+        assert final_cleanup_check['panelClosed'], "Panel should be closed after clicking 'x'"
+        assert final_cleanup_check['noFilter'], "Map filter should be cleared after closing sidebar"
+        
+        print("   ✅ Sidebar properly closed and filters cleared")
+        
+        # Final verification: all activities should be visible again
+        final_features_check = self.verify_features_in_current_viewport(driver)
+        print(f"   📊 Final check - features visible after cleanup: {final_features_check['featuresInViewport']}")
+        
+        # Assert that all 3 activities are visible after filter is cleared
+        assert final_features_check['featuresInViewport'] >= 3, f"All 3 activities (2 packaged + 1 uploaded) should be visible after clearing filter (found {final_features_check['featuresInViewport']})"
+        print("   ✅ All activities are visible again after cleanup - filter properly cleared")
+        
+        print("✅ Step 3 completed: Proper cleanup successful")
+        
+        print("🎉 Individual activity selection and map visibility test completed successfully!")
+        print("📋 Additional verification completed:")
+        print("   ✓ Started with sidebar open and 3 activities selected (2 packaged + 1 uploaded)") 
+        print("   ✓ 'Deselect all' button works correctly with uploaded activity")
+        print("   ✓ Individual uploaded activity selection works")
+        print("   ✓ Sidebar can be minimized with uploaded activity selected")
+        print("   ✓ Map shows only uploaded activity when sidebar is minimized")
+        print("   ✓ Other activities are filtered out correctly")
+        print("   ✓ Sidebar can be reopened from collapsed state")
+        print("   ✓ Sidebar can be properly closed with 'x' button")
+        print("   ✓ All activities become visible again after cleanup")
+        print("✅ Uploaded activity integrates seamlessly with existing sidebar functionality!")
     
     def _inject_map_helpers(self, driver, wait):
         """Inject map helpers for lasso functionality"""

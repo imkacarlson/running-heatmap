@@ -1,12 +1,7 @@
 #!/usr/bin/env python3
 """
-Enhanced test runner for the running heatmap mobile app
-Features:
-- Automatic emulator management
-- Intelligent test discovery and execution
-- Enhanced HTML reporting with auto-browser opening
-- Comprehensive command line options
-- Robust error handling and cleanup
+Optimized test runner for the running heatmap mobile app
+Supports intelligent optimization with change detection and fast mode
 """
 import sys
 import time
@@ -15,67 +10,336 @@ import signal
 import os
 import argparse
 import webbrowser
+import concurrent.futures
+import threading
 from pathlib import Path
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Tuple
+from datetime import datetime, timedelta
+from change_detector import ChangeDetector, BuildOptimization
+from infrastructure_setup import (
+    check_dependencies,
+    check_and_start_emulator,
+    start_appium_server,
+    cleanup_appium_server,
+    shutdown_emulator
+)
+
+def check_for_persistent_infrastructure():
+    """Simple check for persistent infrastructure availability."""
+    try:
+        # Check if emulator is running
+        result = subprocess.run(['adb', 'devices'], capture_output=True, text=True, timeout=5)
+        has_emulator = 'emulator-' in result.stdout and 'device' in result.stdout
+        
+        # Check if Appium is running
+        import requests
+        response = requests.get("http://localhost:4723/wd/hub/status", timeout=3)
+        has_appium = response.status_code == 200 and 'ready' in response.text
+        
+        return has_emulator and has_appium
+    except:
+        return False
+
+@dataclass
+class PerformanceMetrics:
+    """Performance monitoring data for test execution."""
+    start_time: datetime = field(default_factory=datetime.now)
+    end_time: Optional[datetime] = None
+    emulator_startup_time: float = 0.0
+    appium_startup_time: float = 0.0
+    build_time: float = 0.0
+    data_processing_time: float = 0.0
+    test_execution_time: float = 0.0
+    total_time: float = 0.0
+    cache_hits: Dict[str, bool] = field(default_factory=dict)
+    optimizations_applied: List[str] = field(default_factory=list)
+    parallel_execution_time: float = 0.0
+    sequential_fallback_time: float = 0.0
+    parallel_workers_used: int = 0
+    parallel_execution_details: Dict[str, any] = field(default_factory=dict)
+    test_group_timings: Dict[str, Dict[str, any]] = field(default_factory=dict)
+    
+    def add_optimization(self, optimization: str):
+        """Record an optimization that was applied."""
+        self.optimizations_applied.append(optimization)
+    
+    def set_cache_hit(self, cache_type: str, hit: bool):
+        """Record whether a cache was hit or missed."""
+        self.cache_hits[cache_type] = hit
+    
+    def record_test_group_execution(self, group_name: str, execution_time: float, 
+                                  execution_info: Dict[str, any]):
+        """Record execution details for a specific test group."""
+        self.test_group_timings[group_name] = {
+            'execution_time': execution_time,
+            'execution_method': execution_info.get('method', 'unknown'),
+            'parallel_used': execution_info.get('parallel_used', False),
+            'workers': execution_info.get('workers', 0),
+            'test_count': execution_info.get('test_count', 0)
+        }
+    
+    def calculate_parallel_efficiency(self) -> Optional[Dict[str, float]]:
+        """Calculate parallel execution efficiency metrics."""
+        parallel_time = sum(
+            timing['execution_time'] 
+            for timing in self.test_group_timings.values() 
+            if timing.get('parallel_used', False)
+        )
+        
+        sequential_time = sum(
+            timing['execution_time'] 
+            for timing in self.test_group_timings.values() 
+            if not timing.get('parallel_used', False)
+        )
+        
+        if parallel_time > 0 and sequential_time > 0:
+            total_time = parallel_time + sequential_time
+            return {
+                'parallel_portion': parallel_time / total_time,
+                'sequential_portion': sequential_time / total_time,
+                'total_parallel_time': parallel_time,
+                'total_sequential_time': sequential_time
+            }
+        return None
+    
+    def finalize(self):
+        """Calculate final metrics when execution completes."""
+        self.end_time = datetime.now()
+        self.total_time = (self.end_time - self.start_time).total_seconds()
+        self.parallel_execution_details = self.calculate_parallel_efficiency()
+    
+    def get_summary(self) -> Dict[str, any]:
+        """Get summary of performance metrics."""
+        return {
+            'total_time_seconds': self.total_time,
+            'emulator_startup_seconds': self.emulator_startup_time,
+            'appium_startup_seconds': self.appium_startup_time,
+            'build_time_seconds': self.build_time,
+            'data_processing_seconds': self.data_processing_time,
+            'test_execution_seconds': self.test_execution_time,
+            'parallel_execution_seconds': self.parallel_execution_time,
+            'sequential_fallback_seconds': self.sequential_fallback_time,
+            'parallel_workers_used': self.parallel_workers_used,
+            'parallel_execution_details': self.parallel_execution_details,
+            'test_group_timings': self.test_group_timings,
+            'cache_hits': self.cache_hits,
+            'optimizations_applied': self.optimizations_applied
+        }
+
+
+
+def analyze_test_dependencies():
+    """Analyze test files to determine safe parallel execution groups."""
+    test_files = list(Path(__file__).parent.glob("test_*.py"))
+    
+    # Sort by filename to maintain execution order
+    test_files = sorted(test_files)
+    
+    # Define dependency groups based on test naming conventions and markers
+    dependency_groups = {
+        'infrastructure': [],  # Must run first, sequentially
+        'core': [],           # Core tests, can run in parallel after infrastructure
+        'integration': [],    # Integration tests, can run in parallel
+        'independent': []     # Independent tests, safe for parallel
+    }
+    
+    for test_file in test_files:
+        test_name = test_file.name
+        
+        # Infrastructure setup tests (00_ prefix) must run first
+        if test_name.startswith('test_00_'):
+            dependency_groups['infrastructure'].append(test_file)
+        # Core tests with specific ordering requirements (01-09 prefix)
+        elif test_name.startswith('test_01_') or test_name.startswith('test_02_') or \
+             test_name.startswith('test_03_') or test_name.startswith('test_04_') or \
+             test_name.startswith('test_05_') or test_name.startswith('test_06_') or \
+             test_name.startswith('test_07_') or test_name.startswith('test_08_') or \
+             test_name.startswith('test_09_'):
+            dependency_groups['core'].append(test_file)
+        # Integration tests (explicit naming or markers)
+        elif 'integration' in test_name.lower() or 'e2e' in test_name.lower():
+            dependency_groups['integration'].append(test_file)
+        # Upload/network tests should run in integration group (potential shared resources)
+        elif 'upload' in test_name.lower() or 'network' in test_name.lower() or 'api' in test_name.lower():
+            dependency_groups['integration'].append(test_file)
+        # All other tests are considered independent
+        else:
+            dependency_groups['independent'].append(test_file)
+    
+    return dependency_groups
+
+def run_test_group_parallel(test_files: List[Path], max_workers: int = 2) -> Tuple[int, float, Dict[str, any]]:
+    """Run a group of tests in parallel using pytest-xdist if available."""
+    if not test_files:
+        return 0, 0.0, {'parallel_used': False, 'workers': 0, 'method': 'none'}
+    
+    start_time = time.time()
+    execution_info = {'parallel_used': False, 'workers': 0, 'method': 'sequential_fallback'}
+    
+    # Check if pytest-xdist is available
+    try:
+        import xdist
+        has_xdist = True
+    except ImportError:
+        has_xdist = False
+        print("   📝 Note: pytest-xdist not available - install with 'pip install pytest-xdist' for parallel execution")
+    
+    if has_xdist and len(test_files) > 1:
+        # Use pytest-xdist for parallel execution
+        optimal_workers = min(max_workers, len(test_files))
+        execution_info.update({
+            'parallel_used': True, 
+            'workers': optimal_workers, 
+            'method': 'pytest-xdist'
+        })
+        
+        print(f"   ⚡ Running {len(test_files)} tests with {optimal_workers} parallel workers")
+        
+        cmd = [
+            sys.executable, '-m', 'pytest',
+            '-n', str(optimal_workers),
+            '--tb=short', '-v',
+            '--dist', 'loadfile'  # Distribute by test file for better load balancing
+        ] + [str(f) for f in test_files]
+    else:
+        # Fallback to sequential execution
+        if len(test_files) == 1:
+            execution_info['method'] = 'single_test'
+            print(f"   🔄 Running single test file: {test_files[0].name}")
+        else:
+            print(f"   🔄 Running {len(test_files)} tests sequentially (parallel not available)")
+            
+        cmd = [
+            sys.executable, '-m', 'pytest',
+            '--tb=short', '-v'
+        ] + [str(f) for f in test_files]
+    
+    # Set up environment
+    env = os.environ.copy()
+    env['PYTHONPATH'] = str(Path(__file__).parent)
+    
+    # Run tests
+    try:
+        result = subprocess.run(cmd, cwd=Path(__file__).parent, env=env)
+        execution_time = time.time() - start_time
+        return result.returncode, execution_time, execution_info
+    except Exception as e:
+        execution_time = time.time() - start_time
+        print(f"   ❌ Test execution failed: {e}")
+        return 1, execution_time, execution_info
+
+def run_test_group_sequential(test_files: List[Path]) -> Tuple[int, float, Dict[str, any]]:
+    """Run a group of tests sequentially."""
+    if not test_files:
+        return 0, 0.0, {'method': 'none', 'test_count': 0}
+    
+    start_time = time.time()
+    execution_info = {'method': 'sequential', 'test_count': len(test_files)}
+    
+    print(f"   🔄 Running {len(test_files)} tests sequentially")
+    
+    cmd = [
+        sys.executable, '-m', 'pytest',
+        '--tb=short', '-v'
+    ] + [str(f) for f in test_files]
+    
+    # Set up environment
+    env = os.environ.copy()
+    env['PYTHONPATH'] = str(Path(__file__).parent)
+    
+    # Run tests
+    try:
+        result = subprocess.run(cmd, cwd=Path(__file__).parent, env=env)
+        execution_time = time.time() - start_time
+        return result.returncode, execution_time, execution_info
+    except Exception as e:
+        execution_time = time.time() - start_time
+        print(f"   ❌ Test execution failed: {e}")
+        return 1, execution_time, execution_info
+
+def analyze_optimization_opportunities(metrics: PerformanceMetrics):
+    """Analyze what optimizations can be applied to the current test run."""
+    print("🔍 Analyzing optimization opportunities...")
+    
+    detector = ChangeDetector()
+    optimization = detector.get_build_optimization()
+    
+    print(f"   APK cache available: {'✅' if optimization.apk_exists else '❌'}")
+    print(f"   Source code unchanged: {'✅' if optimization.source_unchanged else '❌'}")
+    print(f"   Test data unchanged: {'✅' if optimization.data_unchanged else '❌'}")
+    
+    if optimization.can_skip_build:
+        print("   🚀 Can skip APK build (using cached)")
+        metrics.add_optimization("APK build cache hit")
+        metrics.set_cache_hit("apk_build", True)
+    else:
+        print("   🔨 APK build required")
+        metrics.set_cache_hit("apk_build", False)
+        
+    if optimization.can_skip_data:
+        print("   🚀 Can skip data processing (using cached)")
+        metrics.add_optimization("Data processing cache hit")
+        metrics.set_cache_hit("data_processing", True)
+    else:
+        print("   📊 Data processing required")
+        metrics.set_cache_hit("data_processing", False)
+    
+    return optimization
 
 def parse_arguments():
-    """Parse command line arguments"""
+    """Parse command line arguments with optimization support"""
     parser = argparse.ArgumentParser(
-        description="Enhanced test runner for Running Heatmap mobile app (defaults: core tests, auto-emulator, no browser)",
+        description="Optimized test runner for Running Heatmap mobile app",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python run_tests.py                          # Core tests with auto-emulator (most common)
-  python run_tests.py --fast                   # Core tests in fast mode
-  python run_tests.py --mobile                 # Full mobile test suite
-  python run_tests.py --one-test               # Interactive single test selection
-  python run_tests.py --one-test --fast        # Interactive single test selection in fast mode
-  python run_tests.py --browser                # Core tests with browser report
-  python run_tests.py --manual-emulator        # Core tests with manual emulator
-  python run_tests.py --legacy --keep-app      # Legacy tests, keep app installed
+  python run_tests.py                     # Run all tests with automatic optimization
+  python run_tests.py --fast              # Run tests in fast mode (use cached artifacts)
+  python run_tests.py --force-build       # Force APK build even if source unchanged
+  python run_tests.py --force-data        # Force data processing even if data unchanged
+  python run_tests.py --one-test          # Interactive single test selection
+  python run_tests.py --no-optimize       # Disable all optimizations
+  python run_tests.py --update-baseline   # Update change detection baseline after run
+  python run_tests.py --performance-report # Generate detailed performance metrics
+  python run_tests.py --parallel          # Enable parallel test execution where safe
+  python run_tests.py --parallel-workers 2 # Set maximum parallel workers (default: 2)
+  python run_tests.py --skip-cleanup      # Skip cleanup for faster repeated runs
         """
     )
     
-    # Test suite selection (defaults to core tests)
-    suite_group = parser.add_mutually_exclusive_group()
-    suite_group.add_argument('--mobile', action='store_true',
-                           help='Run all mobile tests (default: core tests)')
-    suite_group.add_argument('--legacy', action='store_true',
-                           help='Run legacy tests only (default: core tests)')
-    suite_group.add_argument('--integration', action='store_true',
-                           help='Run integration tests only (default: core tests)')
-    suite_group.add_argument('--one-test', action='store_true',
-                           help='Interactive selection of a single test to run (always includes test_00 setup)')
-    
-    # Test execution options
+    # Main flags
     parser.add_argument('--fast', action='store_true',
-                       help='Skip expensive operations (APK builds, tile generation)')
-    parser.add_argument('--verbose', '-v', action='store_true',
-                       help='Enable verbose output')
+                       help='Use cached artifacts when available (skip builds if source unchanged)')
+    parser.add_argument('--one-test', action='store_true',
+                       help='Interactive selection of a single test to run')
     
-    # Infrastructure management
-    parser.add_argument('--manual-emulator', action='store_true',
-                       help='Disable automatic emulator startup (default: auto-start emulator if needed)')
-    parser.add_argument('--emulator-name', default='TestDevice',
-                       help='Name of AVD to start (default: TestDevice)')
-    parser.add_argument('--keep-emulator', action='store_true',
-                       help='Keep emulator running after tests (default: shutdown auto-started emulator)')
-    parser.add_argument('--keep-app', action='store_true',
-                       help='Keep test app installed after tests (default: uninstall for fresh runs)')
+    # Optimization control flags
+    parser.add_argument('--force-build', action='store_true',
+                       help='Force APK build even if source code unchanged')
+    parser.add_argument('--force-data', action='store_true',
+                       help='Force data processing even if test data unchanged')
+    parser.add_argument('--no-optimize', action='store_true',
+                       help='Disable all optimizations (traditional build behavior)')
+    parser.add_argument('--update-baseline', action='store_true',
+                       help='Update change detection baseline after successful test run')
+    parser.add_argument('--performance-report', action='store_true',
+                       help='Generate detailed performance metrics report')
+    parser.add_argument('--parallel', action='store_true',
+                       help='Enable parallel test execution where safe')
+    parser.add_argument('--parallel-workers', type=int, default=2, choices=range(1, 5),
+                       help='Maximum number of parallel workers (default: 2, range: 1-4, max recommended: 2 for mobile tests)')
+    parser.add_argument('--skip-cleanup', action='store_true',
+                       help='Skip cleanup for faster repeated runs (use with caution)')
     
-    # Reporting options
-    parser.add_argument('--browser', action='store_true',
-                       help='Automatically open test report in browser (default: no browser)')
+    # Report file (internal use)
     parser.add_argument('--report-file', default='reports/test_report.html',
-                       help='Path for HTML test report (default: reports/test_report.html)')
-    
-    # Specific test files
-    parser.add_argument('tests', nargs='*',
-                       help='Specific test files to run (optional)')
+                       help=argparse.SUPPRESS)  # Hidden from help
     
     return parser.parse_args()
 
-def check_prerequisites(args):
-    """Enhanced prerequisite checking with intelligent APK handling"""
+def check_prerequisites(args, optimization=None):
+    """Check prerequisites for test execution with optimization awareness"""
     print("🔍 Checking prerequisites...")
     
     # Check if adb is available
@@ -90,496 +354,37 @@ def check_prerequisites(args):
         print("❌ ADB not found. Please install Android SDK platform-tools")
         return False
     
-    # Check APK requirements based on test mode
-    if not args.fast:
-        # In full mode, we need project structure for APK building
+    # Check APK requirements based on optimization analysis
+    if optimization and optimization.can_skip_build and not args.force_build and not args.no_optimize:
+        # Can use cached APK
+        cached_apk_path = Path(__file__).parent / "cached_test_apk" / "app-debug.apk"
+        if cached_apk_path.exists():
+            print(f"✅ Using cached APK: {cached_apk_path}")
+        else:
+            print("❌ Cached APK not found, will need to build")
+            return False
+    else:
+        # Need project structure for building or forced build
         project_root = Path(__file__).parent.parent
         server_dir = project_root / "server"
         if not server_dir.exists():
             print("❌ Server directory not found. Are you in the right project?")
             return False
         print("✅ Project structure verified for APK building")
+    
+    # Check for existing test data
+    if optimization and optimization.can_skip_data and not args.force_data and not args.no_optimize:
+        cached_data_path = Path(__file__).parent / "cached_test_data" / "runs.pmtiles"
+        if cached_data_path.exists():
+            print(f"✅ Using cached test data: {cached_data_path}")
+        else:
+            print("❌ Cached test data not found, will need to process")
     else:
-        # In fast mode, we need existing APK
-        apk_path = Path(__file__).parent.parent / "mobile/android/app/build/outputs/apk/debug/app-debug.apk"
-        if not apk_path.exists():
-            print("❌ APK not found for --fast mode. Please run without --fast first:")
-            print("   python run_tests.py --core")
-            return False
-        print(f"✅ APK found for fast mode: {apk_path}")
+        print("✅ Test data processing will be performed")
     
     return True
 
-def check_and_start_emulator(args):
-    """Check for devices and optionally start emulator"""
-    print("📱 Checking for connected devices...")
-    
-    # Check for connected devices
-    result = subprocess.run(['adb', 'devices'], capture_output=True, text=True)
-    devices = [line for line in result.stdout.split('\n') if '\tdevice' in line]
-    
-    if devices:
-        print(f"✅ Found {len(devices)} connected device(s)")
-        for device in devices:
-            print(f"   - {device}")
-        return True
-    
-    if args.manual_emulator:
-        print("❌ No Android devices/emulators connected")
-        print("   Manual emulator mode enabled. Options:")
-        print("   1. Start an Android emulator manually")
-        print("   2. Connect a physical device")
-        print("   3. Remove --manual-emulator flag for automatic startup")
-        print("   4. Run ./setup_emulator.sh for guided setup")
-        return False
-    
-    # Auto-start emulator
-    print(f"🚀 No devices found. Starting emulator: {args.emulator_name}")
-    
-    # Check if emulator command is available
-    try:
-        subprocess.run(['emulator', '-help'], capture_output=True, check=False)
-    except FileNotFoundError:
-        print("❌ Android emulator not found. Please install Android SDK")
-        print("   Or start emulator manually and run tests again")
-        return False
-    
-    # Check if AVD exists
-    result = subprocess.run(['emulator', '-list-avds'], capture_output=True, text=True)
-    avds = [line.strip() for line in result.stdout.split('\n') if line.strip()]
-    
-    if args.emulator_name not in avds:
-        print(f"❌ AVD '{args.emulator_name}' not found")
-        print("   Available AVDs:")
-        for avd in avds:
-            print(f"     - {avd}")
-        print("   Create an AVD in Android Studio or use --emulator-name with an existing AVD")
-        return False
-    
-    # Start emulator
-    print(f"   Starting {args.emulator_name} with WSL-compatible settings...")
-    emulator_process = subprocess.Popen([
-        'emulator', '-avd', args.emulator_name, 
-        '-no-audio', '-gpu', 'swiftshader_indirect', 
-        '-skin', '1080x1920'
-    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    
-    # Wait for emulator to boot
-    print("⏳ Waiting for emulator to boot (this may take 2-3 minutes)...")
-    timeout = 300  # 5 minutes
-    counter = 0
-    
-    while counter < timeout:
-        # First check if ADB can see any devices
-        try:
-            result = subprocess.run(['adb', 'devices'], capture_output=True, text=True, timeout=5)
-            devices = [line for line in result.stdout.split('\n') if '\tdevice' in line]
-            
-            if devices:
-                # Device found, now check if it's fully booted
-                try:
-                    boot_result = subprocess.run(['adb', 'shell', 'getprop', 'sys.boot_completed'], 
-                                              capture_output=True, text=True, timeout=5)
-                    if boot_result.returncode == 0 and '1' in boot_result.stdout.strip():
-                        print("✅ Emulator is ready!")
-                        # Give it a moment to fully settle
-                        time.sleep(3)
-                        return True
-                    elif counter % 15 == 0:  # Show boot progress occasionally
-                        print(f"   Emulator detected, waiting for boot completion... ({counter}s)")
-                except subprocess.TimeoutExpired:
-                    if counter % 15 == 0:
-                        print(f"   Emulator detected, checking boot status... ({counter}s)")
-            else:
-                # Try restarting ADB if no devices after reasonable time
-                if counter >= 30 and counter % 30 == 0:
-                    print(f"   Restarting ADB server to refresh device detection... ({counter}s)")
-                    subprocess.run(['adb', 'kill-server'], capture_output=True)
-                    subprocess.run(['adb', 'start-server'], capture_output=True)
-                elif counter % 15 == 0:
-                    print(f"   Still waiting for emulator to appear in ADB... ({counter}s)")
-                    
-        except subprocess.TimeoutExpired:
-            if counter % 15 == 0:
-                print(f"   ADB timeout, retrying... ({counter}s)")
-        
-        time.sleep(3)
-        counter += 3
-    
-    print("❌ Emulator failed to start within timeout")
-    emulator_process.terminate()
-    return False
 
-def cleanup_existing_appium_servers():
-    """Clean up any existing Appium server processes"""
-    try:
-        # Kill any existing Appium processes
-        subprocess.run(['pkill', '-f', 'appium'], capture_output=True)
-        time.sleep(2)  # Give processes time to die
-        
-        # Check if port 4723 is still in use and try to free it
-        try:
-            import socket
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(1)
-            result = sock.connect_ex(('localhost', 4723))
-            sock.close()
-            
-            if result == 0:
-                # Port is still in use, try to find and kill the process
-                try:
-                    lsof_result = subprocess.run(['lsof', '-t', '-i:4723'], 
-                                               capture_output=True, text=True)
-                    if lsof_result.returncode == 0:
-                        for pid in lsof_result.stdout.strip().split('\n'):
-                            if pid:
-                                subprocess.run(['kill', '-9', pid], capture_output=True)
-                        time.sleep(1)
-                except:
-                    pass
-        except:
-            pass
-            
-    except Exception:
-        pass
-
-def start_appium_server(verbose=False):
-    """Enhanced Appium server startup with health checks"""
-    print("🚀 Starting Appium server...")
-    
-    # Clean up any existing Appium servers first
-    cleanup_existing_appium_servers()
-    
-    # Check prerequisites first
-    try:
-        # Check if npx is available
-        npx_check = subprocess.run(['npx', '--version'], capture_output=True, text=True)
-        if npx_check.returncode != 0:
-            print("❌ npx not available - please install Node.js")
-            return None
-        if verbose:
-            print(f"   npx version: {npx_check.stdout.strip()}")
-            
-        # Check if appium is available
-        appium_check = subprocess.run(['npx', 'appium', '--version'], capture_output=True, text=True)
-        if appium_check.returncode != 0:
-            print("❌ Appium not available - please run 'npm install' in testing directory")
-            return None
-        if verbose:
-            print(f"   Appium version: {appium_check.stdout.strip()}")
-            
-    except Exception as e:
-        print(f"❌ Error checking prerequisites: {e}")
-        return None
-    
-    # Try to start Appium with multiple port strategies
-    log_level = 'debug' if verbose else 'info'
-    ports_to_try = [4723, 4724, 4725]  # Try alternative ports if 4723 fails
-    
-    for port in ports_to_try:
-        base_path = '/wd/hub' if port == 4723 else f'/wd/hub-{port}'
-        cmd = ['npx', 'appium', '--base-path', base_path, '--port', str(port), '--log-level', log_level]
-        if verbose:
-            print(f"   Trying port {port} with command: {' '.join(cmd)}")
-            print(f"   Working directory: {Path(__file__).parent}")
-        
-        try:
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                cwd=Path(__file__).parent,
-                text=True,  # Ensure text mode for better error handling
-                bufsize=1   # Line buffered
-            )
-            
-            # Give the process a moment to start and check if it immediately fails
-            time.sleep(3)
-            if process.poll() is not None:
-                stdout, stderr = process.communicate()
-                if "EADDRINUSE" in stderr:
-                    if verbose:
-                        print(f"   Port {port} is in use, trying next port...")
-                    continue
-                else:
-                    # Some other error occurred
-                    print(f"❌ Appium server process terminated unexpectedly on port {port}")
-                    print(f"   Return code: {process.returncode}")
-                    print("   STDERR output:")
-                    for line in str(stderr).splitlines():
-                        print(f"     {line}")
-                    continue
-            
-            # Process is still running, break out of port-trying loop
-            if verbose:
-                print(f"   Successfully started Appium on port {port}")
-            break
-            
-        except Exception as e:
-            print(f"❌ Failed to start Appium process on port {port}: {e}")
-            if port == ports_to_try[-1]:  # Last port attempt
-                return None
-            continue
-    else:
-        # No ports worked
-        print("❌ Failed to start Appium on any available port")
-        return None
-    
-    # Wait for server to start with health checks
-    print("⏳ Waiting for Appium server to start...")
-    max_attempts = 30  # Increased timeout for better stability
-    attempt = 0
-    
-    # Determine the port and base path being used
-    server_port = port  # Use the port from the successful loop above
-    base_path_part = base_path  # Use the base_path from the successful loop above
-    server_url = f"http://localhost:{server_port}{base_path_part}/status"
-    
-    if verbose:
-        print(f"   Health checking server at: {server_url}")
-    
-    while attempt < max_attempts:
-        time.sleep(1)
-        attempt += 1
-        
-        # Check if process is still running
-        if process.poll() is not None:
-            # Process has terminated, get output
-            try:
-                stdout, stderr = process.communicate(timeout=5)
-            except subprocess.TimeoutExpired:
-                stdout, stderr = "Timeout getting output", "Timeout getting output"
-                
-            print("❌ Appium server process terminated unexpectedly")
-            print(f"   Return code: {process.returncode}")
-            print("   STDOUT output:")
-            for line in str(stdout).splitlines():
-                print(f"     {line}")
-            print("   STDERR output:")  
-            for line in str(stderr).splitlines():
-                print(f"     {line}")
-            return None
-        
-        # Try to connect to server
-        try:
-            import requests
-            response = requests.get(server_url, timeout=3)
-            if response.status_code == 200:
-                print(f"✅ Appium server is ready and responding on port {server_port}")
-                if server_port != 4723:
-                    print(f"   ⚠️  Note: Using alternate port {server_port} instead of default 4723")
-                # Store the port info for the process so tests can use it
-                process.appium_port = server_port
-                process.appium_base_path = base_path_part
-                return process
-        except requests.exceptions.RequestException as e:
-            # Server not ready yet, continue waiting
-            if verbose and attempt % 10 == 0:
-                print(f"   Connection attempt failed: {e}")
-        except Exception as e:
-            if verbose and attempt % 10 == 0:
-                print(f"   Unexpected error checking server: {e}")
-        
-        if attempt % 5 == 0:
-            print(f"   Still waiting... ({attempt}/{max_attempts})")
-    
-    print("❌ Appium server failed to respond within timeout")
-    print("   Server process is still running but not responding to HTTP requests")
-    if process.poll() is None:
-        print("   Terminating unresponsive server process...")
-        process.terminate()
-        try:
-            process.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            print("   Force killing server process...")
-            process.kill()
-    return None
-
-def build_pytest_command(args):
-    """Build pytest command based on arguments"""
-    cmd = [sys.executable, '-m', 'pytest']
-    
-    # Test selection based on markers or specific files
-    if args.tests:
-        # Specific test files provided
-        cmd.extend(args.tests)
-    elif getattr(args, 'one_test', False):
-        # one_test mode - tests will be set by discover_and_select_test()
-        if hasattr(args, 'selected_tests') and args.selected_tests:
-            cmd.extend(args.selected_tests)
-        else:
-            print("❌ No tests selected for one-test mode")
-            return None
-        if args.fast:
-            cmd.append('--fast')
-    elif args.mobile:
-        cmd.extend(['-m', 'mobile'])
-        if args.fast:
-            cmd.append('--fast')
-    elif args.legacy:
-        cmd.extend(['-m', 'legacy'])
-        if args.fast:
-            cmd.append('--fast')
-    elif args.integration:
-        cmd.extend(['-m', 'integration'])
-        if args.fast:
-            cmd.append('--fast')
-    else:
-        # Default: run core tests
-        cmd.extend(['-m', 'core'])
-        if args.fast:
-            cmd.append('--fast')
-    
-    # Verbosity
-    if args.verbose:
-        cmd.append('-vv')
-    else:
-        cmd.append('-v')
-    
-    # Error display
-    cmd.append('--tb=short')
-    
-    # HTML reporting
-    cmd.extend(['--html', args.report_file, '--self-contained-html'])
-    
-    return cmd
-
-def run_tests(args):
-    """Enhanced test execution with intelligent discovery"""
-    # Determine what we're running
-    if getattr(args, 'one_test', False):
-        # Test selection already done in main()
-        if hasattr(args, 'selected_tests') and args.selected_tests:
-            suite_name = f"selected tests ({', '.join(args.selected_tests)})"
-        else:
-            print("❌ No test selected for one-test mode")
-            return 1
-    elif args.tests:
-        suite_name = "custom tests"
-    elif args.mobile:
-        suite_name = "mobile tests"
-    elif args.legacy:
-        suite_name = "legacy tests"
-    elif args.integration:
-        suite_name = "integration tests"
-    else:
-        suite_name = "core tests"
-    
-    mode_desc = " (fast mode)" if args.fast else " (full build mode)"
-    print(f"🧪 Running {suite_name}{mode_desc}...")
-    
-    # Set up environment for testing
-    env = os.environ.copy()
-    env['PYTHONPATH'] = str(Path(__file__).parent)
-    
-    # Build pytest command
-    cmd = build_pytest_command(args)
-    
-    if cmd is None:
-        return 1  # Error in building command
-    
-    if args.verbose:
-        print(f"   Command: {' '.join(cmd)}")
-    
-    # Run pytest
-    result = subprocess.run(cmd, cwd=Path(__file__).parent, env=env)
-    
-    return result.returncode
-
-def open_test_report(report_path, no_browser=False):
-    """Open test report in browser with improved WSL detection"""
-    abs_report_path = Path(__file__).parent / report_path
-    
-    if no_browser:
-        print(f"📊 Test report available at: {abs_report_path}")
-        return
-    
-    if not abs_report_path.exists():
-        print(f"📊 Test report was not generated: {report_path}")
-        return
-    
-    # Check if we're in WSL (common case where browser opening fails)
-    is_wsl = os.path.exists('/proc/version') and 'microsoft' in open('/proc/version').read().lower()
-    
-    try:
-        if is_wsl:
-            # In WSL, try to open with Windows browser via WSL interop
-            windows_path = subprocess.run(
-                ['wslpath', '-w', str(abs_report_path)], 
-                capture_output=True, text=True
-            ).stdout.strip()
-            
-            # Try different Windows browsers
-            browsers = ['cmd.exe /c start', 'powershell.exe Start-Process']
-            success = False
-            
-            for browser_cmd in browsers:
-                try:
-                    subprocess.run(f'{browser_cmd} "{windows_path}"', 
-                                 shell=True, check=True, capture_output=True)
-                    print(f"📊 Test report opened in Windows browser: {report_path}")
-                    success = True
-                    break
-                except:
-                    continue
-            
-            if not success:
-                raise Exception("Could not open with Windows browsers")
-        else:
-            # Non-WSL: use standard webbrowser
-            file_url = abs_report_path.as_uri()
-            webbrowser.open(file_url)
-            print(f"📊 Test report opened in browser: {report_path}")
-            
-    except Exception as e:
-        print(f"📊 Test report available at: {abs_report_path}")
-        print(f"   💡 In WSL? Copy path to Windows and open in browser manually")
-        print(f"   💡 Or use: --no-browser flag to skip auto-opening")
-
-def extract_test_description(test_file_path):
-    """Extract a description from the test file by looking at docstrings or class names"""
-    try:
-        with open(test_file_path, 'r', encoding='utf-8') as f:
-            content = f.read()
-        
-        # Try to find class docstring first
-        import re
-        
-        # Look for class docstring
-        class_match = re.search(r'class\s+\w+.*?:\s*"""(.*?)"""', content, re.DOTALL)
-        if class_match:
-            docstring = class_match.group(1).strip()
-            # Take first line of docstring
-            first_line = docstring.split('\n')[0].strip()
-            if first_line and len(first_line) < 80:
-                return first_line
-        
-        # Look for module docstring
-        module_match = re.search(r'^"""(.*?)"""', content, re.DOTALL | re.MULTILINE)
-        if module_match:
-            docstring = module_match.group(1).strip()
-            first_line = docstring.split('\n')[0].strip()
-            if first_line and len(first_line) < 80:
-                return first_line
-        
-        # Look for class name and make it readable
-        class_name_match = re.search(r'class\s+(\w+)', content)
-        if class_name_match:
-            class_name = class_name_match.group(1)
-            if class_name.startswith('Test'):
-                class_name = class_name[4:]  # Remove 'Test' prefix
-            # Convert CamelCase to readable format
-            readable = re.sub(r'([A-Z])', r' \1', class_name).strip()
-            return readable
-            
-    except Exception:
-        pass
-    
-    # Fallback: convert filename to readable format
-    name = test_file_path.stem.replace('test_', '').replace('_', ' ')
-    # Remove leading numbers like "00 "
-    name = re.sub(r'^\d+\s*', '', name)
-    return name.title()
 
 def discover_and_select_test():
     """Discover available tests and let user select one"""
@@ -598,18 +403,12 @@ def discover_and_select_test():
         
     # Display menu
     print("\n🧪 Available Tests:")
-    print("=" * 80)
+    print("=" * 60)
     
     for i, test_file in enumerate(test_files, 1):
-        description = extract_test_description(test_file)
-        
-        # Special note for the setup test
-        if test_file.name.startswith('test_00'):
-            description += " (always runs first)"
-        
-        print(f"{i:2}. {test_file.name:<35} - {description}")
+        print(f"{i:2}. {test_file.name}")
     
-    print("=" * 80)
+    print("=" * 60)
     
     # Get user selection
     while True:
@@ -625,28 +424,7 @@ def discover_and_select_test():
             if 1 <= choice_num <= len(test_files):
                 selected_test = test_files[choice_num - 1]
                 print(f"\n✅ Selected: {selected_test.name}")
-                
-                # Always run test_00 first if it's not the selected test
-                tests_to_run = []
-                setup_test = None
-                
-                # Find the setup test (test_00*)
-                for test_file in test_files:
-                    if test_file.name.startswith('test_00'):
-                        setup_test = test_file.name
-                        break
-                
-                if selected_test.name != setup_test and setup_test:
-                    tests_to_run.append(setup_test)
-                    print(f"📋 Will run: {setup_test} (setup) + {selected_test.name}")
-                else:
-                    if setup_test:
-                        print(f"📋 Will run: {selected_test.name} (setup test selected)")
-                    else:
-                        print(f"📋 Will run: {selected_test.name} (no setup test found)")
-                
-                tests_to_run.append(selected_test.name)
-                return tests_to_run
+                return [selected_test.name]
                 
             else:
                 print(f"❌ Please enter a number between 1 and {len(test_files)}")
@@ -656,396 +434,459 @@ def discover_and_select_test():
         except KeyboardInterrupt:
             print("\n❌ Test selection cancelled")
             return None
-        except EOFError:
-            print("\n❌ Test selection cancelled")
-            return None
 
-def print_test_summary(exit_code, args):
-    """Print a comprehensive test summary"""
-    print("\n" + "=" * 60)
-    print("📊 TEST EXECUTION SUMMARY")
-    print("=" * 60)
+def prepare_optimized_environment(args, optimization):
+    """Prepare test environment with optimization features"""
+    print("🚀 Preparing optimized test environment...")
     
-    # Test result
-    if exit_code == 0:
-        print("✅ RESULT: All tests passed!")
+    # Create cache directories if they don't exist
+    cache_apk_dir = Path(__file__).parent / "cached_test_apk"
+    cache_data_dir = Path(__file__).parent / "cached_test_data"
+    cache_apk_dir.mkdir(exist_ok=True)
+    cache_data_dir.mkdir(exist_ok=True)
+    
+    # Set environment variables for pytest fixtures to use optimization
+    env_vars = {
+        'OPTIMIZATION_ENABLED': '1' if not args.no_optimize else '0',
+        'SKIP_APK_BUILD': '1' if (optimization.can_skip_build and not args.force_build and not args.no_optimize) else '0',
+        'SKIP_DATA_PROCESSING': '1' if (optimization.can_skip_data and not args.force_data and not args.no_optimize) else '0',
+        'CACHED_APK_PATH': str(cache_apk_dir / "app-debug.apk"),
+        'CACHED_DATA_PATH': str(cache_data_dir / "runs.pmtiles"),
+        'FORCE_BUILD': '1' if args.force_build else '0',
+        'FORCE_DATA': '1' if args.force_data else '0',
+        'PERFORMANCE_REPORT': '1' if args.performance_report else '0',
+        'PARALLEL_EXECUTION': '1' if args.parallel else '0',
+        'SKIP_CLEANUP': '1' if args.skip_cleanup else '0'
+    }
+    
+    print("   Environment configuration:")
+    for key, value in env_vars.items():
+        print(f"     {key}={value}")
+        os.environ[key] = value
+    
+    return env_vars
+
+def build_pytest_command(args):
+    """Build pytest command based on arguments with optimization support"""
+    cmd = [sys.executable, '-m', 'pytest']
+    
+    # Test selection
+    if args.one_test and hasattr(args, 'selected_tests') and args.selected_tests:
+        cmd.extend(args.selected_tests)
     else:
-        print("❌ RESULT: Some tests failed")
+        # Run all tests by default
+        cmd.append('.')
     
-    # Test configuration
-    suite = "mobile" if args.mobile else "legacy" if args.legacy else "integration" if args.integration else "custom" if args.tests else "core"
-    mode = "fast mode" if args.fast else "full build mode"
-    print(f"🧪 SUITE: {suite}")
-    print(f"⚡ MODE: {mode}")
+    # Add fast mode flag if specified (backwards compatibility)
+    if args.fast:
+        cmd.append('--fast')
     
-    if args.tests:
-        print(f"📁 FILES: {', '.join(args.tests)}")
+    # Standard options - pytest.ini now includes -rw for warnings
+    cmd.extend(['-v', '--tb=short'])
     
-    print("=" * 60)
+    # HTML reporting with warnings included  
+    cmd.extend(['--html', args.report_file, '--self-contained-html'])
+    
+    return cmd
 
-def cleanup_test_app(args, verbose=False):
-    """Clean up test app and data from emulator"""
-    if args.keep_app:
-        print("📱 Keeping test app installed (--keep-app flag)")
-        return
-        
-    try:
-        print("🧹 Cleaning up test app and data...")
-        
-        # Uninstall the test app
-        print("   📱 Uninstalling test app...")
-        result = subprocess.run(['adb', 'uninstall', 'com.run.heatmap'], 
-                              capture_output=True, text=True)
-        if result.returncode == 0:
-            print("   ✅ Test app uninstalled")
-        elif "not installed" in result.stderr.lower():
-            print("   ℹ️  Test app was not installed")
-        else:
-            if verbose:
-                print(f"   ⚠️  App uninstall warning: {result.stderr}")
-        
-        # Clear any uploaded test files
-        print("   📁 Clearing test files from device...")
-        subprocess.run(['adb', 'shell', 'rm', '-f', '/sdcard/Download/manual_upload_run.gpx'], 
-                      capture_output=True)
-        subprocess.run(['adb', 'shell', 'rm', '-f', '/sdcard/Download/test_*.gpx'], 
-                      capture_output=True)
-        print("   ✅ Test files cleared")
-        
-    except Exception as e:
-        if verbose:
-            print(f"   ⚠️  Cleanup warning: {e}")
+def run_tests(args, optimization=None, metrics: PerformanceMetrics = None):
+    """Run the tests with optimization orchestration"""
+    test_start_time = time.time()
+    
+    # Determine test mode description
+    if args.no_optimize:
+        mode = "traditional mode (no optimization)"
+    elif args.fast:
+        mode = "fast mode (using cached artifacts)"
+    elif optimization and (optimization.can_skip_build or optimization.can_skip_data):
+        mode = "optimized mode (automatic caching)"
+    else:
+        mode = "full mode (building all artifacts)"
+    
+    test_type = "selected test" if args.one_test else "all tests"
+    parallel_mode = " with parallel execution" if args.parallel else ""
+    print(f"🧪 Running {test_type} in {mode}{parallel_mode}...")
+    
+    # Set up environment for testing
+    env = os.environ.copy()
+    env['PYTHONPATH'] = str(Path(__file__).parent)
+    
+    # Add optimization environment variables if optimization is available
+    if optimization:
+        prepare_optimized_environment(args, optimization)
+    
+    # Handle parallel execution
+    if args.parallel and not args.one_test:
+        return run_tests_parallel(args, metrics)
+    else:
+        # Traditional sequential execution
+        return run_tests_sequential(args, metrics, test_start_time)
 
-def find_emulator_processes(verbose=False):
-    """Find running emulator processes by name"""
-    emulator_processes = []
+def run_tests_sequential(args, metrics: PerformanceMetrics = None, start_time: float = None):
+    """Run tests sequentially (traditional mode)"""
+    if start_time is None:
+        start_time = time.time()
+    
+    # Build pytest command
+    cmd = build_pytest_command(args)
+    
+    # Set up environment
+    env = os.environ.copy()
+    env['PYTHONPATH'] = str(Path(__file__).parent)
+    
+    # Run pytest
+    result = subprocess.run(cmd, cwd=Path(__file__).parent, env=env)
+    
+    if metrics:
+        metrics.test_execution_time = time.time() - start_time
+    
+    return result.returncode
+
+def run_tests_parallel(args, metrics: PerformanceMetrics = None):
+    """Run tests with safe parallel execution"""
+    parallel_start_time = time.time()
+    overall_exit_code = 0
+    
+    print("🔍 Analyzing test dependencies for safe parallel execution...")
+    
+    # Analyze test dependencies
+    dependency_groups = analyze_test_dependencies()
+    
+    # Print execution plan
+    print("📋 Parallel execution plan:")
+    total_tests = 0
+    for group_name, test_files in dependency_groups.items():
+        if test_files:
+            count = len(test_files)
+            total_tests += count
+            execution_type = "sequential" if group_name == 'infrastructure' else "parallel"
+            print(f"   {group_name.title()}: {count} test(s) - {execution_type}")
+            for test_file in test_files:
+                print(f"     • {test_file.name}")
+    
+    print(f"   Total: {total_tests} tests")
     
     try:
-        # Check for common emulator process names
-        process_names = ['qemu-system-x86_64', 'emulator64', 'emulator', 'qemu-system']
+        # Step 1: Run infrastructure tests sequentially (must run first)
+        if dependency_groups['infrastructure']:
+            print(f"\n🏗️ Running infrastructure tests sequentially...")
+            exit_code, exec_time, exec_info = run_test_group_sequential(dependency_groups['infrastructure'])
+            
+            if metrics:
+                metrics.record_test_group_execution('infrastructure', exec_time, exec_info)
+            
+            if exit_code != 0:
+                print("❌ Infrastructure tests failed - cannot continue with parallel execution")
+                overall_exit_code = exit_code
+                return overall_exit_code
+            
+            print(f"✅ Infrastructure tests completed in {exec_time:.1f}s")
         
-        for process_name in process_names:
-            try:
-                # Use pgrep to find processes by name  
-                result = subprocess.run(['pgrep', '-f', process_name], 
-                                      capture_output=True, text=True)
-                if result.returncode == 0:
-                    pids = [pid.strip() for pid in result.stdout.split('\n') if pid.strip()]
-                    for pid in pids:
-                        # Get process details
-                        ps_result = subprocess.run(['ps', '-p', pid, '-o', 'pid,comm,args'], 
-                                                 capture_output=True, text=True)
-                        if ps_result.returncode == 0 and 'avd' in ps_result.stdout.lower():
-                            emulator_processes.append({
-                                'pid': pid,
-                                'name': process_name,
-                                'details': ps_result.stdout.strip()
-                            })
-                            if verbose:
-                                print(f"   Found emulator process: PID {pid} ({process_name})")
-            except:
+        # Step 2: Run remaining test groups - try parallel first, fallback if needed
+        parallel_groups = ['core', 'integration', 'independent']
+        
+        for group_name in parallel_groups:
+            group_tests = dependency_groups[group_name]
+            if not group_tests:
                 continue
                 
-    except Exception as e:
-        if verbose:
-            print(f"   Process detection error: {e}")
-    
-    return emulator_processes
-
-def kill_emulator_processes(processes, verbose=False):
-    """Kill emulator processes by PID"""
-    success = True
-    
-    for process in processes:
-        try:
-            print(f"   🔪 Killing emulator process PID {process['pid']} ({process['name']})")
+            print(f"\n⚡ Processing {group_name} group ({len(group_tests)} tests)...")
             
-            # Try graceful termination first (SIGTERM)
-            subprocess.run(['kill', process['pid']], capture_output=True, timeout=5)
-            time.sleep(2)
+            # Determine optimal worker count (respecting user setting and emulator constraints)
+            max_workers = min(args.parallel_workers, len(group_tests), 2)  # Cap at 2 for mobile stability
             
-            # Check if process still exists
-            check_result = subprocess.run(['kill', '-0', process['pid']], 
-                                        capture_output=True)
-            if check_result.returncode == 0:
-                # Process still exists, force kill (SIGKILL)
-                if verbose:
-                    print(f"      Process {process['pid']} still running, force killing...")
-                subprocess.run(['kill', '-9', process['pid']], capture_output=True)
-                time.sleep(1)
+            # Try parallel execution first
+            exit_code, exec_time, exec_info = run_test_group_parallel(group_tests, max_workers)
             
-            print(f"   ✅ Process {process['pid']} terminated")
-            
-        except Exception as e:
-            if verbose:
-                print(f"   ⚠️  Failed to kill process {process['pid']}: {e}")
-            success = False
-    
-    return success
-
-def shutdown_emulator(args, verbose=False):
-    """Enhanced multi-method emulator shutdown"""
-    if args.manual_emulator:
-        print("📱 Emulator was manually started - leaving it running")
-        return
-        
-    if args.keep_emulator:
-        print("📱 Keeping auto-started emulator running (--keep-emulator flag)")
-        return
-    
-    print("🔌 Shutting down auto-started emulator...")
-    
-    # First, check if emulator is running
-    result = subprocess.run(['adb', 'devices'], capture_output=True, text=True)
-    devices = [line for line in result.stdout.split('\n') if 'emulator-' in line and '\tdevice' in line]
-    
-    if not devices:
-        print("   ℹ️  No emulator devices found in ADB")
-        # Still check for processes in case ADB connection is broken
-        processes = find_emulator_processes(verbose)
-        if processes:
-            print(f"   🔍 Found {len(processes)} emulator process(es) despite no ADB devices")
-            kill_emulator_processes(processes, verbose)
-        return
-    
-    emulator_serial = devices[0].split('\t')[0]
-    print(f"   📱 Target emulator: {emulator_serial}")
-    
-    # Method 1: Clean ADB shutdown (recommended approach)
-    print("   🧼 Method 1: Clean ADB shutdown (adb shell reboot -p)")
-    try:
-        clean_shutdown = subprocess.run([
-            'adb', '-s', emulator_serial, 'shell', 'reboot', '-p'
-        ], capture_output=True, text=True, timeout=20)
-        
-        if clean_shutdown.returncode == 0:
-            print("   ✅ Clean shutdown command sent")
-            
-            # Wait for clean shutdown to complete
-            print("   ⏳ Waiting for clean shutdown...")
-            for i in range(10):  # 20 seconds total
-                time.sleep(2)
-                result = subprocess.run(['adb', 'devices'], capture_output=True, text=True)
-                devices = [line for line in result.stdout.split('\n') if 'emulator-' in line and '\tdevice' in line]
-                if not devices:
-                    print("   ✅ Emulator shut down cleanly!")
-                    return
-                if i % 3 == 0:
-                    print(f"      Clean shutdown in progress... ({(i+1)*2}s)")
-            
-            print("   ⏳ Clean shutdown taking longer than expected, trying next method...")
-        else:
-            if verbose:
-                print(f"   ⚠️  Clean shutdown failed: {clean_shutdown.stderr}")
-    
-    except subprocess.TimeoutExpired:
-        print("   ⏳ Clean shutdown timed out, trying next method...")
-    except Exception as e:
-        if verbose:
-            print(f"   ⚠️  Clean shutdown error: {e}")
-    
-    # Method 2: Original ADB emu kill (with shorter timeout)
-    print("   ⚡ Method 2: ADB emulator kill (adb emu kill)")
-    try:
-        emu_kill = subprocess.run([
-            'adb', '-s', emulator_serial, 'emu', 'kill'
-        ], capture_output=True, text=True, timeout=10)
-        
-        if emu_kill.returncode == 0:
-            print("   ✅ Emulator kill command sent")
-            
-            # Wait for kill to complete (shorter timeout)
-            for i in range(5):  # 10 seconds total
-                time.sleep(2)
-                result = subprocess.run(['adb', 'devices'], capture_output=True, text=True)
-                devices = [line for line in result.stdout.split('\n') if 'emulator-' in line and '\tdevice' in line]
-                if not devices:
-                    print("   ✅ Emulator killed via ADB!")
-                    return
-                if i % 2 == 0:
-                    print(f"      ADB kill in progress... ({(i+1)*2}s)")
-                    
-            print("   ⏳ ADB kill incomplete, trying process-based method...")
-        else:
-            if verbose:
-                print(f"   ⚠️  ADB kill failed: {emu_kill.stderr}")
-    
-    except subprocess.TimeoutExpired:
-        print("   ⏳ ADB kill timed out (common issue), trying process-based method...")
-    except Exception as e:
-        if verbose:
-            print(f"   ⚠️  ADB kill error: {e}")
-    
-    # Method 3: Process-based killing
-    print("   🔪 Method 3: Process-based termination")
-    processes = find_emulator_processes(verbose)
-    
-    if processes:
-        print(f"   🎯 Found {len(processes)} emulator process(es)")
-        if kill_emulator_processes(processes, verbose):
-            # Wait a moment for processes to fully terminate
-            time.sleep(3)
-            
-            # Final verification
-            result = subprocess.run(['adb', 'devices'], capture_output=True, text=True)
-            devices = [line for line in result.stdout.split('\n') if 'emulator-' in line and '\tdevice' in line]
-            
-            if not devices:
-                print("   ✅ Emulator shutdown completed via process termination!")
-                return
-            else:
-                print("   ⚠️  ADB still shows emulator, but processes were killed")
-                return
-        else:
-            print("   ⚠️  Some processes could not be terminated")
-    else:
-        print("   ℹ️  No emulator processes found")
-    
-    # Final status check
-    result = subprocess.run(['adb', 'devices'], capture_output=True, text=True)
-    devices = [line for line in result.stdout.split('\n') if 'emulator-' in line and '\tdevice' in line]
-    
-    if not devices:
-        print("   ✅ Emulator appears to be shut down (no ADB devices)")
-    else:
-        print("   ⚠️  Emulator may still be running - manual closure may be needed")
-        if verbose:
-            print("   💡 Consider using --keep-emulator flag if shutdown issues persist")
-
-def cleanup_appium_server(appium_process, verbose=False):
-    """Enhanced Appium server cleanup with port verification"""
-    if not appium_process:
-        return
-        
-    print("🛑 Stopping Appium server...")
-    
-    # Get the port info if available
-    server_port = getattr(appium_process, 'appium_port', 4723)
-    
-    try:
-        # Try graceful termination first
-        appium_process.terminate()
-        appium_process.wait(timeout=8)
-        print("✅ Appium server stopped gracefully")
-    except subprocess.TimeoutExpired:
-        if verbose:
-            print("   Graceful shutdown timed out, force-killing Appium server...")
-        try:
-            appium_process.kill()
-            appium_process.wait(timeout=3)
-            print("✅ Appium server stopped (force-killed)")
-        except Exception as e:
-            if verbose:
-                print(f"   Warning: Error force-killing Appium server: {e}")
-    except Exception as e:
-        if verbose:
-            print(f"   Warning: Error stopping Appium server: {e}")
-    
-    # Verify the port is actually free and clean up if needed
-    try:
-        import socket
-        import time
-        
-        # Give a moment for the port to be released
-        time.sleep(2)
-        
-        # Test if the port is still in use
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(1)
-        result = sock.connect_ex(('localhost', server_port))
-        sock.close()
-        
-        if result == 0:
-            # Port is still in use, try to find and kill the process
-            print(f"   🔍 Port {server_port} still in use, attempting cleanup...")
-            try:
-                lsof_result = subprocess.run(['lsof', '-t', f'-i:{server_port}'], 
-                                           capture_output=True, text=True)
-                if lsof_result.returncode == 0 and lsof_result.stdout.strip():
-                    for pid in lsof_result.stdout.strip().split('\n'):
-                        if pid:
-                            print(f"   🔪 Killing process {pid} using port {server_port}")
-                            subprocess.run(['kill', '-9', pid], capture_output=True)
-                    time.sleep(1)
-                    print(f"✅ Port {server_port} cleanup completed")
-                else:
-                    if verbose:
-                        print(f"   ℹ️  No processes found using port {server_port}")
-            except Exception as e:
-                if verbose:
-                    print(f"   ⚠️  Port cleanup error: {e}")
-        else:
-            if verbose:
-                print(f"   ✅ Port {server_port} is properly released")
+            if exit_code != 0 and exec_info.get('parallel_used', False):
+                print(f"⚠️ Parallel execution failed for {group_name} group, trying sequential fallback...")
                 
+                # Fallback to sequential execution
+                exit_code_sequential, fallback_exec_time, fallback_info = run_test_group_sequential(group_tests)
+                
+                if metrics:
+                    metrics.record_test_group_execution(f'{group_name}_fallback', fallback_exec_time, fallback_info)
+                    metrics.sequential_fallback_time += fallback_exec_time
+                    metrics.add_optimization(f"Sequential fallback for {group_name} group after parallel failure")
+                
+                if exit_code_sequential == 0:
+                    print(f"✅ Sequential fallback for {group_name} completed successfully in {fallback_exec_time:.1f}s")
+                    exit_code = 0  # Override with successful sequential result
+                else:
+                    print(f"❌ Sequential fallback for {group_name} also failed")
+                    overall_exit_code = exit_code_sequential
+                    break  # Stop processing remaining groups
+            
+            # Record metrics for successful execution
+            if metrics and exit_code == 0:
+                metrics.record_test_group_execution(group_name, exec_time, exec_info)
+                if exec_info.get('parallel_used', False):
+                    metrics.parallel_execution_time += exec_time
+                    metrics.parallel_workers_used = max(metrics.parallel_workers_used, exec_info.get('workers', 0))
+                    metrics.add_optimization(f"Parallel execution for {group_name} group with {exec_info.get('workers', 0)} workers")
+            
+            if exit_code != 0:
+                overall_exit_code = exit_code
+                break
+            else:
+                print(f"✅ {group_name.title()} tests completed successfully in {exec_time:.1f}s")
+        
+        # Calculate total execution time and performance insights
+        total_parallel_time = time.time() - parallel_start_time
+        
+        if metrics:
+            metrics.test_execution_time = total_parallel_time
+            
+            # Calculate efficiency metrics
+            efficiency_metrics = metrics.calculate_parallel_efficiency()
+            if efficiency_metrics:
+                parallel_portion = efficiency_metrics['parallel_portion']
+                if parallel_portion > 0.5:  # More than 50% parallel
+                    estimated_sequential_time = efficiency_metrics['total_parallel_time'] + efficiency_metrics['total_sequential_time']
+                    if estimated_sequential_time > total_parallel_time:
+                        speedup = estimated_sequential_time / total_parallel_time
+                        if speedup > 1.1:  # Only report significant speedup
+                            print(f"🚀 Parallel execution achieved estimated {speedup:.1f}x speedup")
+                            metrics.add_optimization(f"Parallel speedup: {speedup:.1f}x")
+    
     except Exception as e:
-        if verbose:
-            print(f"   ⚠️  Port verification error: {e}")
-
-def cleanup_resources(appium_process, args, verbose=False):
-    """Enhanced cleanup with app cleanup and emulator shutdown"""
-    # 1. Stop Appium server with enhanced port cleanup
-    cleanup_appium_server(appium_process, verbose)
+        print(f"❌ Parallel execution failed with exception: {e}")
+        print("🔄 Falling back to full sequential execution...")
+        
+        # Complete fallback to sequential mode
+        sequential_start_time = time.time()
+        overall_exit_code = run_tests_sequential(args, metrics, sequential_start_time)
+        
+        if metrics:
+            metrics.sequential_fallback_time = time.time() - sequential_start_time
+            metrics.add_optimization("Full sequential fallback due to parallel execution exception")
     
-    # 2. Clean up test app and data
-    cleanup_test_app(args, verbose)
-    
-    # 3. Shutdown emulator if auto-started
-    shutdown_emulator(args, verbose)
+    return overall_exit_code
 
+def update_baseline_after_successful_run(args):
+    """Update change detection baseline after successful test run"""
+    if args.update_baseline:
+        print("📝 Updating change detection baseline...")
+        try:
+            detector = ChangeDetector()
+            detector.update_baseline()
+        except Exception as e:
+            print(f"⚠️  Warning: Could not update baseline: {e}")
+    elif not args.no_optimize:
+        # Auto-update baseline after successful optimized runs
+        print("📝 Auto-updating change detection baseline...")
+        try:
+            detector = ChangeDetector()
+            detector.update_baseline()
+        except Exception as e:
+            print(f"⚠️  Warning: Could not auto-update baseline: {e}")
+
+
+
+def generate_performance_report(metrics: PerformanceMetrics, report_dir: Path):
+    """Generate performance metrics report."""
+    try:
+        performance_report_path = report_dir / "performance_metrics.json"
+        
+        with open(performance_report_path, 'w') as f:
+            import json
+            summary = metrics.get_summary()
+            summary['generated_at'] = datetime.now().isoformat()
+            json.dump(summary, f, indent=2)
+        
+        print(f"📈 Performance metrics saved: {performance_report_path}")
+        
+        # Print summary to console
+        print("\n📊 Performance Summary:")
+        print("=" * 50)
+        print(f"   Total execution time: {metrics.total_time:.1f}s")
+        
+        if metrics.emulator_startup_time > 0:
+            print(f"   Emulator startup: {metrics.emulator_startup_time:.1f}s")
+        
+        if metrics.appium_startup_time > 0:
+            print(f"   Appium startup: {metrics.appium_startup_time:.1f}s")
+        
+        if metrics.build_time > 0:
+            print(f"   Build time: {metrics.build_time:.1f}s")
+        
+        if metrics.data_processing_time > 0:
+            print(f"   Data processing: {metrics.data_processing_time:.1f}s")
+        
+        if metrics.test_execution_time > 0:
+            print(f"   Test execution: {metrics.test_execution_time:.1f}s")
+        
+        # Detailed parallel execution reporting
+        if metrics.test_group_timings:
+            print(f"   Test group execution details:")
+            total_parallel_time = 0
+            total_sequential_time = 0
+            for group_name, timing in metrics.test_group_timings.items():
+                method = timing['execution_method']
+                exec_time = timing['execution_time']
+                test_count = timing.get('test_count', 0)
+                workers = timing.get('workers', 0)
+                
+                if timing.get('parallel_used', False):
+                    total_parallel_time += exec_time
+                    print(f"     {group_name}: {exec_time:.1f}s ({test_count} tests, {workers} workers) ⚡")
+                else:
+                    total_sequential_time += exec_time
+                    if method == 'sequential':
+                        print(f"     {group_name}: {exec_time:.1f}s ({test_count} tests) 🔄")
+                    else:
+                        print(f"     {group_name}: {exec_time:.1f}s ({method})")
+            
+            if total_parallel_time > 0 and total_sequential_time > 0:
+                total_test_time = total_parallel_time + total_sequential_time
+                parallel_percentage = (total_parallel_time / total_test_time) * 100
+                print(f"     Execution breakdown: {parallel_percentage:.1f}% parallel, {100-parallel_percentage:.1f}% sequential")
+        
+        if metrics.parallel_execution_time > 0:
+            print(f"   Total parallel execution: {metrics.parallel_execution_time:.1f}s")
+            print(f"   Max workers used: {metrics.parallel_workers_used}")
+        
+        if metrics.sequential_fallback_time > 0:
+            print(f"   Sequential fallback time: {metrics.sequential_fallback_time:.1f}s")
+        
+        if metrics.parallel_execution_details:
+            details = metrics.parallel_execution_details
+            print(f"   Parallel efficiency:")
+            print(f"     Parallel portion: {details['parallel_portion']*100:.1f}%")
+            print(f"     Sequential portion: {details['sequential_portion']*100:.1f}%")
+        
+        if metrics.cache_hits:
+            print(f"   Cache performance:")
+            for cache_type, hit in metrics.cache_hits.items():
+                status = "HIT" if hit else "MISS"
+                emoji = "🎯" if hit else "🔄"
+                print(f"     {cache_type}: {emoji} {status}")
+        
+        if metrics.optimizations_applied:
+            print(f"   Optimizations applied: {len(metrics.optimizations_applied)}")
+            for opt in metrics.optimizations_applied:
+                print(f"     ⚡ {opt}")
+        
+        print("=" * 50)
+        
+    except Exception as e:
+        print(f"⚠️  Warning: Could not generate performance report: {e}")
+
+
+def open_test_report(report_path, metrics: PerformanceMetrics = None):
+    """Report test report location without auto-opening"""
+    abs_report_path = Path(__file__).parent / report_path
+    
+    if not abs_report_path.exists():
+        print(f"📊 Test report was not generated: {report_path}")
+        return
+    
+    print(f"📊 Test report saved: {abs_report_path}")
+    
+    # Generate performance report if metrics available
+    if metrics:
+        generate_performance_report(metrics, abs_report_path.parent)
+    
+    # Check if we're in WSL and provide helpful path conversion
+    is_wsl = os.path.exists('/proc/version') and 'microsoft' in open('/proc/version').read().lower()
+    if is_wsl:
+        try:
+            windows_path = subprocess.run(
+                ['wslpath', '-w', str(abs_report_path)], 
+                capture_output=True, text=True
+            ).stdout.strip()
+            print(f"   💡 Windows path: {windows_path}")
+        except:
+            print(f"   💡 Open in browser manually")
 
 def main():
-    """Enhanced main test runner function"""
-    # Parse arguments first to handle help and early exits
+    """Main test runner function with optimization orchestration"""
+    # Initialize performance metrics
+    metrics = PerformanceMetrics()
+    
+    # Parse arguments
     args = parse_arguments()
     
-    print("📱 Enhanced Running Heatmap Mobile App Test Runner")
+    print("📱 Running Heatmap Mobile App Test Runner (Optimized)")
     print("=" * 60)
     
-    # Handle test selection BEFORE infrastructure setup
-    if getattr(args, 'one_test', False):
+    # Check dependencies
+    if not check_dependencies():
+        sys.exit(1)
+    
+    # Analyze optimization opportunities
+    optimization = None
+    if not args.no_optimize:
+        try:
+            optimization = analyze_optimization_opportunities(metrics)
+        except Exception as e:
+            print(f"⚠️  Warning: Optimization analysis failed: {e}")
+            print("   Continuing with traditional mode...")
+    
+    # Handle test selection if one-test mode
+    if args.one_test:
         selected_tests = discover_and_select_test()
         if selected_tests is None:
             print("❌ No test selected, exiting...")
             sys.exit(1)
-        
-        # Set the selected tests on args object
         args.selected_tests = selected_tests
-        print(f"🎯 Proceeding with infrastructure setup for: {', '.join(selected_tests)}")
-        print()
     
-    # Check prerequisites
-    if not check_prerequisites(args):
+    # Check prerequisites with optimization awareness
+    if not check_prerequisites(args, optimization):
         sys.exit(1)
     
-    # Check and start emulator if needed
-    if not check_and_start_emulator(args):
-        sys.exit(1)
+    # Check for persistent infrastructure first (simple check)
+    use_persistent = check_for_persistent_infrastructure()
+    
+    emulator_info = None
+    appium_process = None
+    
+    if use_persistent:
+        print("⚡ Using existing persistent infrastructure")
+        # Update metrics with cached startup times
+        metrics.emulator_startup_time = 0.0  # Already running
+        metrics.appium_startup_time = 0.0    # Already running
+        metrics.add_optimization("Used persistent emulator")
+        metrics.add_optimization("Used persistent Appium server")
+        # Set traditional emulator_info for compatibility
+        emulator_info = {'started_emulator': False}  # Didn't start it ourselves
+    else:
+        print("🔧 Setting up traditional isolated infrastructure")
+        # Check for devices using traditional method
+        emulator_info = check_and_start_emulator(metrics)
+        if not emulator_info:
+            sys.exit(1)
+        
+        # Start Appium server using traditional method
+        appium_process = start_appium_server(metrics)
+        if appium_process is None:
+            print("❌ Failed to start Appium server")
+            sys.exit(1)
     
     # Create reports directory
     reports_dir = Path(__file__).parent / Path(args.report_file).parent
     reports_dir.mkdir(exist_ok=True)
     
-    
-    appium_process = None
     exit_code = 1
     
     try:
-        # Start Appium server
-        appium_process = start_appium_server(args.verbose)
-        if appium_process is None:
-            print("❌ Failed to start Appium server")
-            sys.exit(1)
         
-        # Run tests
-        exit_code = run_tests(args)
+        # Run tests with optimization
+        exit_code = run_tests(args, optimization, metrics)
         
-        # Print comprehensive summary
-        print_test_summary(exit_code, args)
+        # Print result
+        if exit_code == 0:
+            print("\n✅ All tests passed!")
+            # Update baseline after successful run
+            update_baseline_after_successful_run(args)
+        else:
+            print("\n❌ Some tests failed")
         
-        # Open test report
-        open_test_report(args.report_file, not args.browser)
+        # Finalize performance metrics
+        metrics.finalize()
         
+        # Open test report with performance metrics
+        open_test_report(args.report_file, metrics)
         
     except KeyboardInterrupt:
         print("\n⏹️  Tests interrupted by user")
@@ -1053,30 +894,20 @@ def main():
         
     except Exception as e:
         print(f"\n❌ Unexpected error: {e}")
-        if args.verbose:
-            import traceback
-            traceback.print_exc()
         exit_code = 1
         
     finally:
-        # Enhanced cleanup with app cleanup and emulator shutdown
-        cleanup_resources(appium_process, args, args.verbose)
-        
-        # Final port cleanup - ensure all Appium ports are released
-        if args.verbose:
-            print("🧹 Final port cleanup check...")
-        for port in [4723, 4724, 4725]:
-            try:
-                lsof_result = subprocess.run(['lsof', '-t', f'-i:{port}'], 
-                                           capture_output=True, text=True)
-                if lsof_result.returncode == 0 and lsof_result.stdout.strip():
-                    for pid in lsof_result.stdout.strip().split('\n'):
-                        if pid:
-                            if args.verbose:
-                                print(f"   🔪 Final cleanup: killing process {pid} on port {port}")
-                            subprocess.run(['kill', '-9', pid], capture_output=True)
-            except Exception:
-                pass
+        # Cleanup (unless skip-cleanup is specified or using persistent infrastructure)
+        if not args.skip_cleanup and not use_persistent:
+            cleanup_appium_server(appium_process)
+            shutdown_emulator(emulator_info)
+        elif use_persistent:
+            print("⏩ Using persistent infrastructure - no cleanup needed")
+            print("   Use './persist_tests.sh stop' to clean up persistent services")
+        else:
+            print("⏩ Skipping cleanup per --skip-cleanup flag")
+            print("   Emulator and Appium server remain running for faster subsequent runs")
+            print("   💡 Consider using persistent infrastructure: './persist_tests.sh start'")
     
     sys.exit(exit_code)
 

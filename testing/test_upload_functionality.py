@@ -911,23 +911,23 @@ class TestUploadFunctionality(BaseMobileTest):
         assert deselect_verification['allUnchecked'], f"All checkboxes should be unchecked after 'Deselect All': {deselect_verification}"
         print(f"   ✅ All {deselect_verification['totalCheckboxes']} checkboxes successfully unchecked")
         
-        # Now select only the uploaded activity (should be the last/newest one in the list)
+        # Now select only the uploaded activity (should be the first/newest one in the list)
         print("   📝 Selecting only the uploaded activity...")
         
-        # Find and click the checkbox for the uploaded activity (typically the last one)
+        # Find and click the checkbox for the uploaded activity (should be first since it's the newest)
         uploaded_activity_selected = driver.execute_script("""
             const checkboxes = document.querySelectorAll('.run-checkbox');
             const activityCards = document.querySelectorAll('.activity-card, .run-item, [data-activity], [data-run-id]');
             
-            // Try to identify the uploaded activity - it should be the newest (typically last in list)
-            // or we can look for specific patterns in the text content
+            // The uploaded activity should be the newest (first in list since activities are sorted by date descending)
+            // Updated GPX file has date 2024-07-17, making it newer than sample_run (2024-07-15) and eastside_run (2024-07-16)
             let uploadedCheckbox = null;
             
             if (checkboxes.length >= 3) {
-                // Assume the uploaded activity is the last one (newest)
-                uploadedCheckbox = checkboxes[checkboxes.length - 1];
+                // The uploaded activity should be the first one (newest date: 2024-07-17)
+                uploadedCheckbox = checkboxes[0];
             } else {
-                // Fallback: just use the first checkbox
+                // Fallback: use first available checkbox
                 uploadedCheckbox = checkboxes[0];
             }
             
@@ -937,19 +937,21 @@ class TestUploadFunctionality(BaseMobileTest):
                 return {
                     success: true,
                     selectedIndex: Array.from(checkboxes).indexOf(uploadedCheckbox),
-                    totalCheckboxes: checkboxes.length
+                    totalCheckboxes: checkboxes.length,
+                    expectedPosition: 'first (newest activity with date 2024-07-17)'
                 };
             }
             
             return {
                 success: false,
                 selectedIndex: -1,
-                totalCheckboxes: checkboxes.length
+                totalCheckboxes: checkboxes.length,
+                expectedPosition: 'first (newest activity)'
             };
         """)
         
         assert uploaded_activity_selected['success'], f"Failed to select uploaded activity checkbox: {uploaded_activity_selected}"
-        print(f"   ✅ Uploaded activity selected (checkbox {uploaded_activity_selected['selectedIndex'] + 1} of {uploaded_activity_selected['totalCheckboxes']})")
+        print(f"   ✅ Uploaded activity selected (checkbox {uploaded_activity_selected['selectedIndex'] + 1} of {uploaded_activity_selected['totalCheckboxes']}) - {uploaded_activity_selected.get('expectedPosition', 'newest activity')}")
         
         # Step 2: Minimize the sidebar
         print("   📝 Minimizing sidebar...")

@@ -62,11 +62,15 @@ class TestUploadFunctionality(BaseMobileTest):
         print("🎯 Starting lasso selection verification of all activities (uploaded + packaged)...")
         self.lasso_selection_verification(driver, wait)
         
-        # Phase 5: Cleanup - Clear uploaded activities
+        # Phase 5: Extras Panel Verification - Test uploaded activity as most recent and filtering
+        print("📱 Starting extras panel most recent activity verification...")
+        self.extras_panel_most_recent_verification(driver, wait)
+        
+        # Phase 6: Cleanup - Clear uploaded activities
         print("🧹 Cleaning up uploaded activities...")
         self.clear_uploaded_activities(driver, wait)
         
-        # Phase 6: Cleanup device files
+        # Phase 7: Cleanup device files
         print("📁 Cleaning up test files from device...")
         self.cleanup_test_file_from_device()
         
@@ -735,6 +739,198 @@ class TestUploadFunctionality(BaseMobileTest):
                 sources: Object.keys(map.getStyle().sources)
             };
         """)
+    
+    def extras_panel_most_recent_verification(self, driver, wait):
+        """Test that uploaded activity appears as most recent in extras panel and test filtering toggle"""
+        print("📱 Opening extras panel to verify uploaded activity as most recent...")
+        
+        try:
+            # Open extras panel
+            extras_btn = self.find_clickable_element(driver, wait, "#extras-btn")
+            extras_btn.click()
+            time.sleep(3)  # Wait for panel to open and fetchLastActivity to complete
+            
+            # Verify the extras panel opened
+            print("🔍 Checking extras panel opened...")
+            extras_panel_info = driver.execute_script("""
+                const panel = document.getElementById('extras-panel');
+                return {
+                    isOpen: panel && panel.classList.contains('open'),
+                    hasContent: !!document.getElementById('extras-content')
+                };
+            """)
+            
+            assert extras_panel_info['isOpen'], "Extras panel should be open"
+            assert extras_panel_info['hasContent'], "Extras panel should have content element"
+            
+            # Get the most recent activity information from the extras panel
+            print("🔍 Verifying uploaded activity appears as most recent...")
+            most_recent_activity_info = driver.execute_script("""
+                const extrasContent = document.getElementById('extras-content');
+                if (!extrasContent) return { error: 'No extras content element' };
+                
+                const runCards = extrasContent.querySelectorAll('.run-card');
+                if (runCards.length === 0) return { error: 'No run cards found' };
+                
+                const firstCard = runCards[0];
+                const dateElement = firstCard.querySelector('.run-date');
+                const checkbox = firstCard.querySelector('.last-activity-checkbox');
+                
+                return {
+                    cardCount: runCards.length,
+                    hasDateElement: !!dateElement,
+                    dateText: dateElement ? dateElement.textContent : null,
+                    hasToggleCheckbox: !!checkbox,
+                    checkboxLabel: checkbox ? checkbox.parentElement.textContent.trim() : null
+                };
+            """)
+            
+            print(f"📊 Most recent activity info: {most_recent_activity_info}")
+            
+            # Verify uploaded activity appears first (most recent) and has expected August 2024 date
+            assert 'error' not in most_recent_activity_info, f"Error getting activity info: {most_recent_activity_info.get('error')}"
+            assert most_recent_activity_info['hasDateElement'], "Most recent activity should have date element"
+            assert most_recent_activity_info['hasToggleCheckbox'], "Most recent activity should have 'Show only this activity' checkbox"
+            
+            # Verify the date shows our uploaded activity (August 2024)
+            date_text = most_recent_activity_info['dateText']
+            assert date_text is not None, "Date text should not be None"
+            assert "8/1/2024" in date_text or "08/01/2024" in date_text or "Aug" in date_text, f"Expected uploaded activity date (August 2024), got: {date_text}"
+            
+            print(f"✅ Uploaded activity verified as most recent: {date_text}")
+            
+            # Test the "Show only this activity" toggle functionality
+            print("🎯 Testing 'Show only this activity' toggle...")
+            self.test_show_only_activity_toggle(driver, wait)
+            
+            # Close extras panel
+            print("🔒 Closing extras panel...")
+            extras_btn = self.find_clickable_element(driver, wait, "#extras-btn")
+            extras_btn.click()
+            time.sleep(2)
+            
+            print("✅ Extras panel most recent activity verification completed successfully!")
+            
+        except Exception as e:
+            print(f"⚠️ Error during extras panel verification: {e}")
+            # Try to close panel if it's still open
+            try:
+                driver.execute_script("""
+                    const panel = document.getElementById('extras-panel');
+                    if (panel && panel.classList.contains('open')) {
+                        const extrasBtn = document.getElementById('extras-btn');
+                        if (extrasBtn) extrasBtn.click();
+                    }
+                """)
+                time.sleep(1)
+            except:
+                pass
+            raise
+    
+    def test_show_only_activity_toggle(self, driver, wait):
+        """Test the 'Show only this activity' checkbox functionality for uploaded activity"""
+        print("🔘 Testing show only activity toggle functionality...")
+        
+        # Get initial map state (should show all activities)
+        initial_map_state = driver.execute_script("""
+            // Check what's currently visible on the map
+            const pmtilesLayer = map.getLayer('runsVec');
+            const localLayer = map.getLayer('localRunsOverlay');
+            
+            return {
+                pmtilesLayerExists: !!pmtilesLayer,
+                localLayerExists: !!localLayer,
+                pmtilesFilter: pmtilesLayer ? map.getFilter('runsVec') : null,
+                timestamp: Date.now()
+            };
+        """)
+        
+        print(f"🗺️ Initial map state: {initial_map_state}")
+        
+        # Click the "Show only this activity" checkbox
+        print("👆 Clicking 'Show only this activity' checkbox...")
+        toggle_result = driver.execute_script("""
+            const checkbox = document.querySelector('.last-activity-checkbox');
+            if (!checkbox) return { error: 'Checkbox not found' };
+            
+            checkbox.click();
+            
+            return {
+                success: true,
+                checked: checkbox.checked,
+                timestamp: Date.now()
+            };
+        """)
+        
+        assert 'error' not in toggle_result, f"Failed to click toggle: {toggle_result.get('error')}"
+        assert toggle_result['checked'], "Checkbox should be checked after clicking"
+        
+        print("✅ Toggle clicked successfully")
+        time.sleep(2)  # Wait for map update
+        
+        # Verify map now shows only the uploaded activity
+        print("🔍 Verifying map shows only uploaded activity...")
+        filtered_map_state = driver.execute_script("""
+            // Check map filtering state after toggle
+            const pmtilesFilter = map.getLayer('runsVec') ? map.getFilter('runsVec') : null;
+            const localOverlaySource = map.getSource('localRunsOverlay');
+            const localData = localOverlaySource ? localOverlaySource._data : null;
+            
+            return {
+                pmtilesFilter: pmtilesFilter,
+                localDataFeatures: localData ? localData.features.length : 0,
+                hasFiltering: !!pmtilesFilter,
+                timestamp: Date.now()
+            };
+        """)
+        
+        print(f"🗺️ Filtered map state: {filtered_map_state}")
+        
+        # Verify filtering is active (PMTiles layer should have filter, local overlay should show uploaded activity)
+        assert filtered_map_state['hasFiltering'], "Map should have filtering active when 'Show only this activity' is checked"
+        assert filtered_map_state['localDataFeatures'] > 0, "Local overlay should show the uploaded activity features"
+        
+        print("✅ Verified map shows only uploaded activity")
+        
+        # Test unchecking the toggle to restore all activities
+        print("🔄 Unchecking toggle to restore all activities...")
+        restore_result = driver.execute_script("""
+            const checkbox = document.querySelector('.last-activity-checkbox');
+            if (!checkbox) return { error: 'Checkbox not found' };
+            
+            checkbox.click();  // Uncheck
+            
+            return {
+                success: true,
+                checked: checkbox.checked,
+                timestamp: Date.now()
+            };
+        """)
+        
+        assert 'error' not in restore_result, f"Failed to uncheck toggle: {restore_result.get('error')}"
+        assert not restore_result['checked'], "Checkbox should be unchecked after second click"
+        
+        print("✅ Toggle unchecked successfully")
+        time.sleep(2)  # Wait for map update
+        
+        # Verify map now shows all activities again
+        print("🔍 Verifying all activities restored...")
+        restored_map_state = driver.execute_script("""
+            const pmtilesFilter = map.getLayer('runsVec') ? map.getFilter('runsVec') : null;
+            
+            return {
+                pmtilesFilter: pmtilesFilter,
+                hasFiltering: !!pmtilesFilter,
+                timestamp: Date.now()
+            };
+        """)
+        
+        print(f"🗺️ Restored map state: {restored_map_state}")
+        
+        # Verify filtering is removed (no filter on PMTiles layer)
+        assert not restored_map_state['hasFiltering'], "Map filtering should be cleared when toggle is unchecked"
+        
+        print("✅ 'Show only this activity' toggle functionality verified successfully!")
     
     def clear_uploaded_activities(self, driver, wait):
         """Clear uploaded activities from the app using the built-in clear function"""

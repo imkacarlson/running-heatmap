@@ -63,7 +63,7 @@ This implementation plan reduces test runtime from ~408s to ≤240s through targ
   - _Leverage: existing configure_emulator_stability(), cleanup utilities_
   - _Requirements: 3.1, 3.2_
 
-- [ ] 8. Add selective reset mechanism with needs_clean_state marker
+- [x] 8. Add selective reset mechanism with needs_clean_state marker
   - File: testing/conftest.py (continue from task 7)
   - Implement @pytest.mark.needs_clean_state detection in mobile_driver fixture
   - Add driver.reset() or equivalent cleanup for tests marked as needing clean state

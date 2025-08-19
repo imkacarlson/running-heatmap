@@ -22,6 +22,7 @@ from base_mobile_test import BaseMobileTest
 class TestUploadFunctionality(BaseMobileTest):
     """Test upload functionality with rock-solid activity verification"""
     
+    @pytest.mark.needs_clean_state
     def test_upload_gpx_file_flow(self, mobile_driver):
         """Test complete upload flow with rock-solid verification"""
         print("🧪 Testing upload GPX file flow with rock-solid verification...")

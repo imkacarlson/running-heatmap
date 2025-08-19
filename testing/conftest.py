@@ -139,6 +139,13 @@ def pytest_addoption(parser):
         help="Skip expensive build operations (APK build, tile generation) for faster testing cycles"
     )
 
+def pytest_configure(config):
+    """Configure pytest with custom markers"""
+    config.addinivalue_line(
+        "markers", 
+        "needs_clean_state: mark test to automatically reset app state before execution for test isolation"
+    )
+
 @pytest.fixture(scope="session")
 def fast_mode(request):
     """Access the --fast flag value"""
@@ -474,10 +481,11 @@ def emulator_stability_setup(session_setup):
     return True
 
 @pytest.fixture(scope="module")
-def mobile_driver(session_setup, emulator_stability_setup):
+def mobile_driver(session_setup, emulator_stability_setup, request):
     """
     Provide Appium WebDriver instance for mobile tests.
     Module-scoped to minimize driver setup overhead while maintaining test isolation.
+    Supports selective reset for tests marked with @pytest.mark.needs_clean_state.
     """
     from appium import webdriver
     from selenium.webdriver.support.ui import WebDriverWait
@@ -533,18 +541,59 @@ def mobile_driver(session_setup, emulator_stability_setup):
             except Exception as e2:
                 print(f"⚠️ App state reset fallback also failed: {e2}")
     
-    print(f"✅ Module-scoped mobile driver ready")
-    
-    # Yield driver, wait instance, and reset function to tests
-    yield {
+    # Store reset function and other shared state for selective reset mechanism
+    mobile_driver_context = {
         'driver': driver,
         'wait': wait,
         'session_data': session_setup,
-        'reset': reset_app_state
+        'reset': reset_app_state,
+        'last_test_needed_clean_state': False
     }
+    
+    print(f"✅ Module-scoped mobile driver ready with selective reset capability")
+    
+    # Yield driver, wait instance, and reset function to tests
+    yield mobile_driver_context
     
     # Cleanup using modularized cleanup utility
     cleanup_mobile_driver(driver)
+
+# Global storage for mobile driver context to support selective reset
+_mobile_driver_context = {}
+
+@pytest.fixture(autouse=True)
+def selective_reset_handler(request, mobile_driver):
+    """
+    Auto-use fixture that handles selective app state reset based on test markers.
+    Tests marked with @pytest.mark.needs_clean_state will automatically get a clean app state.
+    """
+    global _mobile_driver_context
+    _mobile_driver_context = mobile_driver
+    
+    # Check if current test needs clean state
+    test_needs_clean_state = request.node.get_closest_marker("needs_clean_state") is not None
+    
+    # Reset app state if this test needs clean state OR if previous test needed clean state
+    should_reset = (
+        test_needs_clean_state or 
+        mobile_driver.get('last_test_needed_clean_state', False)
+    )
+    
+    if should_reset:
+        print(f"\n🧹 Performing selective app state reset for test: {request.node.name}")
+        try:
+            mobile_driver['reset']()
+            print(f"✅ App state reset completed for: {request.node.name}")
+        except Exception as e:
+            print(f"⚠️ App state reset failed for {request.node.name}: {e}")
+    
+    # Update context for next test
+    mobile_driver['last_test_needed_clean_state'] = test_needs_clean_state
+    
+    # Run the test
+    yield
+    
+    # Note: Post-test cleanup could be added here if needed
 
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item, call):

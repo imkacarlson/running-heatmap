@@ -96,7 +96,7 @@ This implementation plan reduces test runtime from ~408s to ≤240s through targ
   - _Leverage: existing tile count detection logic in map_load_detector.py_
   - _Requirements: 2.2, 2.3_
 
-- [ ] 12. Skip WebView pixel sampling in upload test
+- [x] 12. Skip WebView pixel sampling in upload test
   - File: testing/test_upload_functionality.py
   - Identify and skip pixel-sampling verification branches that are impossible in WebView context
   - Add conditional logic to bypass sampling while maintaining other upload verification

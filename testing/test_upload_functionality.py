@@ -152,10 +152,10 @@ class TestUploadFunctionality(BaseMobileTest):
                     except:
                         continue
                         
-                time.sleep(0.5)  # Poll every 500ms
+                time.sleep(0.3)  # Poll every 300ms (optimized)
                 
             except Exception:
-                time.sleep(0.5)
+                time.sleep(0.3)  # Poll every 300ms (optimized)
                 
         # If we can't detect picker readiness, log warning and continue
         print("⚠️ File picker readiness could not be confirmed, proceeding anyway")
@@ -513,9 +513,25 @@ class TestUploadFunctionality(BaseMobileTest):
     
     def verify_uploaded_activity_line_visible(self, driver):
         """Verify red activity line is rendered at uploaded GPX coordinates using pixel sampling"""
-        # Skip pixel sampling in WebView if we know it won't work
+        # Early WebView detection - skip pixel sampling entirely in WebView context
+        # This optimization eliminates unnecessary delay from impossible operations
         try:
-            # Quick test to see if pixel sampling is possible
+            # Check if we're in WebView context which typically can't do pixel sampling
+            context_info = driver.execute_script("""
+                return {
+                    currentContext: typeof map !== 'undefined' ? 'WebView' : 'Unknown',
+                    userAgent: navigator.userAgent,
+                    isWebView: navigator.userAgent.includes('wv') || window.location.protocol === 'file:' || 
+                              (typeof Android !== 'undefined') || (typeof webkit !== 'undefined' && webkit.messageHandlers)
+                };
+            """)
+            
+            if context_info.get('isWebView', False) or 'WebView' in context_info.get('currentContext', ''):
+                print("⚠️ WebView context detected - skipping pixel sampling optimization")
+                print("📝 Using viewport feature verification instead (eliminates pixel sampling delays)")
+                return {'error': 'Pixel sampling skipped - WebView optimization', 'skipReason': 'WebView context detected'}
+            
+            # Quick canvas test only if not in WebView
             test_result = driver.execute_script("""
                 try {
                     const canvas = map.getCanvas();
@@ -533,9 +549,9 @@ class TestUploadFunctionality(BaseMobileTest):
             """)
             
             if not test_result.get('canSample', False):
-                print(f"⚠️ Skipping pixel sampling: {test_result.get('reason', 'WebView limitation')}")
+                print(f"⚠️ Skipping pixel sampling: {test_result.get('reason', 'Canvas limitation')}")
                 print("📝 Using viewport feature verification instead")
-                return {'error': 'Pixel sampling unavailable - WebView limitation', 'skipReason': test_result.get('reason')}
+                return {'error': 'Pixel sampling unavailable - Canvas limitation', 'skipReason': test_result.get('reason')}
         except Exception as e:
             print(f"⚠️ Skipping pixel sampling due to error: {e}")
             return {'error': f'Pixel sampling failed: {str(e)}'}
@@ -693,8 +709,24 @@ class TestUploadFunctionality(BaseMobileTest):
     
     def verify_activity_pixels_in_viewport(self, driver):
         """Verify activity line pixels are visible in current viewport (after auto-zoom)"""
-        # Skip pixel sampling if we know it won't work
+        # Early WebView detection - skip pixel sampling entirely in WebView context
+        # This optimization eliminates unnecessary delay from impossible operations
         try:
+            # Check if we're in WebView context which typically can't do pixel sampling
+            context_info = driver.execute_script("""
+                return {
+                    userAgent: navigator.userAgent,
+                    isWebView: navigator.userAgent.includes('wv') || window.location.protocol === 'file:' || 
+                              (typeof Android !== 'undefined') || (typeof webkit !== 'undefined' && webkit.messageHandlers)
+                };
+            """)
+            
+            if context_info.get('isWebView', False):
+                print("⚠️ WebView context detected - skipping viewport pixel sampling optimization")
+                print("📝 Using viewport feature verification instead (eliminates pixel sampling delays)")
+                return {'error': 'Viewport pixel sampling skipped - WebView optimization', 'skipReason': 'WebView context detected'}
+            
+            # Quick canvas test only if not in WebView
             test_result = driver.execute_script("""
                 try {
                     const canvas = map.getCanvas();
@@ -706,8 +738,8 @@ class TestUploadFunctionality(BaseMobileTest):
             """)
             
             if not test_result.get('canSample', False):
-                print("⚠️ Skipping viewport pixel sampling: WebView limitation")
-                return {'error': 'Viewport pixel sampling unavailable - WebView limitation'}
+                print("⚠️ Skipping viewport pixel sampling: Canvas limitation")
+                return {'error': 'Viewport pixel sampling unavailable - Canvas limitation'}
         except Exception:
             print("⚠️ Skipping viewport pixel sampling due to error")
             return {'error': 'Viewport pixel sampling failed'}

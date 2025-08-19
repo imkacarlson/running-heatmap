@@ -29,7 +29,7 @@ class BaseMobileTest:
     
     def wait_for_webview_ready(self, driver, timeout=30):
         """
-        Wait for WebView context to be available and ready for interaction.
+        Wait for WebView context to be available for switching.
         Replaces fixed time.sleep() calls in WebView switching.
         
         Args:
@@ -37,7 +37,7 @@ class BaseMobileTest:
             timeout: Maximum seconds to wait (default 30)
             
         Returns:
-            True when WebView is ready, raises TimeoutException if not ready in time
+            True when WebView context is available, raises TimeoutException if not available in time
         """
         start_time = time.time()
         
@@ -48,21 +48,15 @@ class BaseMobileTest:
                 webview_available = any('WEBVIEW' in ctx for ctx in contexts)
                 
                 if webview_available:
-                    # Test if WebView context is ready for JavaScript execution
-                    try:
-                        result = driver.execute_script("return typeof document !== 'undefined';")
-                        if result:
-                            return True
-                    except JavascriptException:
-                        # WebView not ready for JS execution yet
-                        pass
+                    # WebView context is available for switching
+                    return True
                         
                 time.sleep(0.5)  # Poll every 500ms
                 
             except Exception:
                 time.sleep(0.5)
                 
-        raise TimeoutException(f"WebView not ready after {timeout} seconds")
+        raise TimeoutException(f"WebView context not available after {timeout} seconds")
     
     def wait_for_map_stable(self, driver, wait, timeout=45):
         """
@@ -202,13 +196,26 @@ class BaseMobileTest:
                     print(f"🎯 Targeting WebView: {target_webview}")
                     driver.switch_to.context(target_webview)
                     
-                    # Wait for WebView to be ready instead of fixed sleep
+                    # Wait for WebView JavaScript execution to be ready instead of fixed sleep
                     try:
-                        self.wait_for_webview_ready(driver, timeout=10)
-                        print(f"✅ Successfully switched to: {target_webview}")
-                        return target_webview
-                    except TimeoutException:
-                        print(f"⚠️ WebView not ready after context switch: {target_webview}")
+                        # Test JavaScript execution readiness after context switch
+                        start_time = time.time()
+                        while time.time() - start_time < 10:  # 10 second timeout
+                            try:
+                                result = driver.execute_script("return typeof document !== 'undefined';")
+                                if result:
+                                    print(f"✅ Successfully switched to: {target_webview}")
+                                    return target_webview
+                                break
+                            except Exception:
+                                time.sleep(0.5)  # Poll every 500ms
+                                continue
+                        
+                        # If we get here, JavaScript execution isn't ready
+                        print(f"⚠️ WebView JavaScript not ready after context switch: {target_webview}")
+                        # Continue to retry logic below
+                    except Exception as e:
+                        print(f"⚠️ WebView readiness check failed: {e}")
                         # Continue to retry logic below
                 else:
                     print("⚠️ No suitable WebView context found")

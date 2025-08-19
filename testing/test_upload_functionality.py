@@ -954,9 +954,12 @@ class TestUploadFunctionality(BaseMobileTest):
                 pass
             raise
     
-    def test_show_only_activity_toggle(self, driver, wait):
+    def test_show_only_activity_toggle(self, mobile_driver):
         """Test the 'Show only this activity' checkbox functionality for uploaded activity"""
         print("🔘 Testing show only activity toggle functionality...")
+        
+        driver = mobile_driver['driver']
+        wait = mobile_driver['wait']
         
         # Get initial map state (should show all activities)
         initial_map_state = driver.execute_script("""

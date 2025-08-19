@@ -14,7 +14,7 @@ This implementation plan reduces test runtime from ~408s to ≤240s through targ
   - _Leverage: testing/map_load_detector.py, existing WebDriverWait usage_
   - _Requirements: 2.1, 2.2, 2.3_
 
-- [ ] 2. Replace sleep() calls with deterministic waits in activity visibility test
+- [x] 2. Replace sleep() calls with deterministic waits in activity visibility test
   - File: testing/test_01_activity_visibility.py
   - Replace time.sleep(5), time.sleep(3), time.sleep(8), time.sleep(4) with appropriate deterministic waits
   - Use wait_for_map_stable() for map loading, wait_for_layers_stable() for activity visibility

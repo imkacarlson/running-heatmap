@@ -7,9 +7,10 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from pathlib import Path
+from base_mobile_test import BaseMobileTest
 
 @pytest.mark.mobile
-class TestMobileAppWithTestData:
+class TestMobileAppWithTestData(BaseMobileTest):
     """Mobile app tests using session-scoped fixtures"""
     
     def switch_to_webview(self, driver):
@@ -22,9 +23,10 @@ class TestMobileAppWithTestData:
         raise Exception("No WebView context found")
     
     def wait_for_map_load(self, driver, wait):
-        """Helper to wait for map to load"""
+        """Helper to wait for map to load using deterministic waits"""
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "#map")))
-        time.sleep(5)
+        # Use deterministic wait instead of fixed 5 second sleep
+        self.wait_for_map_stable(driver, wait, timeout=30)
         map_loaded = driver.execute_script("""
             return typeof map !== 'undefined' && map.loaded && map.loaded();
         """)
@@ -45,7 +47,8 @@ class TestMobileAppWithTestData:
                 duration: 1000
             }});
         """)
-        time.sleep(3)  # Wait for render
+        # Use deterministic wait for map navigation instead of fixed 3 second sleep
+        self.wait_for_map_stable(driver, WebDriverWait(driver, 15), timeout=15)
         
         # Sample pixels along the expected route
         pixel_check = driver.execute_script("""
@@ -236,7 +239,8 @@ class TestMobileAppWithTestData:
         wait = mobile_driver['wait']
         
         # Setup and navigate to test area
-        time.sleep(8)
+        # Use deterministic WebView readiness wait instead of fixed 8 second sleep
+        self.wait_for_webview_ready(driver, timeout=30)
         self.switch_to_webview(driver)
         self.wait_for_map_load(driver, wait)
         
@@ -264,7 +268,8 @@ class TestMobileAppWithTestData:
                 duration: 1500
             }});
         """)
-        time.sleep(4)
+        # Use deterministic wait for map navigation instead of fixed 4 second sleep
+        self.wait_for_map_stable(driver, wait, timeout=20)
         
         # Step 3: Verify features are in viewport
         print("📋 Step 3: Verifying features in viewport...")
@@ -272,6 +277,9 @@ class TestMobileAppWithTestData:
         assert features['viewportContainsRoute'], "Test route not in viewport"
         assert features['testAreaFeatures'] > 0, f"No features found in test area (found {features['testAreaFeatures']})"
         print(f"✅ Found {features['testAreaFeatures']} features in test area")
+        
+        # Wait for layers to stabilize after navigation
+        self.wait_for_layers_stable(driver, expected_count=1, timeout=15)
         
         # Step 4: Verify pixels are actually rendered
         print("📋 Step 4: Verifying actual pixel rendering...")

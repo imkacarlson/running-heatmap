@@ -6,7 +6,7 @@ This implementation plan reduces test runtime from ~408s to ≤240s through targ
 
 ## Tasks
 
-- [ ] 1. Create deterministic wait helpers in base_mobile_test.py
+- [x] 1. Create deterministic wait helpers in base_mobile_test.py
   - File: testing/base_mobile_test.py
   - Add wait_for_webview_ready(), wait_for_map_stable(), wait_for_layers_stable() functions
   - Integrate with existing WebDriverWait patterns and map_load_detector.py logic

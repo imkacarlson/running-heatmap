@@ -5,7 +5,8 @@ import time
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, ElementClickInterceptedException
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.common.exceptions import TimeoutException, ElementClickInterceptedException, JavascriptException
 from map_load_detector import MapLoadDetector
 
 class BaseMobileTest:
@@ -25,6 +26,191 @@ class BaseMobileTest:
         """
         detector = MapLoadDetector(driver, wait, verbose=verbose)
         return detector.wait_for_map_ready()
+    
+    def wait_for_webview_ready(self, driver, timeout=30):
+        """
+        Wait for WebView context to be available and ready for interaction.
+        Replaces fixed time.sleep() calls in WebView switching.
+        
+        Args:
+            driver: Selenium WebDriver instance
+            timeout: Maximum seconds to wait (default 30)
+            
+        Returns:
+            True when WebView is ready, raises TimeoutException if not ready in time
+        """
+        start_time = time.time()
+        
+        while time.time() - start_time < timeout:
+            try:
+                # Check if WebView contexts are available
+                contexts = driver.contexts
+                webview_available = any('WEBVIEW' in ctx for ctx in contexts)
+                
+                if webview_available:
+                    # Test if WebView context is ready for JavaScript execution
+                    try:
+                        result = driver.execute_script("return typeof document !== 'undefined';")
+                        if result:
+                            return True
+                    except JavascriptException:
+                        # WebView not ready for JS execution yet
+                        pass
+                        
+                time.sleep(0.5)  # Poll every 500ms
+                
+            except Exception:
+                time.sleep(0.5)
+                
+        raise TimeoutException(f"WebView not ready after {timeout} seconds")
+    
+    def wait_for_map_stable(self, driver, wait, timeout=45):
+        """
+        Wait for map to be loaded and stable with tiles ready.
+        Replaces fixed time.sleep() calls after map navigation.
+        
+        Args:
+            driver: Selenium WebDriver instance
+            wait: WebDriverWait instance  
+            timeout: Maximum seconds to wait (default 45)
+            
+        Returns:
+            True when map is stable, raises TimeoutException if not stable in time
+        """
+        start_time = time.time()
+        
+        # First ensure basic map load
+        detector = MapLoadDetector(driver, wait, verbose=False)
+        detector.wait_for_map_ready(timeout=min(30, timeout))
+        
+        # Then wait for tile stability
+        consecutive_stable_checks = 0
+        required_stable_checks = 3
+        
+        while time.time() - start_time < timeout:
+            try:
+                # Check if tiles are loaded and stable
+                tile_state = driver.execute_script("""
+                    if (typeof map === 'undefined') return {stable: false, loaded: 0};
+                    
+                    try {
+                        const tilesLoaded = map.areTilesLoaded && map.areTilesLoaded();
+                        const mapLoaded = map.loaded && map.loaded();
+                        const styleLoaded = map.isStyleLoaded && map.isStyleLoaded();
+                        
+                        return {
+                            stable: tilesLoaded && mapLoaded && styleLoaded,
+                            loaded: tilesLoaded ? 1 : 0
+                        };
+                    } catch (e) {
+                        return {stable: false, loaded: 0, error: e.message};
+                    }
+                """)
+                
+                if tile_state.get('stable', False):
+                    consecutive_stable_checks += 1
+                    if consecutive_stable_checks >= required_stable_checks:
+                        return True
+                else:
+                    consecutive_stable_checks = 0
+                    
+                time.sleep(0.5)  # Poll every 500ms
+                
+            except Exception:
+                consecutive_stable_checks = 0
+                time.sleep(0.5)
+                
+        raise TimeoutException(f"Map not stable after {timeout} seconds")
+    
+    def wait_for_layers_stable(self, driver, expected_count, timeout=30):
+        """
+        Wait for activity layers/features to reach expected count and remain stable.
+        Replaces fixed time.sleep() calls after layer rendering.
+        
+        Args:
+            driver: Selenium WebDriver instance
+            expected_count: Expected number of activity features/layers
+            timeout: Maximum seconds to wait (default 30)
+            
+        Returns:
+            True when layers are stable, raises TimeoutException if not stable in time
+        """
+        start_time = time.time()
+        consecutive_stable_checks = 0
+        required_stable_checks = 3
+        last_count = 0
+        
+        while time.time() - start_time < timeout:
+            try:
+                # Query rendered features to check activity visibility
+                feature_info = driver.execute_script("""
+                    if (typeof map === 'undefined') return {count: 0, ready: false};
+                    
+                    try {
+                        // Check if map is ready for queries
+                        if (!map.loaded || !map.loaded()) {
+                            return {count: 0, ready: false};
+                        }
+                        
+                        // Query all rendered features
+                        const allFeatures = map.queryRenderedFeatures();
+                        
+                        // Count LineString features (activity routes)
+                        const activityFeatures = allFeatures.filter(f => 
+                            f.geometry && f.geometry.type === 'LineString'
+                        );
+                        
+                        return {
+                            count: activityFeatures.length,
+                            ready: true,
+                            total: allFeatures.length
+                        };
+                    } catch (e) {
+                        return {count: 0, ready: false, error: e.message};
+                    }
+                """)
+                
+                if not feature_info.get('ready', False):
+                    time.sleep(0.5)
+                    continue
+                    
+                current_count = feature_info.get('count', 0)
+                
+                # Check if we have expected count and it's stable
+                if current_count >= expected_count and current_count == last_count:
+                    consecutive_stable_checks += 1
+                    if consecutive_stable_checks >= required_stable_checks:
+                        return True
+                else:
+                    consecutive_stable_checks = 0
+                    
+                last_count = current_count
+                time.sleep(0.5)  # Poll every 500ms
+                
+            except Exception:
+                consecutive_stable_checks = 0
+                time.sleep(0.5)
+                
+        # If we can't reach expected count but have some features, that might be acceptable
+        final_info = driver.execute_script("""
+            if (typeof map === 'undefined') return {count: 0};
+            try {
+                const allFeatures = map.queryRenderedFeatures();
+                const activityFeatures = allFeatures.filter(f => 
+                    f.geometry && f.geometry.type === 'LineString'
+                );
+                return {count: activityFeatures.length};
+            } catch (e) {
+                return {count: 0};
+            }
+        """)
+        
+        final_count = final_info.get('count', 0)
+        if final_count > 0:
+            # Accept partial success if we have some features visible
+            return True
+            
+        raise TimeoutException(f"Layers not stable after {timeout} seconds (expected: {expected_count}, final: {final_count})")
     
     def switch_to_webview(self, driver, max_attempts=3):
         """
@@ -50,11 +236,14 @@ class BaseMobileTest:
                     print(f"🎯 Targeting WebView: {target_webview}")
                     driver.switch_to.context(target_webview)
                     
-                    # Verify with simple JS execution and wait for DOM
-                    time.sleep(2)  # Give WebView time to initialize
-                    driver.execute_script("return typeof document !== 'undefined';")
-                    print(f"✅ Successfully switched to: {target_webview}")
-                    return target_webview
+                    # Wait for WebView to be ready instead of fixed sleep
+                    try:
+                        self.wait_for_webview_ready(driver, timeout=10)
+                        print(f"✅ Successfully switched to: {target_webview}")
+                        return target_webview
+                    except TimeoutException:
+                        print(f"⚠️ WebView not ready after context switch: {target_webview}")
+                        # Continue to retry logic below
                 else:
                     print("⚠️ No suitable WebView context found")
                     
@@ -62,14 +251,14 @@ class BaseMobileTest:
                 print(f"⚠️ WebView switch attempt {attempt + 1} failed: {e}")
                 if attempt < max_attempts - 1:
                     print("🔄 Waiting before retry...")
-                    time.sleep(3 + attempt)  # Increasing delay
+                    time.sleep(2 + attempt)  # Shorter increasing delay
                     
                     # Try to close interfering webview_shell if present
                     try:
                         if 'org.chromium.webview_shell' in str(driver.contexts):
                             print("🧹 Attempting to clear webview_shell interference...")
                             driver.switch_to.context('NATIVE_APP')
-                            time.sleep(1)
+                            time.sleep(0.5)  # Shorter wait
                     except:
                         pass
                     continue

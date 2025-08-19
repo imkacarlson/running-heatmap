@@ -121,7 +121,7 @@ This implementation plan reduces test runtime from ~408s to ≤240s through targ
   - _Leverage: existing infrastructure tests_
   - _Requirements: 6.1, 6.3, 6.4_
 
-- [ ] 15. Update documentation with optimization usage
+- [x] 15. Update documentation with optimization usage
   - File: testing/README.md
   - Document new pytest markers (needs_clean_state) and their usage
   - Add performance optimization section with before/after metrics

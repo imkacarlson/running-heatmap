@@ -30,7 +30,7 @@ This implementation plan reduces test runtime from ~408s to ≤240s through targ
   - _Leverage: testing/base_mobile_test.py wait helpers from task 1_
   - _Requirements: 2.1, 2.2, 2.3_
 
-- [ ] 4. Replace sleep() calls with deterministic waits in upload test
+- [x] 4. Replace sleep() calls with deterministic waits in upload test
   - File: testing/test_upload_functionality.py  
   - Replace major sleep() calls: time.sleep(12), time.sleep(3), time.sleep(2), time.sleep(5)
   - Focus on app startup, file picker readiness, navigation waits

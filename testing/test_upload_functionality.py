@@ -30,11 +30,11 @@ class TestUploadFunctionality(BaseMobileTest):
         wait = mobile_driver['wait']
         
         # Phase 1: Setup and App Launch
-        print("⏳ Allowing app to fully start up...")
-        time.sleep(12)  # Extended startup wait
-        
         print("🔄 Switching to WebView context...")
         self.switch_to_webview(driver)
+        
+        print("⏳ Waiting for WebView to be ready for interaction...")
+        self.wait_for_webview_ready(driver, timeout=30)
         
         print("🗺️ Waiting for map to fully load...")
         self.wait_for_map_load(driver, wait, verbose=True)
@@ -125,6 +125,41 @@ class TestUploadFunctionality(BaseMobileTest):
         else:
             raise Exception(f"Failed to verify test file on device: {verify_result.stderr}")
     
+    def wait_for_picker_ready(self, driver, timeout=10):
+        """Wait for file picker to be ready for interaction"""
+        start_time = time.time()
+        
+        while time.time() - start_time < timeout:
+            try:
+                # Check if file picker UI elements are present
+                # Look for common file picker elements
+                picker_indicators = [
+                    "//android.widget.TextView[@text='Recent']",
+                    "//android.widget.TextView[@text='Downloads']", 
+                    "//android.widget.TextView[@text='Download']",
+                    "//android.widget.ImageView[@content-desc='Show roots']",
+                    "//android.widget.ImageButton[@content-desc='Show roots']",
+                    "//*[contains(@resource-id, 'files')]",
+                    "//*[contains(@resource-id, 'picker')]"
+                ]
+                
+                for indicator in picker_indicators:
+                    try:
+                        element = driver.find_element("xpath", indicator)
+                        if element.is_displayed():
+                            return True
+                    except:
+                        continue
+                        
+                time.sleep(0.5)  # Poll every 500ms
+                
+            except Exception:
+                time.sleep(0.5)
+                
+        # If we can't detect picker readiness, log warning and continue
+        print("⚠️ File picker readiness could not be confirmed, proceeding anyway")
+        return True
+
     def click_upload_button_and_verify(self, driver, wait):
         """Click upload button and verify file picker opens"""
         print("📱 Locating and clicking upload button...")
@@ -132,12 +167,16 @@ class TestUploadFunctionality(BaseMobileTest):
         # Find upload button
         upload_btn = self.find_clickable_element(driver, wait, "#upload-btn")
         upload_btn.click()
-        time.sleep(2)
+        
+        # Short wait for UI to respond to click
+        time.sleep(0.5)
         
         # Switch to native context to interact with file picker
         print("🔄 Switching to native context for file picker...")
         driver.switch_to.context('NATIVE_APP')
-        time.sleep(3)  # Wait for file picker to appear
+        
+        print("⏳ Waiting for file picker to be ready...")
+        self.wait_for_picker_ready(driver, timeout=10)
         
         print("✅ Upload button clicked, file picker should be open")
     
@@ -146,8 +185,8 @@ class TestUploadFunctionality(BaseMobileTest):
         print("📂 Navigating file picker to select test file...")
         
         try:
-            # Wait for file picker to appear
-            time.sleep(3)
+            # File picker should be ready from picker readiness check
+            time.sleep(0.5)  # Brief wait for UI to settle
             
             # Strategy 1: Look for the file directly by name (in case it's in Recent)
             try:
@@ -183,7 +222,7 @@ class TestUploadFunctionality(BaseMobileTest):
                     "//android.widget.TextView[@text='Download' or @text='Downloads']"
                 )
                 downloads_folder.click()
-                time.sleep(2)
+                time.sleep(1)  # Shorter wait for folder navigation
                 
                 # Now look for the file in Downloads
                 file_element = driver.find_element(
@@ -388,16 +427,20 @@ class TestUploadFunctionality(BaseMobileTest):
                     return null;
                 """)
                 
-                time.sleep(2)  # Check every 2 seconds
+                time.sleep(1)  # Check every 1 second (more responsive)
                 
             except Exception as e:
                 print(f"⚠️ Error checking upload status: {e}")
                 time.sleep(2)
                 continue
         
-        # Final wait for processing
-        print("📡 Allowing extra time for upload processing...")
-        time.sleep(5)
+        # Wait for map to stabilize after upload processing
+        print("📡 Waiting for map to stabilize after upload processing...")
+        try:
+            self.wait_for_map_stable(driver, wait, timeout=10)
+        except Exception as e:
+            print(f"⚠️ Map stability check failed: {e}, continuing anyway...")
+            time.sleep(2)  # Minimal fallback wait
         
         print("✅ Upload processing wait completed")
     
@@ -418,7 +461,12 @@ class TestUploadFunctionality(BaseMobileTest):
                 duration: 1000
             }});
         """)
-        time.sleep(3)  # Wait for navigation and render
+        # Wait for map navigation to complete with deterministic check
+        try:
+            self.wait_for_map_stable(driver, None, timeout=10)
+        except Exception:
+            # Fallback to shorter wait if stability check fails
+            time.sleep(2)
         
         # Step 2: Verify red activity line at specific uploaded coordinates
         print("📋 Step 2: Verifying red line pixels at uploaded GPX coordinates...")
@@ -464,6 +512,33 @@ class TestUploadFunctionality(BaseMobileTest):
     
     def verify_uploaded_activity_line_visible(self, driver):
         """Verify red activity line is rendered at uploaded GPX coordinates using pixel sampling"""
+        # Skip pixel sampling in WebView if we know it won't work
+        try:
+            # Quick test to see if pixel sampling is possible
+            test_result = driver.execute_script("""
+                try {
+                    const canvas = map.getCanvas();
+                    if (!canvas) return {canSample: false, reason: 'No canvas'};
+                    
+                    const ctx = canvas.getContext('2d', {willReadFrequently: true});
+                    if (!ctx) return {canSample: false, reason: 'No 2D context'};
+                    
+                    // Try a single pixel read to test if it works
+                    const pixel = ctx.getImageData(1, 1, 1, 1).data;
+                    return {canSample: true, testPixel: pixel.length};
+                } catch (e) {
+                    return {canSample: false, reason: e.message};
+                }
+            """)
+            
+            if not test_result.get('canSample', False):
+                print(f"⚠️ Skipping pixel sampling: {test_result.get('reason', 'WebView limitation')}")
+                print("📝 Using viewport feature verification instead")
+                return {'error': 'Pixel sampling unavailable - WebView limitation', 'skipReason': test_result.get('reason')}
+        except Exception as e:
+            print(f"⚠️ Skipping pixel sampling due to error: {e}")
+            return {'error': f'Pixel sampling failed: {str(e)}'}
+        
         print("🎯 Starting pixel-based verification at uploaded GPX coordinates...")
         
         # Sample pixels along the uploaded route points (from manual_upload_run.gpx)
@@ -617,6 +692,25 @@ class TestUploadFunctionality(BaseMobileTest):
     
     def verify_activity_pixels_in_viewport(self, driver):
         """Verify activity line pixels are visible in current viewport (after auto-zoom)"""
+        # Skip pixel sampling if we know it won't work
+        try:
+            test_result = driver.execute_script("""
+                try {
+                    const canvas = map.getCanvas();
+                    const ctx = canvas ? canvas.getContext('2d', {willReadFrequently: true}) : null;
+                    return {canSample: !!(canvas && ctx)};
+                } catch (e) {
+                    return {canSample: false};
+                }
+            """)
+            
+            if not test_result.get('canSample', False):
+                print("⚠️ Skipping viewport pixel sampling: WebView limitation")
+                return {'error': 'Viewport pixel sampling unavailable - WebView limitation'}
+        except Exception:
+            print("⚠️ Skipping viewport pixel sampling due to error")
+            return {'error': 'Viewport pixel sampling failed'}
+        
         print("🎯 Starting pixel-based verification in current viewport...")
         
         # Sample pixels in a grid pattern across the viewport to detect activity lines

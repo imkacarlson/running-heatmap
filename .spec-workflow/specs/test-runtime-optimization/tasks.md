@@ -80,7 +80,7 @@ This implementation plan reduces test runtime from ~408s to ≤240s through targ
   - _Leverage: existing pytest.ini marker configuration_
   - _Requirements: 8.1, 8.2_
 
-- [ ] 10. Mark tests requiring clean state with needs_clean_state marker
+- [x] 10. Mark tests requiring clean state with needs_clean_state marker
   - Files: testing/test_upload_functionality.py, other state-dependent tests
   - Add @pytest.mark.needs_clean_state to tests that modify app state or require fresh context
   - Identify tests that upload files, modify settings, or change app configuration

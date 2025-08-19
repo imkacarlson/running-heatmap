@@ -54,7 +54,7 @@ This implementation plan reduces test runtime from ~408s to ≤240s through targ
   - _Leverage: existing W3C touch actions, coordinate projection system_
   - _Requirements: 4.1, 4.2, 4.4_
 
-- [ ] 7. Convert mobile_driver fixture to module scope
+- [x] 7. Convert mobile_driver fixture to module scope
   - File: testing/conftest.py
   - Change @pytest.fixture(scope="function") to @pytest.fixture(scope="module") for mobile_driver
   - Move configure_emulator_stability() call to session or module level to avoid per-test execution

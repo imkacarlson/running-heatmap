@@ -462,21 +462,29 @@ def session_setup(fast_mode):
         # Cleanup using modularized cleanup utility
         cleanup_test_environment(str(test_env))
 
-@pytest.fixture(scope="function")
-def mobile_driver(session_setup):
+@pytest.fixture(scope="module")
+def emulator_stability_setup(session_setup):
+    """
+    Module-scoped fixture to configure emulator stability once per test module.
+    This avoids repeated ADB calls for stability configuration.
+    """
+    print(f"\n🎛️  Configuring emulator stability for module...")
+    configure_emulator_stability()
+    print(f"✅ Emulator stability configured for module")
+    return True
+
+@pytest.fixture(scope="module")
+def mobile_driver(session_setup, emulator_stability_setup):
     """
     Provide Appium WebDriver instance for mobile tests.
-    This fixture creates a driver instance and handles cleanup.
+    Module-scoped to minimize driver setup overhead while maintaining test isolation.
     """
     from appium import webdriver
     from selenium.webdriver.support.ui import WebDriverWait
     from pathlib import Path
     import config
     
-    print(f"\n📱 Setting up mobile driver...")
-    
-    # Configure emulator for deterministic behavior
-    configure_emulator_stability()
+    print(f"\n📱 Setting up module-scoped mobile driver...")
     
     # Use test config for capabilities
     capabilities = config.TestConfig.ANDROID_CAPABILITIES.copy()
@@ -499,13 +507,40 @@ def mobile_driver(session_setup):
     # Create WebDriverWait instance
     wait = WebDriverWait(driver, config.TestConfig.EXPLICIT_WAIT)
     
-    print(f"✅ Mobile driver ready")
+    # Add reset capability for state cleanup between tests
+    def reset_app_state():
+        """
+        Reset app state between tests while reusing the same driver instance.
+        This provides test isolation without driver recreation overhead.
+        """
+        try:
+            # Method 1: Background and reactivate app to reset state
+            driver.background_app(1)  # Background for 1 second
+            driver.activate_app(session_setup['package_name'])  # Bring back to foreground
+            
+            # Method 2: Alternative - terminate and restart (more thorough but slower)
+            # driver.terminate_app(session_setup['package_name'])
+            # driver.activate_app(session_setup['package_name'])
+            
+            print("🔄 App state reset completed")
+        except Exception as e:
+            print(f"⚠️ App state reset warning: {e}")
+            # Fallback: try terminate/restart approach
+            try:
+                driver.terminate_app(session_setup['package_name'])
+                driver.activate_app(session_setup['package_name'])
+                print("🔄 App state reset completed (fallback method)")
+            except Exception as e2:
+                print(f"⚠️ App state reset fallback also failed: {e2}")
     
-    # Yield driver and wait instance to tests
+    print(f"✅ Module-scoped mobile driver ready")
+    
+    # Yield driver, wait instance, and reset function to tests
     yield {
         'driver': driver,
         'wait': wait,
-        'session_data': session_setup
+        'session_data': session_setup,
+        'reset': reset_app_state
     }
     
     # Cleanup using modularized cleanup utility

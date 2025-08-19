@@ -22,7 +22,7 @@ This implementation plan reduces test runtime from ~408s to ≤240s through targ
   - _Leverage: testing/base_mobile_test.py wait helpers from task 1_
   - _Requirements: 2.1, 2.2, 2.3_
 
-- [ ] 3. Replace sleep() calls with deterministic waits in lasso selection test  
+- [x] 3. Replace sleep() calls with deterministic waits in lasso selection test  
   - File: testing/test_basic_lasso_selection.py
   - Replace time.sleep(12), time.sleep(1), time.sleep(0.5), time.sleep(1.0), time.sleep(2.0) with deterministic waits
   - Focus on app startup (12s), tile loading (1s), lasso processing (2s) delays

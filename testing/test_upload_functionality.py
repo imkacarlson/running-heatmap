@@ -62,7 +62,11 @@ class TestUploadFunctionality(BaseMobileTest):
         print("🎯 Starting lasso selection verification of all activities (uploaded + packaged)...")
         self.lasso_selection_verification(driver, wait)
         
-        # Phase 6: Cleanup - Clear uploaded activities (Phase 5 is individual activity selection within lasso verification)
+        # Phase 5: Individual Activity Selection in Extras Sidebar
+        print("🎯 Testing individual activity selection in extras sidebar...")
+        self.verify_individual_activity_selection_in_extras(driver, wait)
+        
+        # Phase 6: Cleanup - Clear uploaded activities 
         print("🧹 Cleaning up uploaded activities...")
         self.clear_uploaded_activities(driver, wait)
         
@@ -1078,6 +1082,187 @@ class TestUploadFunctionality(BaseMobileTest):
         print("   ✓ Sidebar can be properly closed with 'x' button")
         print("   ✓ All activities become visible again after cleanup")
         print("✅ Uploaded activity integrates seamlessly with existing sidebar functionality!")
+    
+    def verify_individual_activity_selection_in_extras(self, driver, wait):
+        """Verify individual activity selection using the extras sidebar checkbox"""
+        print("🎯 Starting individual activity selection test in extras sidebar...")
+        
+        # Step 1: Open extras sidebar
+        print("📱 Opening extras sidebar...")
+        extras_btn = self.find_clickable_element(driver, wait, "#extras-btn")
+        extras_btn.click()
+        
+        # Wait for extras panel to be fully open
+        from selenium.webdriver.support import expected_conditions as EC
+        from selenium.webdriver.common.by import By
+        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "#extras-panel.open")))
+        print("   ✅ Extras panel opened successfully")
+        
+        # Step 2: Find and click the last activity checkbox (show only this activity)
+        print("🔍 Finding the 'show only this activity' checkbox...")
+        checkbox = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "#extras-panel .last-activity-checkbox")))
+        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", checkbox)
+        
+        print("☑️  Clicking 'show only this activity' checkbox...")
+        # Check if checkbox is already checked before clicking
+        was_checked_before = checkbox.is_selected()
+        print(f"   🔍 Debug - Checkbox state before click: {'checked' if was_checked_before else 'unchecked'}")
+        
+        checkbox.click()
+        
+        # Verify checkbox state after click
+        is_checked_after = checkbox.is_selected()
+        print(f"   🔍 Debug - Checkbox state after click: {'checked' if is_checked_after else 'unchecked'}")
+        
+        if not was_checked_before and is_checked_after:
+            print(f"   ✅ Activity checkbox successfully checked")
+        elif was_checked_before and not is_checked_after:
+            print(f"   ✅ Activity checkbox successfully unchecked")
+        elif was_checked_before and is_checked_after:
+            print(f"   ⚠️ Checkbox was already checked - click may have had no effect")
+        else:
+            print(f"   ⚠️ Checkbox click may not have worked properly")
+        
+        # Step 2.5: Wait for filter to apply (zoom and wait for map idle like working test)
+        print("🗺️ Zooming and waiting for filter to apply...")
+        driver.execute_script("map.jumpTo({ center: [-77.4169, 39.4168], zoom: 12 });")
+        driver.execute_async_script("""
+            const cb = arguments[arguments.length - 1];
+            if (typeof map === 'undefined') return cb(false);
+            map.once('idle', () => cb(true));
+        """)
+        print("   ✅ Map idle after filter application")
+        
+        # Step 3: Minimize extras sidebar (using correct collapse method)
+        print("📱 Minimizing extras sidebar...")
+        collapse_btn = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "#extras-collapse")))
+        collapse_btn.click()
+        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "#extras-panel.collapsed")))
+        print("   ✅ Extras panel collapsed successfully")
+        
+        # Step 4: Verify only the selected activity is visible (reuse existing working verification)
+        print("🔍 Verifying only selected activity is visible...")
+        features_verification = self.verify_features_in_current_viewport(driver)
+        
+        # Also check the map filter is correctly applied (reuse existing logic from lines 981-994)
+        map_filter_check = driver.execute_script("""
+            const layer = map.getLayer('runsVec');
+            const filter = layer ? map.getFilter('runsVec') : null;
+            const renderedFeatures = map.queryRenderedFeatures();
+            const activityFeatures = renderedFeatures.filter(f => 
+                f.geometry && f.geometry.type === 'LineString'
+            );
+            
+            return {
+                hasFilter: filter != null,
+                filterApplied: filter != null,
+                renderedActivityCount: activityFeatures.length
+            };
+        """)
+        
+        print(f"   📊 Map filter check: {map_filter_check}")
+        print(f"   📊 Features in viewport: {features_verification['featuresInViewport']}")
+        
+        # Success criteria for single activity visibility (same as working verification in lines 1000-1003)
+        success_criteria = {
+            'single_activity_visible': features_verification['featuresInViewport'] == 1,
+            'filter_applied': map_filter_check['filterApplied'],
+        }
+        
+        print("🏆 Single activity visibility verification results:")
+        for criterion, passed in success_criteria.items():
+            status = "✅" if passed else "❌"
+            print(f"  {status} {criterion}: {passed}")
+        
+        # Assert all criteria (same as working assertions in lines 1011-1012)
+        assert success_criteria['single_activity_visible'], f"Exactly 1 activity should be visible on map (selected activity only), found {features_verification['featuresInViewport']}"
+        assert success_criteria['filter_applied'], "Map filter should be applied when activity is individually selected"
+        
+        print("   ✅ Single activity visibility verification passed")
+        
+        # Step 6: Reopen extras sidebar (expand from collapsed state)
+        print("📱 Reopening extras sidebar...")
+        expand_btn = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "#extras-expand-btn")))
+        expand_btn.click()
+        wait.until(EC.invisibility_of_element_located((By.CSS_SELECTOR, "#extras-panel.collapsed")))
+        print("   ✅ Extras panel expanded successfully")
+        
+        # Step 7: Uncheck the "show only this activity" checkbox
+        print("☐ Unchecking 'show only this activity' checkbox...")
+        checkbox = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "#extras-panel .last-activity-checkbox")))
+        if checkbox.is_selected():
+            checkbox.click()
+            print(f"   ✅ Activity checkbox unchecked successfully")
+        else:
+            print(f"   ℹ️ Activity checkbox was already unchecked")
+        
+        # Step 8: Close extras panel completely (using X button)
+        print("📱 Closing extras panel completely...")
+        close_btn = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "#extras-close")))
+        close_btn.click()
+        wait.until(EC.invisibility_of_element_located((By.CSS_SELECTOR, "#extras-panel.open")))
+        print("   ✅ Extras panel closed successfully")
+        
+        # Step 9: Verify all activities are visible again (reuse existing working verification)
+        print("🔍 Verifying all activities are visible again...")
+        
+        # Zoom out slightly to ensure multiple runs are in view
+        driver.execute_script("map.setZoom(10);")
+        driver.execute_async_script("""
+            const cb = arguments[arguments.length - 1];
+            if (typeof map === 'undefined') return cb(false);
+            map.once('idle', () => cb(true));
+        """)
+        
+        # Use existing working verification method  
+        final_features_verification = self.verify_features_in_current_viewport(driver)
+        print(f"   📊 Final features in viewport: {final_features_verification['featuresInViewport']}")
+        
+        # Check that filter is cleared (reuse existing logic)
+        final_map_filter_check = driver.execute_script("""
+            const layer = map.getLayer('runsVec');
+            const filter = layer ? map.getFilter('runsVec') : null;
+            const renderedFeatures = map.queryRenderedFeatures();
+            const activityFeatures = renderedFeatures.filter(f => 
+                f.geometry && f.geometry.type === 'LineString'
+            );
+            
+            return {
+                hasFilter: filter != null,
+                filterCleared: filter == null,
+                renderedActivityCount: activityFeatures.length
+            };
+        """)
+        
+        print(f"   📊 Final map filter check: {final_map_filter_check}")
+        
+        # Success criteria for all activities visible (same as working verification in lines 1062-1065)
+        final_success_criteria = {
+            'all_activities_visible': final_features_verification['featuresInViewport'] >= 3,
+            'filter_cleared': final_map_filter_check['filterCleared'],
+        }
+        
+        print("🏆 All activities visibility verification results:")
+        for criterion, passed in final_success_criteria.items():
+            status = "✅" if passed else "❌"
+            print(f"  {status} {criterion}: {passed}")
+        
+        # Assert all criteria (same as working assertions in lines 1064-1065)
+        assert final_success_criteria['all_activities_visible'], f"All 3 activities (2 packaged + 1 uploaded) should be visible after unchecking, found {final_features_verification['featuresInViewport']}"
+        assert final_success_criteria['filter_cleared'], "Map filter should be cleared after unchecking activity selection"
+        
+        print("   ✅ All activities visibility verification passed")
+        
+        print("🎉 Individual activity selection test completed successfully!")
+        print("📋 Verification summary:")
+        print("   ✓ Found 'show only this activity' checkbox in extras sidebar")
+        print("   ✓ Checkbox successfully applies activity filter")
+        print("   ✓ Map filter applies when activity is individually selected")
+        print("   ✓ Only selected activity is visible when checkbox is checked")
+        print("   ✓ Activity checkbox can be unchecked")
+        print("   ✓ Map filter clears when activity is deselected")
+        print("   ✓ All activities become visible again after deselection")
+        print("✅ Uploaded activity works identically to packaged activities in extras sidebar!")
     
     def _inject_map_helpers(self, driver, wait):
         """Inject map helpers for lasso functionality"""

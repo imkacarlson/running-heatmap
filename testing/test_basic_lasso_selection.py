@@ -151,7 +151,7 @@ class TestBasicLassoSelection(BaseMobileTest):
         # Generate deterministic polygon with larger radius for better motion detection
         print("📐 Generating deterministic polygon...")
         polygon_coords = driver.execute_script("""
-            return window.__mapTestHelpers.generateCenterPolygon(110);
+            return window.__mapTestHelpers.generateCenterPolygon(40);
         """)
         print(f"🗺️ Generated polygon coordinates: {len(polygon_coords)} points")
         

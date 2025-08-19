@@ -46,7 +46,7 @@ This implementation plan reduces test runtime from ~408s to ≤240s through targ
   - _Leverage: testing/base_mobile_test.py wait helpers from task 1_
   - _Requirements: 2.1, 2.2_
 
-- [ ] 6. Optimize lasso polygon from 110 to 40 vertices
+- [x] 6. Optimize lasso polygon from 110 to 40 vertices
   - File: testing/test_basic_lasso_selection.py
   - Change window.__mapTestHelpers.generateCenterPolygon(110) to generateCenterPolygon(40)
   - Verify geometric coverage maintains convex, concave, and edge-crossing test cases

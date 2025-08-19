@@ -39,7 +39,7 @@ This implementation plan reduces test runtime from ~408s to ≤240s through targ
   - _Leverage: testing/base_mobile_test.py wait helpers from task 1_
   - _Requirements: 2.1, 2.2, 5.3_
 
-- [ ] 5. Replace sleep() calls with deterministic waits in extras filter test
+- [x] 5. Replace sleep() calls with deterministic waits in extras filter test
   - File: testing/test_extras_last_activity_filter.py
   - Replace time.sleep(12) app startup delay with deterministic wait
   - Purpose: Complete deterministic wait coverage across all test files

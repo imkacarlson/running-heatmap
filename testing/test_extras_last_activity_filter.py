@@ -14,10 +14,9 @@ class TestExtrasOnlyLastActivity(BaseMobileTest):
         driver = mobile_driver["driver"]
         wait: WebDriverWait = mobile_driver["wait"]
 
-        # Let the app initialize (aligned with your other tests)
-        time.sleep(12)
-        self.switch_to_webview(driver)
-        self.wait_for_map_load(driver, wait, verbose=True)
+        # Let the app initialize - use deterministic wait instead of fixed sleep
+        self.switch_to_webview(driver)  # switch_to_webview already includes WebView readiness wait
+        self.wait_for_map_stable(driver, wait, timeout=45)  # Wait for map to be loaded and stable
 
         # Pan/zoom to the area where your test data reliably renders multiple runs
         driver.execute_script("map.jumpTo({ center: [-77.4169, 39.4168], zoom: 14 });")

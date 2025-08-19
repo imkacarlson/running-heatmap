@@ -19,6 +19,7 @@ class MapLoadDetector:
         self.verbose = verbose
         self.last_tile_count = 0
         self.stable_tile_checks = 0
+        self.stability_threshold = 3  # Default to 3 consecutive stable checks
         
     def wait_for_map_ready(self, timeout=60, min_tiles_threshold=1):
         """
@@ -52,6 +53,59 @@ class MapLoadDetector:
             print(f"✅ Map ready after {time.time() - start_time:.1f} seconds")
         
         return True
+    
+    def wait_for_stable_tiles(self, timeout=30, stability_checks=3, min_tiles=1):
+        """
+        Wait for tile counts to stabilize with configurable stability verification.
+        
+        Args:
+            timeout: Maximum seconds to wait (default 30)
+            stability_checks: Number of consecutive stable checks required (default 3)
+            min_tiles: Minimum tiles needed before checking stability (default 1)
+            
+        Returns:
+            True if tiles are stable, raises TimeoutException if not stable in time
+        """
+        if self.verbose:
+            print(f"🔍 Waiting for stable tiles ({stability_checks} consecutive stable checks)...")
+        
+        start_time = time.time()
+        self.stability_threshold = stability_checks
+        self.stable_tile_checks = 0  # Reset stability counter
+        self.last_tile_count = -1  # Reset to force initial comparison
+        
+        check_interval = 0.5  # Check every 500ms for responsiveness
+        
+        while time.time() - start_time < timeout:
+            tile_info = self._get_tile_loading_state()
+            current_tiles = tile_info['loaded']
+            
+            if self.verbose and int((time.time() - start_time) * 2) % 10 == 0:  # Log every 5 seconds
+                details = tile_info.get('details', 'No details')
+                print(f"   Tile stability: {current_tiles} tiles, "
+                      f"{self.stable_tile_checks}/{stability_checks} stable checks - {details}")
+            
+            # Only check stability once we have minimum tiles
+            if current_tiles >= min_tiles:
+                if self._is_tile_loading_stable(tile_info):
+                    if self.verbose:
+                        details = tile_info.get('details', 'No details')
+                        print(f"   ✓ Tiles stable: {current_tiles} tiles with {stability_checks} consecutive stable checks - {details}")
+                    return True
+            else:
+                # Reset stability if we don't have minimum tiles yet
+                self.stable_tile_checks = 0
+                self.last_tile_count = current_tiles
+            
+            time.sleep(check_interval)
+        
+        # Timeout reached
+        final_tiles = self._get_tile_loading_state()
+        final_details = final_tiles.get('details', 'No details')
+        raise TimeoutException(
+            f"Tiles failed to stabilize in {timeout}s: {final_tiles['loaded']} tiles, "
+            f"{self.stable_tile_checks}/{stability_checks} stable checks - {final_details}"
+        )
     
     def _wait_for_map_element(self):
         """Phase 1: Ensure map DOM element exists"""
@@ -227,8 +281,8 @@ class MapLoadDetector:
             self.stable_tile_checks = 0
             self.last_tile_count = current_count
         
-        # Consider stable if tile count hasn't changed for 2 checks
-        return self.stable_tile_checks >= 2
+        # Consider stable if tile count hasn't changed for stability_threshold checks
+        return self.stable_tile_checks >= self.stability_threshold
     
     def _verify_map_interactive(self):
         """Phase 4: Verify map is interactive and responding"""

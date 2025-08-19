@@ -88,7 +88,7 @@ This implementation plan reduces test runtime from ~408s to ≤240s through targ
   - _Leverage: pytest marker system, existing test patterns_
   - _Requirements: 3.3, 8.2_
 
-- [ ] 11. Update map_load_detector.py with stable tile count verification
+- [x] 11. Update map_load_detector.py with stable tile count verification
   - File: testing/map_load_detector.py
   - Enhance existing tile count detection with stability verification (3 consecutive stable checks)
   - Add wait_for_stable_tiles() function that polls tile counts until stable

@@ -68,6 +68,7 @@ class BaseMobileTest:
         """
         Wait for map to be loaded and stable with tiles ready.
         Replaces fixed time.sleep() calls after map navigation.
+        Uses enhanced MapLoadDetector for consistent stability verification.
         
         Args:
             driver: Selenium WebDriver instance
@@ -77,50 +78,15 @@ class BaseMobileTest:
         Returns:
             True when map is stable, raises TimeoutException if not stable in time
         """
-        start_time = time.time()
-        
-        # First ensure basic map load
+        # Use enhanced MapLoadDetector with stable tile count verification
         detector = MapLoadDetector(driver, wait, verbose=False)
+        
+        # First ensure basic map readiness (30s max)
         detector.wait_for_map_ready(timeout=min(30, timeout))
         
-        # Then wait for tile stability
-        consecutive_stable_checks = 0
-        required_stable_checks = 3
-        
-        while time.time() - start_time < timeout:
-            try:
-                # Check if tiles are loaded and stable
-                tile_state = driver.execute_script("""
-                    if (typeof map === 'undefined') return {stable: false, loaded: 0};
-                    
-                    try {
-                        const tilesLoaded = map.areTilesLoaded && map.areTilesLoaded();
-                        const mapLoaded = map.loaded && map.loaded();
-                        const styleLoaded = map.isStyleLoaded && map.isStyleLoaded();
-                        
-                        return {
-                            stable: tilesLoaded && mapLoaded && styleLoaded,
-                            loaded: tilesLoaded ? 1 : 0
-                        };
-                    } catch (e) {
-                        return {stable: false, loaded: 0, error: e.message};
-                    }
-                """)
-                
-                if tile_state.get('stable', False):
-                    consecutive_stable_checks += 1
-                    if consecutive_stable_checks >= required_stable_checks:
-                        return True
-                else:
-                    consecutive_stable_checks = 0
-                    
-                time.sleep(0.5)  # Poll every 500ms
-                
-            except Exception:
-                consecutive_stable_checks = 0
-                time.sleep(0.5)
-                
-        raise TimeoutException(f"Map not stable after {timeout} seconds")
+        # Then wait for tile stability with 3 consecutive stable checks
+        remaining_timeout = max(15, timeout - 30)  # At least 15s for stability
+        return detector.wait_for_stable_tiles(timeout=remaining_timeout, stability_checks=3)
     
     def wait_for_layers_stable(self, driver, expected_count, timeout=30):
         """

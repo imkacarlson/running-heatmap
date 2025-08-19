@@ -72,7 +72,7 @@ This implementation plan reduces test runtime from ~408s to ≤240s through targ
   - _Leverage: existing cleanup utilities, pytest marker system_
   - _Requirements: 3.3, 3.4_
 
-- [ ] 9. Add pytest markers for test organization
+- [x] 9. Add pytest markers for test organization
   - File: testing/pytest.ini 
   - Add markers: slow, needs_clean_state for test categorization
   - Update marker descriptions and usage documentation

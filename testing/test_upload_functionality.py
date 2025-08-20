@@ -31,7 +31,7 @@ class TestUploadFunctionality(BaseMobileTest):
         
         # Phase 1: Setup and App Launch
         print("⏳ Allowing app to fully start up...")
-        time.sleep(12)  # Extended startup wait
+        time.sleep(8)  # Reduced startup wait to match other tests
         
         print("🔄 Switching to WebView context...")
         self.switch_to_webview(driver)
@@ -54,17 +54,9 @@ class TestUploadFunctionality(BaseMobileTest):
         self.verify_upload_processing_complete(driver, wait)
         
         
-        # Phase 3: Rock-Solid Activity Verification
-        print("🏆 Starting rock-solid verification of uploaded activity...")
-        self.rock_solid_upload_verification(driver)
-        
-        # Phase 4: Lasso Selection Verification - Test uploaded activity shows in sidebar
-        print("🎯 Starting lasso selection verification of all activities (uploaded + packaged)...")
-        self.lasso_selection_verification(driver, wait)
-        
-        # Phase 5: Individual Activity Selection in Extras Sidebar
-        print("🎯 Testing individual activity selection in extras sidebar...")
-        self.verify_individual_activity_selection_in_extras(driver, wait)
+        # Phase 3: Combined Verification - Activity verification + Lasso selection
+        print("🏆 Starting combined verification of uploaded activity...")
+        self.combined_upload_verification(driver, wait)
         
         # Phase 6: Cleanup - Clear uploaded activities 
         print("🧹 Cleaning up uploaded activities...")
@@ -78,8 +70,8 @@ class TestUploadFunctionality(BaseMobileTest):
     
     
     def setup_test_file_on_device(self):
-        """Push manual_upload_run.gpx to device Downloads folder"""
-        print("📁 Pushing test GPX file to device...")
+        """Push manual_upload_run.gpx to device Downloads folder - optimized"""
+        print("📁 Setting up test GPX file on device...")
         
         # Set up ADB environment
         android_home = os.environ.get('ANDROID_HOME', '/home/imkacarlson/android-sdk')
@@ -94,16 +86,19 @@ class TestUploadFunctionality(BaseMobileTest):
         # Device destination path
         device_path = "/sdcard/Download/manual_upload_run.gpx"
         
-        # Check if file already exists on device
+        # Quick existence check (no detailed ls)
         check_result = subprocess.run(
-            ["adb", "shell", "ls", device_path], 
+            ["adb", "shell", "test", "-f", device_path], 
             capture_output=True, text=True, env=adb_env
         )
         
         if check_result.returncode == 0:
-            print(f"✅ Test file already exists on device: {device_path}")
+            print(f"✅ Test file already exists on device")
+            # Store that we didn't push it (for smart cleanup)
+            self._file_pushed_by_test = False
         else:
             # Push file to device
+            print(f"📤 Pushing test file to device...")
             push_result = subprocess.run(
                 ["adb", "push", str(test_file), device_path],
                 capture_output=True, text=True, env=adb_env
@@ -112,18 +107,18 @@ class TestUploadFunctionality(BaseMobileTest):
             if push_result.returncode != 0:
                 raise Exception(f"Failed to push test file: {push_result.stderr}")
             
-            print(f"✅ Test file pushed to device: {device_path}")
+            print(f"✅ Test file pushed to device")
+            # Store that we pushed it (for smart cleanup)
+            self._file_pushed_by_test = True
         
-        # Verify file is accessible
+        # Quick verification (no detailed ls)
         verify_result = subprocess.run(
-            ["adb", "shell", "ls", "-la", device_path],
+            ["adb", "shell", "test", "-r", device_path],
             capture_output=True, text=True, env=adb_env
         )
         
-        if verify_result.returncode == 0:
-            print(f"📁 File verified on device: {verify_result.stdout.strip()}")
-        else:
-            raise Exception(f"Failed to verify test file on device: {verify_result.stderr}")
+        if verify_result.returncode != 0:
+            raise Exception(f"Test file not accessible on device")
     
     def click_upload_button_and_verify(self, driver, wait):
         """Click upload button and verify file picker opens"""
@@ -132,40 +127,44 @@ class TestUploadFunctionality(BaseMobileTest):
         # Find upload button
         upload_btn = self.find_clickable_element(driver, wait, "#upload-btn")
         upload_btn.click()
-        time.sleep(2)
         
-        # Switch to native context to interact with file picker
+        # Optimized context switch - faster transition
         print("🔄 Switching to native context for file picker...")
         driver.switch_to.context('NATIVE_APP')
-        time.sleep(3)  # Wait for file picker to appear
+        time.sleep(2)  # Reduced from 3s to 2s
         
         print("✅ Upload button clicked, file picker should be open")
     
     def navigate_file_picker_and_select(self, driver, wait):
-        """Navigate Android file picker and select manual_upload_run.gpx"""
+        """Navigate Android file picker and select manual_upload_run.gpx - optimized"""
         print("📂 Navigating file picker to select test file...")
         
         try:
-            # Wait for file picker to appear
-            time.sleep(3)
+            # Reduced initial wait
+            time.sleep(2)
             
-            # Strategy 1: Look for the file directly by name (in case it's in Recent)
+            # Strategy 1: Quick check for file in Recent files (most common case)
+            print("🔍 Checking Recent files first...")
             try:
                 file_element = driver.find_element(
                     "xpath", 
                     "//android.widget.TextView[@text='manual_upload_run.gpx']"
                 )
                 file_element.click()
-                print("✅ Found and selected test file directly in Recent")
+                print("✅ Found and selected test file in Recent files")
                 return
             except:
-                print("🔍 File not visible in Recent, navigating to Downloads folder...")
+                print("📁 File not in Recent, checking Downloads...")
             
-            # Strategy 2: Use hamburger menu to navigate to Downloads
+            # Strategy 2: Direct Downloads folder check (fastest navigation)
             try:
-                self.navigate_to_downloads_via_menu(driver)
+                downloads_folder = driver.find_element(
+                    "xpath",
+                    "//android.widget.TextView[@text='Download' or @text='Downloads']"
+                )
+                downloads_folder.click()
+                time.sleep(1)  # Reduced wait
                 
-                # Now look for the file in Downloads
                 file_element = driver.find_element(
                     "xpath",
                     "//android.widget.TextView[@text='manual_upload_run.gpx']"
@@ -173,34 +172,28 @@ class TestUploadFunctionality(BaseMobileTest):
                 file_element.click()
                 print("✅ Found and selected test file in Downloads folder")
                 return
-            except Exception as e:
-                print(f"🔍 Menu navigation failed: {e}, trying direct Downloads detection...")
+            except:
+                print("🔍 Direct Downloads access failed, trying menu navigation...")
             
-            # Strategy 3: Look for Downloads folder directly in main view
+            # Strategy 3: Menu navigation (only if direct access failed)
             try:
-                downloads_folder = driver.find_element(
-                    "xpath",
-                    "//android.widget.TextView[@text='Download' or @text='Downloads']"
-                )
-                downloads_folder.click()
-                time.sleep(2)
+                self.navigate_to_downloads_via_menu(driver)
                 
-                # Now look for the file in Downloads
                 file_element = driver.find_element(
                     "xpath",
                     "//android.widget.TextView[@text='manual_upload_run.gpx']"
                 )
                 file_element.click()
-                print("✅ Found and selected test file in Downloads folder (direct)")
+                print("✅ Found and selected test file via menu navigation")
                 return
-            except:
-                print("🔍 Downloads folder not found directly, trying scroll and search...")
+            except Exception as e:
+                print(f"⚠️ Menu navigation failed: {e}")
             
-            # Strategy 4: Scroll to find Downloads folder or file
+            # Strategy 4: Last resort - scroll search (only if all else fails)
+            print("📜 Last resort: scrolling to find file...")
             try:
                 self.scroll_and_find_downloads(driver)
                 
-                # Look for the file after scrolling
                 file_element = driver.find_element(
                     "xpath",
                     "//android.widget.TextView[@text='manual_upload_run.gpx']"
@@ -209,15 +202,19 @@ class TestUploadFunctionality(BaseMobileTest):
                 print("✅ Found and selected test file after scrolling")
                 return
             except:
-                print("⚠️ Could not find test file after all navigation attempts...")
-                
-                # Debug: dump current screen elements
-                self.dump_current_elements(driver)
-                raise Exception("Could not locate test file in file picker after all navigation attempts")
+                # Quick debug before failing
+                print("⚠️ File not found - attempting quick debug...")
+                try:
+                    elements = driver.find_elements("xpath", "//android.widget.TextView")
+                    visible_files = [elem.get_attribute("text") for elem in elements[:10] if elem.get_attribute("text")]
+                    print(f"📋 Visible files: {visible_files}")
+                except:
+                    pass
+                raise Exception("Could not locate test file in file picker")
                 
         finally:
-            # Wait for file selection to process
-            time.sleep(3)
+            # Reduced wait for file selection processing
+            time.sleep(2)
             
             # Switch back to WebView context
             print("🔄 Switching back to WebView context...")
@@ -341,65 +338,161 @@ class TestUploadFunctionality(BaseMobileTest):
             print(f"⚠️ Error during element dump: {e}")
     
     def verify_upload_processing_complete(self, driver, wait):
-        """Wait for upload processing to complete and verify success"""
+        """Wait for upload processing to complete using event-driven detection"""
         print("⏳ Waiting for upload processing to complete...")
         
-        # Wait for upload status or processing indicators
-        max_wait = 30  # 30 seconds timeout
+        # Use existing MapLoadDetector pattern for efficient waiting
+        max_wait = 15  # Reduced from 30s to 15s
         start_time = time.time()
+        upload_detected = False
         
-        while time.time() - start_time < max_wait:
+        while time.time() - start_time < max_wait and not upload_detected:
             try:
-                # Check for upload status or success indicators
-                status_info = driver.execute_script("""
-                    // Check for any status messages or indicators
-                    const statusElements = document.querySelectorAll('[class*="status"], [id*="status"], .toast, .notification');
-                    const statusTexts = Array.from(statusElements).map(el => el.textContent.trim());
+                # Check for upload completion using map state changes
+                upload_status = driver.execute_script("""
+                    if (typeof map === 'undefined') return {ready: false, reason: 'map not available'};
                     
-                    // Check if upload processing is mentioned
-                    const hasUploadStatus = statusTexts.some(text => 
-                        text.toLowerCase().includes('upload') || 
-                        text.toLowerCase().includes('processing') ||
-                        text.toLowerCase().includes('success') ||
-                        text.toLowerCase().includes('added')
-                    );
-                    
-                    return {
-                        statusTexts: statusTexts,
-                        hasUploadStatus: hasUploadStatus,
-                        timestamp: Date.now()
-                    };
+                    try {
+                        // Check if map has processed the upload (features updated)
+                        const features = map.queryRenderedFeatures();
+                        const activityFeatures = features.filter(f => 
+                            f.geometry && f.geometry.type === 'LineString'
+                        );
+                        
+                        // Check if tiles are loaded (using MapLibre proper API)
+                        const tilesLoaded = map.areTilesLoaded && map.areTilesLoaded();
+                        const styleLoaded = map.isStyleLoaded && map.isStyleLoaded();
+                        
+                        return {
+                            ready: tilesLoaded && styleLoaded && activityFeatures.length > 0,
+                            activityCount: activityFeatures.length,
+                            tilesLoaded: tilesLoaded,
+                            styleLoaded: styleLoaded,
+                            reason: 'checking map state'
+                        };
+                    } catch (error) {
+                        return {ready: false, reason: 'error: ' + error.message};
+                    }
                 """)
                 
-                if status_info['hasUploadStatus']:
-                    print(f"✅ Upload status detected: {status_info['statusTexts']}")
+                if upload_status['ready']:
+                    elapsed = time.time() - start_time
+                    print(f"✅ Upload processing completed after {elapsed:.1f}s - {upload_status['activityCount']} activities detected")
+                    upload_detected = True
                     break
                     
-                # Check if map has been updated with new data
-                map_update = driver.execute_script("""
-                    // Check if map sources or data have been updated
-                    if (typeof map !== 'undefined') {
-                        const sources = map.getStyle().sources || {};
-                        return {
-                            sources: Object.keys(sources),
-                            timestamp: Date.now()
-                        };
-                    }
-                    return null;
-                """)
-                
-                time.sleep(2)  # Check every 2 seconds
+                time.sleep(1)  # Check every 1 second instead of 2
                 
             except Exception as e:
                 print(f"⚠️ Error checking upload status: {e}")
-                time.sleep(2)
+                time.sleep(1)
                 continue
         
-        # Final wait for processing
-        print("📡 Allowing extra time for upload processing...")
-        time.sleep(5)
+        if not upload_detected:
+            print("⚠️ Upload processing timeout - continuing with verification")
         
+        # Brief final wait only if needed
+        time.sleep(2)
         print("✅ Upload processing wait completed")
+    def combined_upload_verification(self, driver, wait):
+        """Combined verification: activity visibility + lasso selection + individual selection"""
+        print("🏆 Starting combined verification of uploaded activity...")
+        
+        # Step 1: Navigate to uploaded activity coordinates and verify visibility
+        print("📋 Step 1: Verifying uploaded activity visibility...")
+        upload_center_lat, upload_center_lon = 39.4212, -77.4112  # Center of uploaded GPX route
+        driver.execute_script(f"""
+            map.flyTo({{
+                center: [{upload_center_lon}, {upload_center_lat}],
+                zoom: 13,
+                duration: 1000
+            }});
+        """)
+        time.sleep(2)  # Reduced wait time
+        
+        # Quick pixel verification if available, otherwise use viewport
+        pixels = self.verify_uploaded_activity_line_visible(driver)
+        if 'error' not in pixels:
+            assert pixels.get('successRate', 0) >= 0.5, f"Uploaded activity not visible (only {pixels.get('successRate', 0)*100:.1f}% visible)"
+            print(f"✅ Activity visible - {pixels['redPixelsFound']}/{pixels['totalPoints']} coordinates verified")
+        else:
+            # Fallback verification
+            features = self.verify_features_in_current_viewport(driver)
+            assert features['featuresInViewport'] > 0, f"No activity features found at uploaded coordinates"
+            print(f"✅ Activity visible - {features['featuresInViewport']} features detected")
+        
+        # Step 2: Test lasso selection (all activities)
+        print("📋 Step 2: Testing lasso selection...")
+        # Navigate to area encompassing all activities
+        frederick_lat, frederick_lon = 39.4168, -77.4169
+        driver.execute_script(f"""
+            map.jumpTo({{
+                center: [{frederick_lon}, {frederick_lat}],
+                zoom: 11
+            }});
+        """)
+        time.sleep(2)
+        
+        # Inject map helpers and perform lasso
+        self._inject_map_helpers(driver, wait)
+        
+        # Activate lasso mode
+        lasso_btn = self.find_clickable_element(driver, wait, "#lasso-btn")
+        lasso_btn.click()
+        time.sleep(1)
+        
+        # Generate and draw large polygon
+        large_polygon_coords = driver.execute_script("""
+            return window.__mapTestHelpers.generateCenterPolygon(400);
+        """)
+        viewport_points = driver.execute_script("""
+            return window.__mapTestHelpers.projectToViewportPoints(arguments[0]);
+        """, large_polygon_coords)
+        
+        self._draw_polygon_absolute_viewport(driver, viewport_points)
+        
+        # Wait for lasso completion
+        lasso_result = self._wait_for_lasso_completion(driver, wait, max_wait=15)
+        assert lasso_result['panel_opened'], f"Side panel should open: {lasso_result['debug_info']}"
+        assert lasso_result['run_count'] == 3, f"Should select 3 activities (2 packaged + 1 uploaded): found {lasso_result['run_count']}"
+        print(f"✅ Lasso selection successful - {lasso_result['run_count']} activities selected")
+        
+        # Step 3: Quick individual activity selection test
+        print("📋 Step 3: Testing individual activity selection...")
+        
+        # Deselect all and select first activity (uploaded one)
+        deselect_all_btn = self.find_clickable_element(driver, wait, "#deselect-all")
+        deselect_all_btn.click()
+        time.sleep(1)
+        
+        # Select first activity and verify filter
+        driver.execute_script("""
+            const checkbox = document.querySelector('.run-checkbox');
+            if (checkbox) {
+                checkbox.checked = true;
+                checkbox.dispatchEvent(new Event('change', {bubbles: true}));
+            }
+        """)
+        
+        # Minimize sidebar and verify single activity visible
+        collapse_btn = self.find_clickable_element(driver, wait, "#panel-collapse")
+        collapse_btn.click()
+        time.sleep(1)
+        
+        # Quick verification of single activity
+        features_check = self.verify_features_in_current_viewport(driver)
+        assert features_check['featuresInViewport'] == 1, f"Should show 1 activity, found {features_check['featuresInViewport']}"
+        print("✅ Individual selection works - single activity filtered correctly")
+        
+        # Clean up - reopen and close panel properly
+        expand_btn = self.find_clickable_element(driver, wait, "#expand-btn")
+        expand_btn.click()
+        time.sleep(1)
+        close_btn = self.find_clickable_element(driver, wait, "#panel-close")
+        close_btn.click()
+        time.sleep(1)
+        
+        print("🎉 Combined verification completed successfully!")
     
     
     # Rock-Solid Verification Methods (adapted from test_mobile_with_fixtures.py)
@@ -788,7 +881,12 @@ class TestUploadFunctionality(BaseMobileTest):
             print("📝 Note: Cleanup failed but test data is isolated, so this won't affect other tests")
     
     def cleanup_test_file_from_device(self):
-        """Remove test GPX file from device storage"""
+        """Remove test GPX file from device storage - smart cleanup"""
+        # Only remove file if this test pushed it
+        if not getattr(self, '_file_pushed_by_test', False):
+            print("📁 Skipping file cleanup - test didn't push the file")
+            return
+            
         print("📁 Removing test file from device...")
         
         # Set up ADB environment
@@ -807,9 +905,9 @@ class TestUploadFunctionality(BaseMobileTest):
             )
             
             if remove_result.returncode == 0:
-                print(f"✅ Test file removed from device: {device_path}")
+                print(f"✅ Test file removed from device")
             else:
-                print(f"⚠️ Could not remove test file (may not exist): {remove_result.stderr}")
+                print(f"⚠️ Could not remove test file: {remove_result.stderr}")
                 
         except Exception as e:
             print(f"⚠️ Error removing test file from device: {e}")

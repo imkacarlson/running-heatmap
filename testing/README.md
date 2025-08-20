@@ -135,6 +135,26 @@ DETAILED_TIMING_METRICS=true python run_tests.py --performance-report
 ./persist_tests.sh cleanup
 ```
 
+### Performance profiling (one-click)
+Run the full test suite with a single HTML flamegraph:
+
+```bash
+cd testing
+./test.sh --perf
+```
+
+Outputs:
+
+```
+testing/reports/perf/pyi-YYYYmmdd-HHMMSS/profile.html
+```
+
+Filter still works:
+
+```bash
+./test.sh --perf -k upload
+```
+
 ## Test Optimization Modes
 
 ### 1. Traditional Mode (--no-optimize)

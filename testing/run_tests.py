@@ -169,7 +169,7 @@ def analyze_test_dependencies():
     
     return dependency_groups
 
-def run_test_group_parallel(test_files: List[Path], max_workers: int = 2) -> Tuple[int, float, Dict[str, any]]:
+def run_test_group_parallel(test_files: List[Path], max_workers: int = 2, profile_args: List[str] = None) -> Tuple[int, float, Dict[str, any]]:
     """Run a group of tests in parallel using pytest-xdist if available."""
     if not test_files:
         return 0, 0.0, {'parallel_used': False, 'workers': 0, 'method': 'none'}
@@ -194,6 +194,9 @@ def run_test_group_parallel(test_files: List[Path], max_workers: int = 2) -> Tup
             'method': 'pytest-xdist'
         })
         
+        if profile_args:
+            print(f"   ⚠️  Warning: Profiling with parallel execution may have limited functionality")
+        
         print(f"   ⚡ Running {len(test_files)} tests with {optimal_workers} parallel workers")
         
         cmd = [
@@ -201,7 +204,13 @@ def run_test_group_parallel(test_files: List[Path], max_workers: int = 2) -> Tup
             '-n', str(optimal_workers),
             '--tb=short', '-v',
             '--dist', 'loadfile'  # Distribute by test file for better load balancing
-        ] + [str(f) for f in test_files]
+        ]
+        
+        # Add profiling args if provided
+        if profile_args:
+            cmd.extend(profile_args)
+        
+        cmd.extend([str(f) for f in test_files])
     else:
         # Fallback to sequential execution
         if len(test_files) == 1:
@@ -213,7 +222,13 @@ def run_test_group_parallel(test_files: List[Path], max_workers: int = 2) -> Tup
         cmd = [
             sys.executable, '-m', 'pytest',
             '--tb=short', '-v'
-        ] + [str(f) for f in test_files]
+        ]
+        
+        # Add profiling args if provided
+        if profile_args:
+            cmd.extend(profile_args)
+        
+        cmd.extend([str(f) for f in test_files])
     
     # Set up environment
     env = os.environ.copy()
@@ -229,7 +244,7 @@ def run_test_group_parallel(test_files: List[Path], max_workers: int = 2) -> Tup
         print(f"   ❌ Test execution failed: {e}")
         return 1, execution_time, execution_info
 
-def run_test_group_sequential(test_files: List[Path]) -> Tuple[int, float, Dict[str, any]]:
+def run_test_group_sequential(test_files: List[Path], profile_args: List[str] = None) -> Tuple[int, float, Dict[str, any]]:
     """Run a group of tests sequentially."""
     if not test_files:
         return 0, 0.0, {'method': 'none', 'test_count': 0}
@@ -242,7 +257,13 @@ def run_test_group_sequential(test_files: List[Path]) -> Tuple[int, float, Dict[
     cmd = [
         sys.executable, '-m', 'pytest',
         '--tb=short', '-v'
-    ] + [str(f) for f in test_files]
+    ]
+    
+    # Add profiling args if provided
+    if profile_args:
+        cmd.extend(profile_args)
+    
+    cmd.extend([str(f) for f in test_files])
     
     # Set up environment
     env = os.environ.copy()
@@ -305,6 +326,8 @@ Examples:
   python run_tests.py --parallel          # Enable parallel test execution where safe
   python run_tests.py --parallel-workers 2 # Set maximum parallel workers (default: 2)
   python run_tests.py --skip-cleanup      # Skip cleanup for faster repeated runs
+  python run_tests.py --profile           # Enable performance profiling (generates flame graphs)
+  python run_tests.py --one-test --profile # Profile a specific test for detailed analysis
         """
     )
     
@@ -331,6 +354,8 @@ Examples:
                        help='Maximum number of parallel workers (default: 2, range: 1-4, max recommended: 2 for mobile tests)')
     parser.add_argument('--skip-cleanup', action='store_true',
                        help='Skip cleanup for faster repeated runs (use with caution)')
+    parser.add_argument('--profile', action='store_true',
+                       help='Enable performance profiling for tests (generates flame graphs)')
     
     # Report file (internal use)
     parser.add_argument('--report-file', default='reports/test_report.html',
@@ -481,6 +506,11 @@ def build_pytest_command(args):
     if args.fast:
         cmd.append('--fast')
     
+    # Add profiling flags if enabled
+    if args.profile:
+        # pytest-profiling uses fixed 'prof/' directory - we'll move files later
+        cmd.extend(['--profile', '--profile-svg'])
+    
     # Standard options - pytest.ini now includes -rw for warnings
     cmd.extend(['-v', '--tb=short'])
     
@@ -547,6 +577,12 @@ def run_tests_parallel(args, metrics: PerformanceMetrics = None):
     parallel_start_time = time.time()
     overall_exit_code = 0
     
+    # Extract profiling arguments if enabled
+    profile_args = None
+    if args.profile:
+        # pytest-profiling uses fixed 'prof/' directory - we'll move files later
+        profile_args = ['--profile', '--profile-svg']
+    
     print("🔍 Analyzing test dependencies for safe parallel execution...")
     
     # Analyze test dependencies
@@ -570,7 +606,7 @@ def run_tests_parallel(args, metrics: PerformanceMetrics = None):
         # Step 1: Run infrastructure tests sequentially (must run first)
         if dependency_groups['infrastructure']:
             print(f"\n🏗️ Running infrastructure tests sequentially...")
-            exit_code, exec_time, exec_info = run_test_group_sequential(dependency_groups['infrastructure'])
+            exit_code, exec_time, exec_info = run_test_group_sequential(dependency_groups['infrastructure'], profile_args)
             
             if metrics:
                 metrics.record_test_group_execution('infrastructure', exec_time, exec_info)
@@ -596,13 +632,13 @@ def run_tests_parallel(args, metrics: PerformanceMetrics = None):
             max_workers = min(args.parallel_workers, len(group_tests), 2)  # Cap at 2 for mobile stability
             
             # Try parallel execution first
-            exit_code, exec_time, exec_info = run_test_group_parallel(group_tests, max_workers)
+            exit_code, exec_time, exec_info = run_test_group_parallel(group_tests, max_workers, profile_args)
             
             if exit_code != 0 and exec_info.get('parallel_used', False):
                 print(f"⚠️ Parallel execution failed for {group_name} group, trying sequential fallback...")
                 
                 # Fallback to sequential execution
-                exit_code_sequential, fallback_exec_time, fallback_info = run_test_group_sequential(group_tests)
+                exit_code_sequential, fallback_exec_time, fallback_info = run_test_group_sequential(group_tests, profile_args)
                 
                 if metrics:
                     metrics.record_test_group_execution(f'{group_name}_fallback', fallback_exec_time, fallback_info)
@@ -683,7 +719,38 @@ def update_baseline_after_successful_run(args):
 
 
 
-def generate_performance_report(metrics: PerformanceMetrics, report_dir: Path):
+def move_profiling_files_to_reports(profiling_enabled: bool, report_dir: Path):
+    """Move pytest-profiling generated files to reports directory."""
+    if not profiling_enabled:
+        return
+    
+    prof_dir = Path(__file__).parent / "prof"
+    target_profiles_dir = report_dir / "profiles"
+    
+    if not prof_dir.exists():
+        return
+    
+    # Create target directory
+    target_profiles_dir.mkdir(exist_ok=True, parents=True)
+    
+    # Move/copy prof files to target directory
+    moved_files = []
+    for prof_file in prof_dir.glob("*"):
+        if prof_file.is_file():
+            target_file = target_profiles_dir / prof_file.name
+            try:
+                import shutil
+                shutil.copy2(prof_file, target_file)
+                moved_files.append(target_file.name)
+            except Exception as e:
+                print(f"⚠️  Warning: Could not copy {prof_file.name}: {e}")
+    
+    if moved_files:
+        print(f"📊 Profiling files copied to {target_profiles_dir}: {', '.join(moved_files)}")
+    
+    return target_profiles_dir
+
+def generate_performance_report(metrics: PerformanceMetrics, report_dir: Path, profiling_enabled: bool = False):
     """Generate performance metrics report."""
     try:
         performance_report_path = report_dir / "performance_metrics.json"
@@ -762,6 +829,35 @@ def generate_performance_report(metrics: PerformanceMetrics, report_dir: Path):
                 emoji = "🎯" if hit else "🔄"
                 print(f"     {cache_type}: {emoji} {status}")
         
+        if profiling_enabled:
+            # Check for flame graphs in both original prof/ directory and moved profiles directory
+            prof_dir = Path(__file__).parent / "prof"
+            profile_dir = report_dir / "profiles"
+            
+            svg_files_found = []
+            
+            # Check original prof directory
+            if prof_dir.exists():
+                svg_files_found.extend(list(prof_dir.glob("*.svg")))
+            
+            # Check moved profiles directory  
+            if profile_dir.exists():
+                svg_files_found.extend(list(profile_dir.glob("*.svg")))
+            
+            if svg_files_found:
+                print(f"   🔥 Flame graphs generated: {len(svg_files_found)} files")
+                if profile_dir.exists():
+                    print(f"     Location: {profile_dir}")
+                elif prof_dir.exists():
+                    print(f"     Location: {prof_dir}")
+                print(f"     💡 Open .svg files in browser to view flame graphs")
+                
+                # List the actual files found
+                for svg_file in svg_files_found:
+                    print(f"       • {svg_file.name}")
+            else:
+                print(f"   🔥 Profiling enabled but no flame graphs found")
+        
         if metrics.optimizations_applied:
             print(f"   Optimizations applied: {len(metrics.optimizations_applied)}")
             for opt in metrics.optimizations_applied:
@@ -773,7 +869,7 @@ def generate_performance_report(metrics: PerformanceMetrics, report_dir: Path):
         print(f"⚠️  Warning: Could not generate performance report: {e}")
 
 
-def open_test_report(report_path, metrics: PerformanceMetrics = None):
+def open_test_report(report_path, metrics: PerformanceMetrics = None, profiling_enabled: bool = False):
     """Report test report location without auto-opening"""
     abs_report_path = Path(__file__).parent / report_path
     
@@ -783,9 +879,13 @@ def open_test_report(report_path, metrics: PerformanceMetrics = None):
     
     print(f"📊 Test report saved: {abs_report_path}")
     
+    # Move profiling files to reports directory if profiling was enabled
+    if profiling_enabled:
+        move_profiling_files_to_reports(profiling_enabled, abs_report_path.parent)
+    
     # Generate performance report if metrics available
     if metrics:
-        generate_performance_report(metrics, abs_report_path.parent)
+        generate_performance_report(metrics, abs_report_path.parent, profiling_enabled)
     
     # Check if we're in WSL and provide helpful path conversion
     is_wsl = os.path.exists('/proc/version') and 'microsoft' in open('/proc/version').read().lower()
@@ -886,7 +986,7 @@ def main():
         metrics.finalize()
         
         # Open test report with performance metrics
-        open_test_report(args.report_file, metrics)
+        open_test_report(args.report_file, metrics, args.profile)
         
     except KeyboardInterrupt:
         print("\n⏹️  Tests interrupted by user")

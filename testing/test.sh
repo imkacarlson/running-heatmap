@@ -1,13 +1,15 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
-PERF=0
+PERF_MODE="none"
 ARGS=()
 
-# Parse args (capture everything except --perf)
+# Parse --perf and optional mode (pyi|scalene)
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --perf) PERF=1; shift ;;
+    --perf)           PERF_MODE="pyi"; shift ;;
+    --perf=pyi)       PERF_MODE="pyi"; shift ;;
+    --perf=scalene)   PERF_MODE="scalene"; shift ;;
     *) ARGS+=("$1"); shift ;;
   esac
 done
@@ -20,39 +22,50 @@ echo "============================================"
 echo "🐍 Activating Python virtual environment..."
 source test_venv/bin/activate
 
-# Timestamped output directory
 STAMP=$(date +%Y%m%d-%H%M%S)
-OUTDIR="testing/reports/perf/pyi-$STAMP"
-OUTHTML="$OUTDIR/profile.html"
-
+BASE="testing/reports/perf"
+OUTDIR="$BASE/${PERF_MODE}-${STAMP}"
 mkdir -p "$OUTDIR"
 
-# Wrap pytest invocation so we only touch one place
 run_pytest() {
   # Run the enhanced test suite
   echo "🚀 Running tests with enhanced runner..."
   python run_tests.py "$@"
 }
 
-if [[ "$PERF" -eq 0 ]]; then
-  run_pytest "$@"
-  echo "🎉 Testing complete!"
-else
-  # Check dependency early for a clearer error
-  if ! python -c "import pyinstrument" >/dev/null 2>&1; then
-    echo "pyinstrument not installed in this venv. Install via: pip install -r testing/requirements.txt" >&2
-    exit 2
-  fi
+case "$PERF_MODE" in
+  none)
+    run_pytest "$@"
+    echo "🎉 Testing complete!"
+    ;;
+  pyi)
+    if ! python -c "import pyinstrument" >/dev/null 2>&1; then
+      echo "Missing dependency: pyinstrument (pip install -r testing/requirements.txt)" >&2; exit 2
+    fi
+    OUTHTML="$OUTDIR/profile.html"
+    # one HTML flamegraph for the whole run
+    echo "🔥 Running tests with PyInstrument profiling..."
+    python -m pyinstrument -r html -o "$OUTHTML" -m run_tests "$@"
+    echo "📦 Perf report (PyInstrument): $OUTHTML"
+    ;;
+  scalene)
+    if ! python -c "import scalene" >/dev/null 2>&1; then
+      echo "Missing dependency: scalene (pip install -r testing/requirements.txt)" >&2; exit 2
+    fi
+    export PERF_OUTDIR="$OUTDIR"   # optional: so your step timers write next to the report
+    OUTHTML="$OUTDIR/scalene.html"
+    # per-line CPU/memory report for the whole run
+    echo "🔥 Running tests with Scalene profiling..."
+    python -m scalene --html --outfile "$OUTHTML" -m run_tests "$@"
+    echo "📦 Perf report (Scalene): $OUTHTML"
+    ;;
+  *)
+    echo "unknown --perf mode: $PERF_MODE" >&2; exit 2
+    ;;
+esac
 
-  # One HTML flamegraph for the entire run
-  echo "🔥 Running tests with performance profiling..."
-  python -m pyinstrument -r html -o "$OUTHTML" -m run_tests "$@"
-
-  echo "📦 Perf report: $OUTHTML"
-  # Optional (nice for WSL users): also print Windows UNC path if available
-  if command -v wslpath >/dev/null 2>&1; then
-    WINPATH="$(wslpath -w "$(pwd)/$OUTHTML" 2>/dev/null || true)"
-    [[ -n "${WINPATH:-}" ]] && echo "📂 Windows path: $WINPATH"
-  fi
-  echo "🎉 Testing complete!"
+# (Optional) nice-to-have for WSL
+if command -v wslpath >/dev/null 2>&1; then
+  WINPATH="$(wslpath -w "$(pwd)/$OUTDIR" 2>/dev/null || true)"
+  [[ -n "${WINPATH:-}" ]] && echo "📂 Windows folder: $WINPATH"
 fi

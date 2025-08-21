@@ -30,8 +30,8 @@ class TestUploadFunctionality(BaseMobileTest):
         wait = mobile_driver['wait']
         
         # Phase 1: Setup and App Launch
-        print("⏳ Allowing app to fully start up...")
-        time.sleep(12)  # Extended startup wait
+        print("⏳ Waiting for app WebView to become available...")
+        self.wait_for_webview_available(driver, wait, verbose=True)
         
         print("🔄 Switching to WebView context...")
         self.switch_to_webview(driver)

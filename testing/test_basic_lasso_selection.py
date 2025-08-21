@@ -39,8 +39,8 @@ class TestBasicLassoSelection(BaseMobileTest):
         helpers_js = Path(__file__).parent / "map_helpers.js"
         
         # Setup - launch app and wait for initialization
-        print("⏳ Allowing app to fully start up...")
-        time.sleep(12)
+        print("⏳ Waiting for app WebView to become available...")
+        self.wait_for_webview_available(driver, wait, verbose=True)
         
         print("🔄 Switching to WebView context...")
         self.switch_to_webview(driver)

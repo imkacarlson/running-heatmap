@@ -11,6 +11,56 @@ from map_load_detector import MapLoadDetector
 class BaseMobileTest:
     """Base class providing common mobile test functionality"""
     
+    def wait_for_webview_available(self, driver, wait, verbose=False):
+        """
+        Dynamically wait for WebView context to become available.
+        Replaces fixed startup sleep calls with responsive waiting.
+        
+        Args:
+            driver: Selenium WebDriver instance  
+            wait: WebDriverWait instance
+            verbose: Enable detailed logging
+            
+        Returns:
+            True when WebView context is available
+            
+        Raises:
+            TimeoutException: If WebView doesn't become available within timeout
+        """
+        def webview_available():
+            try:
+                contexts = driver.contexts
+                if verbose:
+                    print(f"🔍 Available contexts: {contexts}")
+                
+                # Look for our app's WebView context
+                for context in contexts:
+                    if 'WEBVIEW_com.run.heatmap' in context:
+                        if verbose:
+                            print(f"✅ Found target WebView: {context}")
+                        return True
+                    elif 'WEBVIEW' in context and 'webview_shell' not in context:
+                        if verbose:
+                            print(f"✅ Found fallback WebView: {context}")
+                        return True
+                        
+                if verbose:
+                    print("⏳ WebView not yet available, continuing to wait...")
+                return False
+            except Exception as e:
+                if verbose:
+                    print(f"⚠️ Error checking contexts: {e}")
+                return False
+        
+        if verbose:
+            print("⏳ Waiting for WebView context to become available...")
+            
+        wait.until(lambda driver: webview_available())
+        
+        if verbose:
+            print("✅ WebView context is now available!")
+        return True
+    
     def wait_for_map_load(self, driver, wait, verbose=False):
         """
         Dynamically wait for map to load using MapLoadDetector.

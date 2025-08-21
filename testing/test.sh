@@ -56,7 +56,7 @@ case "$PERF_MODE" in
     OUTHTML="$OUTDIR/scalene.html"
     # per-line CPU/memory report for the whole run
     echo "🔥 Running tests with Scalene profiling..."
-    python -m scalene --html --outfile "$OUTHTML" -m run_tests "$@"
+    python -m scalene --html --outfile "$OUTHTML" --profile-all --profile-exclude 'subprocess.*' --profile-exclude 'threading.*' -m run_tests "$@"
     echo "📦 Perf report (Scalene): $OUTHTML"
     ;;
   *)

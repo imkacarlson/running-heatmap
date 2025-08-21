@@ -23,7 +23,7 @@ echo "🐍 Activating Python virtual environment..."
 source test_venv/bin/activate
 
 STAMP=$(date +%Y%m%d-%H%M%S)
-BASE="testing/reports/perf"
+BASE="reports/perf"
 OUTDIR="$BASE/${PERF_MODE}-${STAMP}"
 mkdir -p "$OUTDIR"
 

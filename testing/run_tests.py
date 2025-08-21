@@ -508,11 +508,8 @@ def build_pytest_command(args):
     
     # Add profiling flags if enabled
     if args.profile:
-        # Create a directory for profiles
-        profile_dir = Path(__file__).parent / "reports" / "profiles"
-        profile_dir.mkdir(exist_ok=True, parents=True)
-        # --profile enables it, --profile-svg generates visual flame graphs
-        cmd.extend(['--profile', '--profile-svg', f'--prof-dir={profile_dir}'])
+        # pytest-profiling uses fixed 'prof/' directory - we'll move files later
+        cmd.extend(['--profile', '--profile-svg'])
     
     # Standard options - pytest.ini now includes -rw for warnings
     cmd.extend(['-v', '--tb=short'])
@@ -583,9 +580,8 @@ def run_tests_parallel(args, metrics: PerformanceMetrics = None):
     # Extract profiling arguments if enabled
     profile_args = None
     if args.profile:
-        profile_dir = Path(__file__).parent / "reports" / "profiles"
-        profile_dir.mkdir(exist_ok=True, parents=True)
-        profile_args = ['--profile', '--profile-svg', f'--prof-dir={profile_dir}']
+        # pytest-profiling uses fixed 'prof/' directory - we'll move files later
+        profile_args = ['--profile', '--profile-svg']
     
     print("🔍 Analyzing test dependencies for safe parallel execution...")
     
@@ -723,6 +719,37 @@ def update_baseline_after_successful_run(args):
 
 
 
+def move_profiling_files_to_reports(profiling_enabled: bool, report_dir: Path):
+    """Move pytest-profiling generated files to reports directory."""
+    if not profiling_enabled:
+        return
+    
+    prof_dir = Path(__file__).parent / "prof"
+    target_profiles_dir = report_dir / "profiles"
+    
+    if not prof_dir.exists():
+        return
+    
+    # Create target directory
+    target_profiles_dir.mkdir(exist_ok=True, parents=True)
+    
+    # Move/copy prof files to target directory
+    moved_files = []
+    for prof_file in prof_dir.glob("*"):
+        if prof_file.is_file():
+            target_file = target_profiles_dir / prof_file.name
+            try:
+                import shutil
+                shutil.copy2(prof_file, target_file)
+                moved_files.append(target_file.name)
+            except Exception as e:
+                print(f"⚠️  Warning: Could not copy {prof_file.name}: {e}")
+    
+    if moved_files:
+        print(f"📊 Profiling files copied to {target_profiles_dir}: {', '.join(moved_files)}")
+    
+    return target_profiles_dir
+
 def generate_performance_report(metrics: PerformanceMetrics, report_dir: Path, profiling_enabled: bool = False):
     """Generate performance metrics report."""
     try:
@@ -803,17 +830,33 @@ def generate_performance_report(metrics: PerformanceMetrics, report_dir: Path, p
                 print(f"     {cache_type}: {emoji} {status}")
         
         if profiling_enabled:
+            # Check for flame graphs in both original prof/ directory and moved profiles directory
+            prof_dir = Path(__file__).parent / "prof"
             profile_dir = report_dir / "profiles"
+            
+            svg_files_found = []
+            
+            # Check original prof directory
+            if prof_dir.exists():
+                svg_files_found.extend(list(prof_dir.glob("*.svg")))
+            
+            # Check moved profiles directory  
             if profile_dir.exists():
-                profile_files = list(profile_dir.glob("*.svg"))
-                if profile_files:
-                    print(f"   🔥 Flame graphs generated: {len(profile_files)} files")
+                svg_files_found.extend(list(profile_dir.glob("*.svg")))
+            
+            if svg_files_found:
+                print(f"   🔥 Flame graphs generated: {len(svg_files_found)} files")
+                if profile_dir.exists():
                     print(f"     Location: {profile_dir}")
-                    print(f"     💡 Open .svg files in browser to view flame graphs")
-                else:
-                    print(f"   🔥 Profiling enabled but no flame graphs found")
+                elif prof_dir.exists():
+                    print(f"     Location: {prof_dir}")
+                print(f"     💡 Open .svg files in browser to view flame graphs")
+                
+                # List the actual files found
+                for svg_file in svg_files_found:
+                    print(f"       • {svg_file.name}")
             else:
-                print(f"   🔥 Profiling enabled but profile directory not created")
+                print(f"   🔥 Profiling enabled but no flame graphs found")
         
         if metrics.optimizations_applied:
             print(f"   Optimizations applied: {len(metrics.optimizations_applied)}")
@@ -835,6 +878,10 @@ def open_test_report(report_path, metrics: PerformanceMetrics = None, profiling_
         return
     
     print(f"📊 Test report saved: {abs_report_path}")
+    
+    # Move profiling files to reports directory if profiling was enabled
+    if profiling_enabled:
+        move_profiling_files_to_reports(profiling_enabled, abs_report_path.parent)
     
     # Generate performance report if metrics available
     if metrics:

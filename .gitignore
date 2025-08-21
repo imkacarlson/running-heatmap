@@ -45,6 +45,7 @@ testing/.pytest_cache/
 testing/__pycache__/
 testing/screenshots/
 testing/reports/
+testing/prof/
 testing/chromedriver_linux64.zip
 testing/test_venv/
 testing/vetted-drivers/chromedriver-*

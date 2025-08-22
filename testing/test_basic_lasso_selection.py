@@ -271,7 +271,7 @@ class TestBasicLassoSelection(BaseMobileTest):
         
         # Wait for UI to be ready for second test (lasso button available)
         WebDriverWait(driver, 5).until(
-            EC.element_to_be_clickable((By.ID, "lasso-btn"))
+            EC.element_to_be_clickable((By.CSS_SELECTOR, "#lasso-btn"))
         )
         
         # Reactivate lasso mode (it gets deactivated when panel closes)

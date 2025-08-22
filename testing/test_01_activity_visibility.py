@@ -28,7 +28,7 @@ class TestMobileAppWithTestData(BaseMobileTest):
                 duration: 1000
             }});
         """)
-        time.sleep(3)  # Wait for render
+        self.wait_for_map_idle_after_move(driver, timeout_ms=4000, verbose=True)
         
         # Sample pixels along the expected route
         pixel_check = driver.execute_script("""
@@ -248,7 +248,7 @@ class TestMobileAppWithTestData(BaseMobileTest):
                 duration: 1500
             }});
         """)
-        time.sleep(4)
+        self.wait_for_map_idle_after_move(driver, timeout_ms=5000, verbose=True)
         
         # Step 3: Verify features are in viewport
         print("📋 Step 3: Verifying features in viewport...")

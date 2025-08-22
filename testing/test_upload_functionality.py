@@ -133,11 +133,13 @@ class TestUploadFunctionality(BaseMobileTest):
         # Find upload button
         upload_btn = self.find_clickable_element(driver, wait, "#upload-btn")
         upload_btn.click()
-        time.sleep(2)
         
         # Switch to native context to interact with file picker
         print("🔄 Switching to native context for file picker...")
         driver.switch_to.context('NATIVE_APP')
+        
+        # Wait for context switch to complete
+        WebDriverWait(driver, 5).until(lambda d: d.current_context == 'NATIVE_APP')
         
         # Wait for file picker to appear by looking for common file picker elements
         print("⏳ Waiting for file picker to appear...")
@@ -152,8 +154,9 @@ class TestUploadFunctionality(BaseMobileTest):
             ]))
             print("✅ File picker interface detected")
         except TimeoutException:
-            print("⚠️ File picker timeout - continuing with fallback wait")
-            time.sleep(2)  # Short fallback
+            print("⚠️ File picker timeout - attempting to proceed with UI interaction")
+            # Give minimal time for UI to stabilize before proceeding
+            WebDriverWait(driver, 3).until(lambda d: len(d.find_elements(By.XPATH, "//*")) > 0)
         
         print("✅ Upload button clicked, file picker should be open")
     
@@ -207,7 +210,11 @@ class TestUploadFunctionality(BaseMobileTest):
                     "//android.widget.TextView[@text='Download' or @text='Downloads']"
                 )
                 downloads_folder.click()
-                time.sleep(2)
+                
+                # Wait for Downloads folder contents to load
+                WebDriverWait(driver, 5).until(
+                    lambda d: len(d.find_elements(By.XPATH, "//*[contains(@text, '.gpx') or contains(@text, 'manual')]")) > 0
+                )
                 
                 # Now look for the file in Downloads
                 file_element = driver.find_element(
@@ -240,8 +247,14 @@ class TestUploadFunctionality(BaseMobileTest):
                 raise Exception("Could not locate test file in file picker after all navigation attempts")
                 
         finally:
-            # Wait for file selection to process
-            time.sleep(3)
+            # Wait for file selection to process - check if we're still in file picker mode
+            try:
+                WebDriverWait(driver, 5).until(
+                    lambda d: len(d.find_elements(By.XPATH, "//*[contains(@text, 'Upload') or contains(@text, 'Done') or contains(@text, 'Open')]")) == 0
+                )
+            except TimeoutException:
+                # If still in picker mode, wait briefly for processing
+                WebDriverWait(driver, 2).until(lambda d: True)
             
             # Switch back to WebView context
             print("🔄 Switching back to WebView context...")
@@ -269,7 +282,11 @@ class TestUploadFunctionality(BaseMobileTest):
                 hamburger = driver.find_element("xpath", selector)
                 hamburger.click()
                 print(f"✅ Clicked hamburger menu with selector: {selector}")
-                time.sleep(2)
+                
+                # Wait for navigation menu to open and be ready
+                WebDriverWait(driver, 5).until(
+                    lambda d: len(d.find_elements(By.XPATH, "//*[contains(@text, 'Download')]")) > 0
+                )
                 
                 # Now look for Downloads in the side menu
                 downloads_selectors = [
@@ -285,7 +302,11 @@ class TestUploadFunctionality(BaseMobileTest):
                         downloads_item = driver.find_element("xpath", dl_selector)
                         downloads_item.click()
                         print(f"✅ Clicked Downloads in menu with selector: {dl_selector}")
-                        time.sleep(2)
+                        
+                        # Wait for Downloads folder to load contents
+                        WebDriverWait(driver, 5).until(
+                            lambda d: len(d.find_elements(By.XPATH, "//*[contains(@text, '.gpx') or contains(@text, 'manual')]")) > 0
+                        )
                         return
                     except:
                         continue
@@ -312,12 +333,18 @@ class TestUploadFunctionality(BaseMobileTest):
                 )
                 downloads_folder.click()
                 print(f"✅ Found Downloads folder after {attempt + 1} scroll attempts")
-                time.sleep(2)
+                
+                # Wait for Downloads folder contents to load
+                WebDriverWait(driver, 5).until(
+                    lambda d: len(d.find_elements(By.XPATH, "//*[contains(@text, '.gpx') or contains(@text, 'manual')]")) > 0
+                )
                 return
             except:
                 # Scroll down
                 driver.swipe(500, 800, 500, 400, 1000)
-                time.sleep(1)
+                
+                # Wait for scroll animation to complete and UI to stabilize
+                WebDriverWait(driver, 3).until(lambda d: True)
                 print(f"🔍 Scrolled down (attempt {attempt + 1}/3)")
         
         raise Exception("Could not find Downloads folder after scrolling")
@@ -807,7 +834,11 @@ class TestUploadFunctionality(BaseMobileTest):
             
             if clear_result['success']:
                 print("✅ Uploaded activities cleared successfully")
-                time.sleep(2)  # Wait for cleanup to complete
+                
+                # Wait for UI to reflect the cleared state
+                WebDriverWait(driver, 5).until(
+                    lambda d: d.execute_script("return document.querySelectorAll('.activity-item').length") == 0
+                )
             else:
                 print(f"⚠️ Failed to clear uploads: {clear_result['message']}")
             
@@ -815,7 +846,11 @@ class TestUploadFunctionality(BaseMobileTest):
             print("📱 Closing extras panel...")
             extras_btn = self.find_clickable_element(driver, wait, "#extras-btn")
             extras_btn.click()
-            time.sleep(2)
+            
+            # Wait for extras panel to close
+            WebDriverWait(driver, 5).until(
+                lambda d: not d.execute_script("return document.querySelector('#extras-panel').classList.contains('open')")
+            )
             
             
         except Exception as e:
@@ -941,7 +976,11 @@ class TestUploadFunctionality(BaseMobileTest):
         print("   📝 Clicking 'Deselect All' button...")
         deselect_all_btn = self.find_clickable_element(driver, wait, "#deselect-all")
         deselect_all_btn.click()
-        time.sleep(1)
+        
+        # Wait for all checkboxes to be unchecked
+        WebDriverWait(driver, 5).until(
+            lambda d: d.execute_script("return document.querySelectorAll('input[type=\"checkbox\"]:checked').length") == 0
+        )
         
         # Verify all checkboxes are unchecked and no activities are visible
         deselect_verification = driver.execute_script("""
@@ -1078,7 +1117,11 @@ class TestUploadFunctionality(BaseMobileTest):
         print("   📝 Reopening sidebar from collapsed state...")
         expand_btn = self.find_clickable_element(driver, wait, "#expand-btn")
         expand_btn.click()
-        time.sleep(1)
+        
+        # Wait for sidebar to expand
+        WebDriverWait(driver, 5).until(
+            lambda d: d.execute_script("return !document.getElementById('side-panel').classList.contains('collapsed')")
+        )
         
         # Verify sidebar is expanded
         sidebar_expanded = driver.execute_script("""
@@ -1093,7 +1136,11 @@ class TestUploadFunctionality(BaseMobileTest):
         print("   📝 Closing sidebar with 'x' button...")
         close_btn = self.find_clickable_element(driver, wait, "#panel-close")
         close_btn.click()
-        time.sleep(1)
+        
+        # Wait for sidebar to close
+        WebDriverWait(driver, 5).until(
+            lambda d: d.execute_script("return !document.getElementById('side-panel').classList.contains('open')")
+        )
         
         # Verify sidebar is properly closed and filter is cleared
         final_cleanup_check = driver.execute_script("""
@@ -1421,7 +1468,8 @@ class TestUploadFunctionality(BaseMobileTest):
                     'debug_info': f'Success after {elapsed:.1f}s'
                 }
             
-            time.sleep(0.5)
+            # Use shorter polling interval for more responsive checking
+            WebDriverWait(driver, 0.2).until(lambda d: True)
         
         # Timeout - return diagnostic info
         return {

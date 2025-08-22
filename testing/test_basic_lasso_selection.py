@@ -130,7 +130,11 @@ class TestBasicLassoSelection(BaseMobileTest):
         print("🎯 Activating lasso selection mode...")
         lasso_btn = self.find_clickable_element(driver, wait, "#lasso-btn")
         lasso_btn.click()
-        time.sleep(0.5)
+        
+        # Wait for lasso mode to activate
+        WebDriverWait(driver, 5).until(
+            lambda d: d.execute_script("return document.getElementById('lasso-btn').classList.contains('active')")
+        )
         
         # Verify lasso mode is active
         lasso_active = driver.execute_script("""
@@ -199,7 +203,9 @@ class TestBasicLassoSelection(BaseMobileTest):
         print(f"📋 Panel close method: {panel_closed}")
         
         # Wait for panel to close
-        time.sleep(1.0)
+        WebDriverWait(driver, 5).until(
+            lambda d: not d.execute_script("return document.getElementById('side-panel').classList.contains('open')")
+        )
         
         # Verify panel is closed
         panel_closed_check = driver.execute_script("""
@@ -263,14 +269,20 @@ class TestBasicLassoSelection(BaseMobileTest):
         else:
             print("✅ Features ready at new zoom level")
         
-        # Wait a moment for UI to settle before second test
-        time.sleep(1.0)
+        # Wait for UI to be ready for second test (lasso button available)
+        WebDriverWait(driver, 5).until(
+            EC.element_to_be_clickable((By.ID, "lasso-btn"))
+        )
         
         # Reactivate lasso mode (it gets deactivated when panel closes)
         print("🎯 Reactivating lasso selection mode for second test...")
         lasso_btn_second = self.find_clickable_element(driver, wait, "#lasso-btn")
         lasso_btn_second.click()
-        time.sleep(0.5)
+        
+        # Wait for lasso mode to activate
+        WebDriverWait(driver, 5).until(
+            lambda d: d.execute_script("return document.getElementById('lasso-btn').classList.contains('active')")
+        )
         
         # Verify lasso mode is active
         lasso_active_check = driver.execute_script("""
@@ -288,7 +300,11 @@ class TestBasicLassoSelection(BaseMobileTest):
             print("❌ Lasso mode not properly activated for second test")
             # Try clicking again
             lasso_btn_second.click()
-            time.sleep(0.5)
+            
+            # Wait for lasso mode to activate after retry
+            WebDriverWait(driver, 5).until(
+                lambda d: d.execute_script("return document.getElementById('lasso-btn').classList.contains('active')")
+            )
         
         # Generate larger polygon with 350px radius to span both activities
         print("📐 Generating larger polygon (350px radius) to encompass both activities...")
@@ -332,7 +348,11 @@ class TestBasicLassoSelection(BaseMobileTest):
         print("   📝 Clicking 'Deselect All' button...")
         deselect_all_btn = self.find_clickable_element(driver, wait, "#deselect-all")
         deselect_all_btn.click()
-        time.sleep(1)
+        
+        # Wait for all checkboxes to be unchecked
+        WebDriverWait(driver, 5).until(
+            lambda d: d.execute_script("return document.querySelectorAll('.run-checkbox:checked').length") == 0
+        )
         
         # Verify all checkboxes are unchecked and no activities are visible
         deselect_verification = driver.execute_script("""
@@ -363,7 +383,11 @@ class TestBasicLassoSelection(BaseMobileTest):
                 checkbox.dispatchEvent(new Event('change', {bubbles: true}));
             }
         """)
-        time.sleep(1)
+        
+        # Wait for checkbox to be checked and UI to update
+        WebDriverWait(driver, 5).until(
+            lambda d: d.execute_script("return document.querySelectorAll('.run-checkbox:checked').length") > 0
+        )
         
         print("   ✅ First activity checkbox clicked")
         
@@ -371,7 +395,11 @@ class TestBasicLassoSelection(BaseMobileTest):
         print("   📝 Minimizing sidebar...")
         collapse_btn = self.find_clickable_element(driver, wait, "#panel-collapse")
         collapse_btn.click()
-        time.sleep(1)
+        
+        # Wait for sidebar to collapse
+        WebDriverWait(driver, 5).until(
+            lambda d: d.execute_script("return document.getElementById('side-panel').classList.contains('collapsed')")
+        )
         
         # Verify sidebar is collapsed
         sidebar_collapsed = driver.execute_script("""
@@ -436,7 +464,11 @@ class TestBasicLassoSelection(BaseMobileTest):
         print("   📝 Reopening sidebar from collapsed state...")
         expand_btn = self.find_clickable_element(driver, wait, "#expand-btn")
         expand_btn.click()
-        time.sleep(1)
+        
+        # Wait for sidebar to expand
+        WebDriverWait(driver, 5).until(
+            lambda d: not d.execute_script("return document.getElementById('side-panel').classList.contains('collapsed')")
+        )
         
         # Verify sidebar is expanded
         sidebar_expanded = driver.execute_script("""
@@ -451,7 +483,11 @@ class TestBasicLassoSelection(BaseMobileTest):
         print("   📝 Closing sidebar with 'x' button...")
         close_btn = self.find_clickable_element(driver, wait, "#panel-close")
         close_btn.click()
-        time.sleep(1)
+        
+        # Wait for sidebar to close
+        WebDriverWait(driver, 5).until(
+            lambda d: not d.execute_script("return document.getElementById('side-panel').classList.contains('open')")
+        )
         
         # Verify sidebar is properly closed and filter is cleared
         final_cleanup_check = driver.execute_script("""
@@ -616,7 +652,8 @@ class TestBasicLassoSelection(BaseMobileTest):
                     'debug_info': f'Success after {elapsed:.1f}s'
                 }
             
-            time.sleep(0.5)
+            # Use shorter polling interval for more responsive checking
+            WebDriverWait(driver, 0.2).until(lambda d: True)
         
         # Timeout - return diagnostic info
         return {

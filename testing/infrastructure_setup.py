@@ -152,11 +152,12 @@ def start_appium_server(metrics: PerformanceMetrics):
             text=True
         )
         
-        # Wait for server to start
+        # Wait for server to start with adaptive polling
         print("⏳ Waiting for Appium server to start...")
-        for attempt in range(30):
-            time.sleep(1)
-            
+        import requests
+        
+        max_attempts = 60  # 30 seconds total with 0.5s intervals
+        for attempt in range(max_attempts):
             # Check if process is still running
             if process.poll() is not None:
                 stdout, stderr = process.communicate()
@@ -164,16 +165,23 @@ def start_appium_server(metrics: PerformanceMetrics):
                 print(f"   STDERR: {stderr}")
                 return None
             
-            # Try to connect to server
+            # Try to connect to server (no sleep before first attempt)
             try:
-                import requests
-                response = requests.get("http://localhost:4723/wd/hub/status", timeout=3)
+                response = requests.get("http://localhost:4723/wd/hub/status", timeout=1)
                 if response.status_code == 200:
                     metrics.appium_startup_time = time.time() - appium_start_time
                     print(f"✅ Appium server is ready (started in {metrics.appium_startup_time:.1f}s)")
                     return process
             except:
-                continue
+                pass
+            
+            # Adaptive sleep - shorter intervals for faster response
+            if attempt < 10:
+                time.sleep(0.2)  # First 2 seconds: check every 200ms
+            elif attempt < 30:
+                time.sleep(0.5)  # Next 10 seconds: check every 500ms  
+            else:
+                time.sleep(1.0)  # After 12 seconds: check every 1000ms
         
         metrics.appium_startup_time = time.time() - appium_start_time
         print(f"❌ Appium server failed to start within timeout ({metrics.appium_startup_time:.1f}s)")

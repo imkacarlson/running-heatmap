@@ -76,6 +76,41 @@ class BaseMobileTest:
         detector = MapLoadDetector(driver, wait, verbose=verbose)
         return detector.wait_for_map_ready()
     
+    def wait_for_map_idle_after_move(self, driver, timeout_ms=8000, verbose=False):
+        """
+        Wait for map to settle after navigation using JavaScript helpers.
+        Replaces sleep() calls after map.flyTo() or map.jumpTo() operations.
+        
+        Args:
+            driver: Selenium WebDriver instance
+            timeout_ms: Maximum time to wait in milliseconds (default 8000)
+            verbose: Enable detailed logging
+            
+        Returns:
+            True if map settled successfully, False if fallback was used
+        """
+        if verbose:
+            print(f"⏳ Waiting for map to settle (timeout: {timeout_ms}ms)...")
+            
+        wait_success = driver.execute_script(f"""
+            return new Promise((resolve) => {{
+                if (window.__mapTestHelpers && window.__mapTestHelpers.waitForIdleAfterMove) {{
+                    window.__mapTestHelpers.waitForIdleAfterMove({timeout_ms}).then(() => resolve(true));
+                }} else {{
+                    // Fallback if helpers not available
+                    setTimeout(() => resolve(false), 3000);
+                }}
+            }});
+        """)
+        
+        if verbose:
+            if wait_success:
+                print("✅ Map settled using JavaScript helpers")
+            else:
+                print("⚠️ Used fallback timeout (JavaScript helpers not available)")
+        
+        return wait_success
+    
     def switch_to_webview(self, driver, max_attempts=3):
         """
         Switch to WebView context with retry logic and interference handling.

@@ -7,30 +7,13 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from pathlib import Path
+from map_load_detector import MapLoadDetector
+from base_mobile_test import BaseMobileTest
 
 @pytest.mark.mobile
-class TestMobileAppWithTestData:
+class TestMobileAppWithTestData(BaseMobileTest):
     """Mobile app tests using session-scoped fixtures"""
     
-    def switch_to_webview(self, driver):
-        """Helper to switch to WebView context"""
-        contexts = driver.contexts
-        for context in contexts:
-            if 'WEBVIEW' in context:
-                driver.switch_to.context(context)
-                return context
-        raise Exception("No WebView context found")
-    
-    def wait_for_map_load(self, driver, wait):
-        """Helper to wait for map to load"""
-        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "#map")))
-        time.sleep(5)
-        map_loaded = driver.execute_script("""
-            return typeof map !== 'undefined' && map.loaded && map.loaded();
-        """)
-        if not map_loaded:
-            raise Exception("Map failed to load")
-        return True
     
     def verify_activity_line_visible(self, driver):
         """Verify red activity line is actually rendered on screen using pixel sampling"""
@@ -236,9 +219,10 @@ class TestMobileAppWithTestData:
         wait = mobile_driver['wait']
         
         # Setup and navigate to test area
-        time.sleep(8)
+        self.wait_for_webview_available(driver, wait, verbose=True)
         self.switch_to_webview(driver)
-        self.wait_for_map_load(driver, wait)
+        map_detector = MapLoadDetector(driver, wait, verbose=True)
+        map_detector.wait_for_map_ready(timeout=30, min_tiles_threshold=1)
         
         # Step 1: Verify PMTiles source is loaded
         print("📋 Step 1: Verifying PMTiles source...")

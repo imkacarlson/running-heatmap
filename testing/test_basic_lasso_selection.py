@@ -94,7 +94,9 @@ class TestBasicLassoSelection(BaseMobileTest):
                 zoom: {zoom_level}
             }});
         """)
-        time.sleep(1)  # Brief pause for tiles to load at new location
+        
+        # Wait for map to settle after navigation
+        self.wait_for_map_idle_after_move(driver, timeout_ms=5000, verbose=True)
         
         # Wait for map idle and runs features using deterministic approach
         print("⏳ Waiting for view to go idle after jumpTo...")
@@ -238,7 +240,7 @@ class TestBasicLassoSelection(BaseMobileTest):
         
         # Wait for map to settle at new zoom level
         print("⏳ Waiting for map to settle at new zoom level...")
-        time.sleep(2.0)
+        self.wait_for_map_idle_after_move(driver, timeout_ms=6000, verbose=True)
         
         # Wait for map idle and runs features at new zoom level
         print("⏳ Waiting for view to go idle after zoom out...")

@@ -11,6 +11,7 @@ from pathlib import Path
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
+from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.actions.pointer_input import PointerInput
 from selenium.webdriver.common.actions.action_builder import ActionBuilder
@@ -137,7 +138,22 @@ class TestUploadFunctionality(BaseMobileTest):
         # Switch to native context to interact with file picker
         print("🔄 Switching to native context for file picker...")
         driver.switch_to.context('NATIVE_APP')
-        time.sleep(3)  # Wait for file picker to appear
+        
+        # Wait for file picker to appear by looking for common file picker elements
+        print("⏳ Waiting for file picker to appear...")
+        file_picker_wait = WebDriverWait(driver, 10)
+        try:
+            # Look for common Android file picker elements
+            file_picker_wait.until(lambda d: any([
+                len(d.find_elements(By.XPATH, "//*[contains(@text, 'Select') or contains(@text, 'Choose') or contains(@text, 'Pick')]")) > 0,
+                len(d.find_elements(By.XPATH, "//*[contains(@class, 'file') or contains(@class, 'picker')]")) > 0,
+                len(d.find_elements(By.XPATH, "//*[contains(@resource-id, 'file') or contains(@resource-id, 'picker')]")) > 0,
+                len(d.find_elements(By.XPATH, "//*[contains(@text, '.gpx') or contains(@text, 'Downloads')]")) > 0
+            ]))
+            print("✅ File picker interface detected")
+        except TimeoutException:
+            print("⚠️ File picker timeout - continuing with fallback wait")
+            time.sleep(2)  # Short fallback
         
         print("✅ Upload button clicked, file picker should be open")
     
@@ -146,8 +162,16 @@ class TestUploadFunctionality(BaseMobileTest):
         print("📂 Navigating file picker to select test file...")
         
         try:
-            # Wait for file picker to appear
-            time.sleep(3)
+            # Wait for file picker elements to be interactive
+            print("⏳ Waiting for file picker elements to be ready...")
+            file_picker_wait = WebDriverWait(driver, 10)
+            file_picker_wait.until(lambda d: any([
+                len(d.find_elements(By.XPATH, "//*[@text='manual_upload_run.gpx']")) > 0,
+                len(d.find_elements(By.XPATH, "//*[contains(@text, 'Downloads')]")) > 0,
+                len(d.find_elements(By.XPATH, "//*[contains(@text, '.gpx')]")) > 0,
+                len(d.find_elements(By.XPATH, "//*[@clickable='true']")) > 5  # At least some clickable elements
+            ]))
+            print("✅ File picker is ready for interaction")
             
             # Strategy 1: Look for the file directly by name (in case it's in Recent)
             try:
@@ -344,11 +368,8 @@ class TestUploadFunctionality(BaseMobileTest):
         """Wait for upload processing to complete and verify success"""
         print("⏳ Waiting for upload processing to complete...")
         
-        # Wait for upload status or processing indicators
-        max_wait = 30  # 30 seconds timeout
-        start_time = time.time()
-        
-        while time.time() - start_time < max_wait:
+        # Define custom condition for upload completion
+        def upload_processing_complete(driver):
             try:
                 # Check for upload status or success indicators
                 status_info = driver.execute_script("""
@@ -373,32 +394,33 @@ class TestUploadFunctionality(BaseMobileTest):
                 
                 if status_info['hasUploadStatus']:
                     print(f"✅ Upload status detected: {status_info['statusTexts']}")
-                    break
+                    return True
                     
                 # Check if map has been updated with new data
                 map_update = driver.execute_script("""
                     // Check if map sources or data have been updated
                     if (typeof map !== 'undefined') {
                         const sources = map.getStyle().sources || {};
-                        return {
-                            sources: Object.keys(sources),
-                            timestamp: Date.now()
-                        };
+                        return Object.keys(sources).length > 0;
                     }
-                    return null;
+                    return false;
                 """)
                 
-                time.sleep(2)  # Check every 2 seconds
+                return map_update
                 
             except Exception as e:
                 print(f"⚠️ Error checking upload status: {e}")
-                time.sleep(2)
-                continue
+                return False
         
-        # Final wait for processing
-        print("📡 Allowing extra time for upload processing...")
-        time.sleep(5)
+        # Use WebDriverWait with custom condition
+        try:
+            WebDriverWait(driver, 30).until(upload_processing_complete)
+            print("✅ Upload processing completed")
+        except TimeoutException:
+            print("⚠️ Upload processing timeout - continuing anyway")
         
+        # Brief additional wait for final settling
+        WebDriverWait(driver, 5).until(lambda d: driver.execute_script("return typeof map !== 'undefined'"))
         print("✅ Upload processing wait completed")
     
     
@@ -418,7 +440,9 @@ class TestUploadFunctionality(BaseMobileTest):
                 duration: 1000
             }});
         """)
-        time.sleep(3)  # Wait for navigation and render
+        
+        # Wait for map to settle after navigation
+        self.wait_for_map_idle_after_move(driver, timeout_ms=8000, verbose=True)
         
         # Step 2: Verify red activity line at specific uploaded coordinates
         print("📋 Step 2: Verifying red line pixels at uploaded GPX coordinates...")
@@ -748,7 +772,18 @@ class TestUploadFunctionality(BaseMobileTest):
             # Open extras panel
             extras_btn = self.find_clickable_element(driver, wait, "#extras-btn")
             extras_btn.click()
-            time.sleep(3)  # Wait for panel to open and load content
+            
+            # Wait for extras panel to open and load content
+            print("⏳ Waiting for extras panel to open...")
+            panel_wait = WebDriverWait(driver, 10)
+            panel_wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "#extras-panel, .extras-panel")))
+            
+            # Also wait for panel content to be visible
+            panel_wait.until(lambda d: d.execute_script("""
+                const panel = document.querySelector('#extras-panel, .extras-panel');
+                return panel && panel.offsetHeight > 0 && panel.style.display !== 'none';
+            """))
+            print("✅ Extras panel opened successfully")
             
             # Look for clear uploads button
             print("🔍 Looking for clear uploads button...")
@@ -833,7 +868,9 @@ class TestUploadFunctionality(BaseMobileTest):
                 zoom: {zoom_level}
             }});
         """)
-        time.sleep(3)  # Wait for map to settle and tiles to load
+        
+        # Wait for map to settle after navigation
+        self.wait_for_map_idle_after_move(driver, timeout_ms=8000, verbose=True)
         
         # Inject map helpers if not already present
         print("📦 Ensuring map test helpers are available...")
@@ -852,7 +889,15 @@ class TestUploadFunctionality(BaseMobileTest):
         print("🎯 Activating lasso selection mode...")
         lasso_btn = self.find_clickable_element(driver, wait, "#lasso-btn")
         lasso_btn.click()
-        time.sleep(1)
+        
+        # Wait for lasso mode to be activated
+        lasso_wait = WebDriverWait(driver, 5)
+        lasso_wait.until(lambda d: d.execute_script("""
+            return document.querySelector('#lasso-btn').classList.contains('active') ||
+                   document.body.classList.contains('lasso-mode') ||
+                   document.querySelector('#map').style.cursor === 'crosshair';
+        """))
+        print("✅ Lasso mode activated")
         
         # Generate large polygon to encompass all activities (uploaded + 2 packaged)
         print("📐 Generating large polygon to encompass all three activities...")
@@ -961,9 +1006,16 @@ class TestUploadFunctionality(BaseMobileTest):
         print("   📝 Minimizing sidebar...")
         collapse_btn = self.find_clickable_element(driver, wait, "#panel-collapse")
         collapse_btn.click()
-        time.sleep(1)
         
-        # Verify sidebar is collapsed
+        # Wait for sidebar to collapse
+        collapse_wait = WebDriverWait(driver, 5)
+        collapse_wait.until(lambda d: d.execute_script("""
+            const panel = document.getElementById('side-panel');
+            return panel && panel.classList.contains('collapsed');
+        """))
+        print("   ✅ Sidebar collapsed successfully")
+        
+        # Verify sidebar is collapsed (redundant check, but keeping for compatibility)
         sidebar_collapsed = driver.execute_script("""
             const panel = document.getElementById('side-panel');
             return panel && panel.classList.contains('collapsed');

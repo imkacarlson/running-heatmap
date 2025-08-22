@@ -192,6 +192,70 @@ def analyze_profile(prof_file_path=None):
         if network_time > 0:
             net_pct = (network_time / total_time * 100) if total_time > 0 else 0 
             print(f"🌐 Network I/O: {network_time:.1f}s ({net_pct:.1f}%) - normal for WebDriver tests")
+    
+    # Show optimization progress if running optimized code
+    show_optimization_context(prof_file.name, total_time, sleep_time, network_time)
+
+def show_optimization_context(prof_filename, total_time, sleep_time, network_time):
+    """Show context about optimizations based on profile results"""
+    print()
+    print("🚀 OPTIMIZATION CONTEXT:")
+    print("-" * 30)
+    
+    # Expected performance based on our optimizations
+    expected_improvements = {
+        'test_basic_lasso_polygon_selection.prof': {
+            'baseline': 86.6,
+            'optimized_target': 25.0,
+            'main_optimization': 'ActionBuilder command reduction (12→3 steps)'
+        },
+        'test_upload_gpx_file_flow.prof': {
+            'baseline': 115.8,
+            'optimized_target': 35.0,
+            'main_optimization': 'Context switching cache + streamlined file picker'
+        },
+        'test_activity_definitely_visible.prof': {
+            'baseline': 37.3,
+            'optimized_target': 15.0,
+            'main_optimization': 'Sleep call elimination + WebDriverWait'
+        }
+    }
+    
+    if prof_filename in expected_improvements:
+        expected = expected_improvements[prof_filename]
+        baseline = expected['baseline']
+        target = expected['optimized_target']
+        optimization = expected['main_optimization']
+        
+        if total_time <= target * 1.2:  # Within 20% of target
+            print(f"✅ OPTIMIZATION SUCCESS: {total_time:.1f}s vs baseline {baseline:.1f}s")
+            improvement = ((baseline - total_time) / baseline) * 100
+            print(f"📈 Performance improvement: {improvement:.1f}% faster")
+            print(f"✨ Key optimization: {optimization}")
+        elif total_time <= baseline * 0.8:  # At least 20% improvement
+            print(f"🔄 PARTIAL OPTIMIZATION: {total_time:.1f}s (improved from {baseline:.1f}s baseline)")
+            improvement = ((baseline - total_time) / baseline) * 100
+            print(f"📈 Performance improvement: {improvement:.1f}% faster")
+            print(f"✨ Key optimization: {optimization}")
+        else:
+            print(f"🚧 OPTIMIZATION PENDING: {total_time:.1f}s (baseline was {baseline:.1f}s)")
+            print(f"🎯 Target: {target:.1f}s with {optimization}")
+    else:
+        # General optimization guidance
+        network_pct = (network_time / total_time * 100) if total_time > 0 else 0
+        sleep_pct = (sleep_time / total_time * 100) if total_time > 0 else 0
+        
+        if network_pct > 70:
+            print("🚨 HIGH NETWORK I/O: Consider optimizing WebDriver commands")
+            print("   • Reduce ActionBuilder interpolation steps")
+            print("   • Cache context switches")
+            print("   • Streamline element finding strategies")
+        elif sleep_pct > 15:
+            print("🚨 HIGH SLEEP TIME: Consider dynamic waits")
+            print("   • Replace time.sleep() with WebDriverWait")
+            print("   • Use event-driven waiting")
+        else:
+            print("🎆 Performance looks optimized!")
 
 if __name__ == '__main__':
     prof_path = sys.argv[1] if len(sys.argv) > 1 else None

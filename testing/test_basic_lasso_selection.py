@@ -571,14 +571,17 @@ class TestBasicLassoSelection(BaseMobileTest):
         if len(viewport_points) < 3:
             raise ValueError("Need at least 3 points for polygon")
         
-        # Freeze scroll position to prevent coordinate shifts
-        driver.execute_script("window.scrollTo(0,0)")
-        
-        # Ensure container is visible 
-        driver.execute_script("window.__mapTestHelpers.findMap().getContainer().scrollIntoView({block:'center', inline:'center'})")
-        
-        # Get viewport dimensions for additional clamping
-        vw, vh = driver.execute_script("return [window.innerWidth, window.innerHeight]")
+        # OPTIMIZED: Single script call for setup and viewport dimensions
+        vw, vh = driver.execute_script("""
+            // Freeze scroll position to prevent coordinate shifts
+            window.scrollTo(0,0);
+            
+            // Ensure container is visible 
+            window.__mapTestHelpers.findMap().getContainer().scrollIntoView({block:'center', inline:'center'});
+            
+            // Return viewport dimensions in single call
+            return [window.innerWidth, window.innerHeight];
+        """)
         
         # Belt-and-suspenders viewport clamping
         clamped_points = []
@@ -614,17 +617,24 @@ class TestBasicLassoSelection(BaseMobileTest):
         
         print(f"👆 Starting absolute touch at {first_point}")
         
-        # Draw smooth path between points
+        # OPTIMIZED: Draw path with minimal interpolation for speed
         for i in range(len(clamped_points) - 1):
             point_a = clamped_points[i]
             point_b = clamped_points[i + 1]
             
-            # Interpolated moves for smoothness
-            steps = 12
-            for step in range(1, steps + 1):
-                interpolated_point = lerp(point_a, point_b, step / steps)
-                move_abs(interpolated_point)
-                actions.pointer_action.pause(0.015)
+            # Calculate distance to determine if interpolation is needed
+            distance = ((point_b["x"] - point_a["x"]) ** 2 + (point_b["y"] - point_a["y"]) ** 2) ** 0.5
+            
+            if distance > 100:  # Only interpolate for long moves
+                # Minimal interpolation - just 3 steps instead of 12
+                steps = 3
+                for step in range(1, steps + 1):
+                    interpolated_point = lerp(point_a, point_b, step / steps)
+                    move_abs(interpolated_point)
+                    # Remove individual pauses - ActionBuilder handles timing
+            else:
+                # Short move - go directly to end point
+                move_abs(point_b)
             
             print(f"👆 Drew to absolute point {i+1}: {point_b}")
         

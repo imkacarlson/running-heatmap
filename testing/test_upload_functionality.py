@@ -134,117 +134,73 @@ class TestUploadFunctionality(BaseMobileTest):
         upload_btn = self.find_clickable_element(driver, wait, "#upload-btn")
         upload_btn.click()
         
-        # Switch to native context to interact with file picker
+        # Use optimized context switching with caching
         print("🔄 Switching to native context for file picker...")
-        driver.switch_to.context('NATIVE_APP')
+        self.switch_to_context_optimized(driver, 'NATIVE_APP')
         
-        # Wait for context switch to complete
-        WebDriverWait(driver, 5).until(lambda d: d.current_context == 'NATIVE_APP')
-        
-        # Wait for file picker to appear by looking for common file picker elements
-        print("⏳ Waiting for file picker to appear...")
-        file_picker_wait = WebDriverWait(driver, 10)
+        # Streamlined file picker detection - use single efficient check
+        print("⏳ Waiting for file picker readiness...")
         try:
-            # Look for common Android file picker elements
-            file_picker_wait.until(lambda d: any([
-                len(d.find_elements(By.XPATH, "//*[contains(@text, 'Select') or contains(@text, 'Choose') or contains(@text, 'Pick')]")) > 0,
-                len(d.find_elements(By.XPATH, "//*[contains(@class, 'file') or contains(@class, 'picker')]")) > 0,
-                len(d.find_elements(By.XPATH, "//*[contains(@resource-id, 'file') or contains(@resource-id, 'picker')]")) > 0,
-                len(d.find_elements(By.XPATH, "//*[contains(@text, '.gpx') or contains(@text, 'Downloads')]")) > 0
-            ]))
-            print("✅ File picker interface detected")
+            # Single optimized wait for any clickable file picker elements
+            WebDriverWait(driver, 8).until(
+                lambda d: len(d.find_elements("xpath", "//*[@clickable='true'][@enabled='true']")) >= 3
+            )
+            print("✅ File picker interface ready")
         except TimeoutException:
-            print("⚠️ File picker timeout - attempting to proceed with UI interaction")
-            # Give minimal time for UI to stabilize before proceeding
-            WebDriverWait(driver, 3).until(lambda d: len(d.find_elements(By.XPATH, "//*")) > 0)
+            # Fallback - minimal wait for UI stability
+            print("⚠️ Using fallback UI wait")
+            import time
+            time.sleep(2)
         
         print("✅ Upload button clicked, file picker should be open")
     
     def navigate_file_picker_and_select(self, driver, wait):
-        """Navigate Android file picker and select manual_upload_run.gpx"""
+        """Navigate Android file picker and select manual_upload_run.gpx - OPTIMIZED"""
         print("📂 Navigating file picker to select test file...")
         
         try:
-            # Wait for file picker elements to be interactive
-            print("⏳ Waiting for file picker elements to be ready...")
-            file_picker_wait = WebDriverWait(driver, 10)
-            file_picker_wait.until(lambda d: any([
-                len(d.find_elements(By.XPATH, "//*[@text='manual_upload_run.gpx']")) > 0,
-                len(d.find_elements(By.XPATH, "//*[contains(@text, 'Downloads')]")) > 0,
-                len(d.find_elements(By.XPATH, "//*[contains(@text, '.gpx')]")) > 0,
-                len(d.find_elements(By.XPATH, "//*[@clickable='true']")) > 5  # At least some clickable elements
-            ]))
-            print("✅ File picker is ready for interaction")
+            # Simplified readiness check - just wait for clickable elements
+            print("⏳ Waiting for file picker readiness...")
+            WebDriverWait(driver, 8).until(
+                lambda d: len(d.find_elements("xpath", "//*[@clickable='true']")) >= 3
+            )
+            print("✅ File picker ready for interaction")
             
-            # Strategy 1: Look for the file directly by name (in case it's in Recent)
+            # OPTIMIZED: Single streamlined file selection approach
+            # Look for file directly first, then try Downloads folder if needed
+            target_file_xpath = "//android.widget.TextView[@text='manual_upload_run.gpx']"
+            
             try:
-                file_element = driver.find_element(
-                    "xpath", 
-                    "//android.widget.TextView[@text='manual_upload_run.gpx']"
-                )
+                # Quick check for file in current view
+                file_element = driver.find_element("xpath", target_file_xpath)
                 file_element.click()
-                print("✅ Found and selected test file directly in Recent")
+                print("✅ Found and selected test file directly")
                 return
             except:
-                print("🔍 File not visible in Recent, navigating to Downloads folder...")
+                # File not visible - try Downloads folder navigation
+                print("🔍 Navigating to Downloads folder...")
+                try:
+                    downloads_folder = driver.find_element(
+                        "xpath", "//android.widget.TextView[@text='Download' or @text='Downloads']"
+                    )
+                    downloads_folder.click()
+                    
+                    # Wait briefly for folder contents and try file selection
+                    WebDriverWait(driver, 4).until(
+                        lambda d: len(d.find_elements("xpath", target_file_xpath)) > 0
+                    )
+                    
+                    file_element = driver.find_element("xpath", target_file_xpath)
+                    file_element.click()
+                    print("✅ Found and selected test file in Downloads folder")
+                    return
+                except Exception as e:
+                    print(f"⚠️ Downloads navigation failed: {e}")
             
-            # Strategy 2: Use hamburger menu to navigate to Downloads
-            try:
-                self.navigate_to_downloads_via_menu(driver)
-                
-                # Now look for the file in Downloads
-                file_element = driver.find_element(
-                    "xpath",
-                    "//android.widget.TextView[@text='manual_upload_run.gpx']"
-                )
-                file_element.click()
-                print("✅ Found and selected test file in Downloads folder")
-                return
-            except Exception as e:
-                print(f"🔍 Menu navigation failed: {e}, trying direct Downloads detection...")
-            
-            # Strategy 3: Look for Downloads folder directly in main view
-            try:
-                downloads_folder = driver.find_element(
-                    "xpath",
-                    "//android.widget.TextView[@text='Download' or @text='Downloads']"
-                )
-                downloads_folder.click()
-                
-                # Wait for Downloads folder contents to load
-                WebDriverWait(driver, 5).until(
-                    lambda d: len(d.find_elements(By.XPATH, "//*[contains(@text, '.gpx') or contains(@text, 'manual')]")) > 0
-                )
-                
-                # Now look for the file in Downloads
-                file_element = driver.find_element(
-                    "xpath",
-                    "//android.widget.TextView[@text='manual_upload_run.gpx']"
-                )
-                file_element.click()
-                print("✅ Found and selected test file in Downloads folder (direct)")
-                return
-            except:
-                print("🔍 Downloads folder not found directly, trying scroll and search...")
-            
-            # Strategy 4: Scroll to find Downloads folder or file
-            try:
-                self.scroll_and_find_downloads(driver)
-                
-                # Look for the file after scrolling
-                file_element = driver.find_element(
-                    "xpath",
-                    "//android.widget.TextView[@text='manual_upload_run.gpx']"
-                )
-                file_element.click()
-                print("✅ Found and selected test file after scrolling")
-                return
-            except:
-                print("⚠️ Could not find test file after all navigation attempts...")
-                
-                # Debug: dump current screen elements
-                self.dump_current_elements(driver)
-                raise Exception("Could not locate test file in file picker after all navigation attempts")
+            # Final fallback: dump elements for debugging and raise error
+            print("⚠️ Could not find test file after streamlined navigation")
+            self.dump_current_elements(driver)
+            raise Exception("Could not locate test file in file picker")
                 
         finally:
             # Wait for file selection to process - check if we're still in file picker mode
@@ -1391,11 +1347,14 @@ class TestUploadFunctionality(BaseMobileTest):
         if len(viewport_points) < 3:
             raise ValueError("Need at least 3 points for polygon")
         
-        # Freeze scroll position to prevent coordinate shifts
-        driver.execute_script("window.scrollTo(0,0)")
-        
-        # Get viewport dimensions for clamping
-        vw, vh = driver.execute_script("return [window.innerWidth, window.innerHeight]")
+        # OPTIMIZED: Single script call for setup and viewport dimensions
+        vw, vh = driver.execute_script("""
+            // Freeze scroll position to prevent coordinate shifts
+            window.scrollTo(0,0);
+            
+            // Return viewport dimensions in single call
+            return [window.innerWidth, window.innerHeight];
+        """)
         
         # Clamp points to viewport bounds
         clamped_points = []
@@ -1430,17 +1389,24 @@ class TestUploadFunctionality(BaseMobileTest):
         
         print(f"👆 Starting absolute touch at {first_point}")
         
-        # Draw smooth path between points
+        # OPTIMIZED: Draw path with minimal interpolation for speed
         for i in range(len(clamped_points) - 1):
             point_a = clamped_points[i]
             point_b = clamped_points[i + 1]
             
-            # Interpolated moves for smoothness
-            steps = 12
-            for step in range(1, steps + 1):
-                interpolated_point = lerp(point_a, point_b, step / steps)
-                move_abs(interpolated_point)
-                actions.pointer_action.pause(0.015)
+            # Calculate distance to determine if interpolation is needed
+            distance = ((point_b["x"] - point_a["x"]) ** 2 + (point_b["y"] - point_a["y"]) ** 2) ** 0.5
+            
+            if distance > 100:  # Only interpolate for long moves
+                # Minimal interpolation - just 3 steps instead of 12
+                steps = 3
+                for step in range(1, steps + 1):
+                    interpolated_point = lerp(point_a, point_b, step / steps)
+                    move_abs(interpolated_point)
+                    # Remove individual pauses - ActionBuilder handles timing
+            else:
+                # Short move - go directly to end point
+                move_abs(point_b)
             
             print(f"👆 Drew to absolute point {i+1}: {point_b}")
         

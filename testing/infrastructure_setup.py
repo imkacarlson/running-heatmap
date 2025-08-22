@@ -97,7 +97,6 @@ def check_and_start_emulator(metrics: PerformanceMetrics):
                         metrics.emulator_startup_time = time.time() - emulator_start_time
                         print(f"✅ Emulator is ready! (started in {metrics.emulator_startup_time:.1f}s)")
                         # Dynamic wait for emulator settling instead of fixed 3s
-                        import subprocess
                         try:
                             # Quick stability check instead of fixed sleep
                             subprocess.run(['adb', 'shell', 'getprop', 'sys.boot_completed'], 

@@ -15,6 +15,21 @@ import json
 import gzip
 import time
 from shapely.geometry import mapping
+from pathlib import Path
+
+INSTRUMENT_JS = os.getenv("INSTRUMENT_JS") == "1"
+SERVER_DIR = Path(__file__).parent
+INSTR_JS_DIR = SERVER_DIR / ".instrumented"
+
+def js_src(path: str) -> Path:
+    """
+    Return the JS source path, using instrumented copy when INSTRUMENT_JS is set.
+    Only for JS files; non-JS assets should continue to come from SERVER_DIR.
+    """
+    if INSTRUMENT_JS and (INSTR_JS_DIR / path).exists():
+        print(f"   - Using instrumented JS: {path}")
+        return INSTR_JS_DIR / path
+    return SERVER_DIR / path
 
 # --- Path Configuration ---
 # Make the script runnable from any directory
@@ -250,17 +265,18 @@ def create_mobile_files(mobile_dir):
     print("   - Updated index.html from mobile_template.html")
     
     # Copy service worker
-    shutil.copy(os.path.join(SCRIPT_DIR, 'sw_template.js'), os.path.join(mobile_dir, 'sw.js'))
+    shutil.copy(js_src('sw_template.js'), os.path.join(mobile_dir, 'sw.js'))
     print("   - Updated sw.js from sw_template.js")
     
     # Copy main JS and dependencies
-    mobile_main_js = os.path.join(SCRIPT_DIR, 'mobile_main.js')
-    if os.path.exists(mobile_main_js):
-        shutil.copy(mobile_main_js, os.path.join(mobile_dir, 'main.js'))
-        print("   - Updated main.js from mobile_main.js")
-        
-        shutil.copy(os.path.join(SCRIPT_DIR, 'spatial.worker.js'), os.path.join(mobile_dir, 'spatial.worker.js'))
-        print("   - Updated spatial.worker.js")
+    shutil.copy(js_src('mobile_main.js'), os.path.join(mobile_dir, 'main.js'))
+    print("   - Updated main.js from mobile_main.js")
+
+    shutil.copy(js_src('spatial.worker.js'), os.path.join(mobile_dir, 'spatial.worker.js'))
+    print("   - Updated spatial.worker.js")
+
+    mobile_main_js_path = js_src('mobile_main.js')
+    if os.path.exists(mobile_main_js_path):
         
         # Copy rbush.min.js from node_modules (since root copy was removed)
         rbush_path = os.path.join(PROJECT_ROOT, 'node_modules', 'rbush', 'rbush.min.js')

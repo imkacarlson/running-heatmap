@@ -79,3 +79,9 @@ self.onmessage = async e => {
     postMessage({type:'chunk', features});
   postMessage({type:'complete'});
 };
+
+try {
+  if (typeof self !== 'undefined' && self.__coverage__) {
+    self.postMessage({ __workerCoverage: self.__coverage__ });
+  }
+} catch (e) {}

@@ -356,6 +356,11 @@ Examples:
                        help='Skip cleanup for faster repeated runs (use with caution)')
     parser.add_argument('--profile', action='store_true',
                        help='Enable performance profiling for tests (generates flame graphs)')
+    parser.add_argument(
+        "--cov",
+        action="store_true",
+        help="Collect coverage for server/ (Python)."
+    )
     
     # Report file (internal use)
     parser.add_argument('--report-file', default='reports/test_report.html',
@@ -516,6 +521,18 @@ def build_pytest_command(args):
     
     # HTML reporting with warnings included  
     cmd.extend(['--html', args.report_file, '--self-contained-html'])
+
+    if args.cov:
+        from pathlib import Path
+        repo_root = Path(__file__).parent.parent
+        cmd += [
+            "--cov=server",
+            "--cov-branch",
+            f"--cov-config={repo_root / '.coveragerc'}",
+            "--cov-report=term-missing:skip-covered",
+            "--cov-report=html:testing/reports/coverage/python/html",
+            "--cov-report=xml",
+        ]
     
     return cmd
 

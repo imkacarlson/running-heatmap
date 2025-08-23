@@ -130,6 +130,26 @@ def configure_emulator_stability():
     
     print("   ✅ Emulator stability configuration complete")
 
+def pytest_configure(config):
+    # Stash the driver so sessionfinish can access it
+    config._appium_driver_ref = {}
+
+def pytest_sessionfinish(session, exitstatus):
+    drv = getattr(session.config, "_appium_driver_ref", {}).get("driver")
+    if not drv:
+        return
+    try:
+        from pathlib import Path
+        from js_coverage import collect_js_coverage
+        # Ensure the path is relative to the testing directory
+        report_dir = Path(__file__).parent / "reports/coverage/js"
+        collect_js_coverage(drv, report_dir)
+        print(f"✅ JS coverage collected to {report_dir}")
+    except Exception as e:
+        # Do not fail the suite if coverage collection has issues
+        print(f"⚠️  Could not collect JS coverage: {e}")
+        pass
+
 def pytest_addoption(parser):
     """Add custom command line options"""
     parser.addoption(
@@ -463,7 +483,7 @@ def session_setup(fast_mode):
         cleanup_test_environment(str(test_env))
 
 @pytest.fixture(scope="function")
-def mobile_driver(session_setup):
+def mobile_driver(request, session_setup):
     """
     Provide Appium WebDriver instance for mobile tests.
     This fixture creates a driver instance and handles cleanup.
@@ -493,6 +513,9 @@ def mobile_driver(session_setup):
         options=options
     )
     
+    # Stash driver for session-level cleanup and JS coverage
+    request.config._appium_driver_ref["driver"] = driver
+
     # Set implicit wait
     driver.implicitly_wait(config.TestConfig.IMPLICIT_WAIT)
     

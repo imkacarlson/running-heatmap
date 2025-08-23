@@ -1,0 +1,18 @@
+[run]
+branch = True
+parallel = True
+source = server
+omit =
+    server/*.template
+    server/*.xml.template
+    server/*.java.template
+    server/*.js
+    server/*worker.js
+    server/*template.js
+
+[report]
+show_missing = True
+skip_covered = False
+
+[xml]
+output = testing/reports/coverage/python/cobertura.xml

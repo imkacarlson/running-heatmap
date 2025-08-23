@@ -6,6 +6,28 @@ class SpatialIndex {
     this.userRuns = [];
     this.nextId = 1;
     this.worker = null;
+    this._initWorker();
+  }
+
+  _initWorker() {
+    window.__workerCoverages = window.__workerCoverages || [];
+    try {
+      this.worker = new Worker('spatial.worker.js');
+      this.worker.addEventListener('message', (evt) => {
+        if (evt?.data?.__workerCoverage) {
+          window.__workerCoverages.push(evt.data.__workerCoverage);
+          // Merge into window.__coverage__ if present
+          if (window.__coverage__) {
+            Object.assign(window.__coverage__, evt.data.__workerCoverage);
+          }
+        } else {
+          this._handleWorkerMessage(evt);
+        }
+      });
+    } catch (e) {
+      console.error("Failed to initialize worker", e);
+      this.worker = null;
+    }
   }
 
   _handleWorkerMessage(e) {

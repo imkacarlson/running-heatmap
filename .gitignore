@@ -62,3 +62,7 @@ testing/.change_detector_cache/
 
 # Spec logs
 logs/
+
+# Coverage reports
+server/.instrumented/
+testing/reports/coverage/

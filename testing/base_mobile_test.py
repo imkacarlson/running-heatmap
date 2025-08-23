@@ -11,15 +11,16 @@ from map_load_detector import MapLoadDetector
 class BaseMobileTest:
     """Base class providing common mobile test functionality"""
     
-    def __init__(self):
-        # Context caching to reduce expensive context switches
-        self._current_context_cache = None
-        self._context_cache_timestamp = 0
-        self._cache_timeout = 5  # seconds
-    
     def get_current_context_cached(self, driver):
         """Get current context with caching to reduce WebDriver round trips"""
         import time
+        
+        # Initialize cache attributes if they don't exist (lazy initialization)
+        if not hasattr(self, '_current_context_cache'):
+            self._current_context_cache = None
+            self._context_cache_timestamp = 0
+            self._cache_timeout = 5  # seconds
+        
         current_time = time.time()
         
         # Return cached result if still valid
@@ -34,8 +35,14 @@ class BaseMobileTest:
     
     def invalidate_context_cache(self):
         """Invalidate context cache after context switches"""
-        self._current_context_cache = None
-        self._context_cache_timestamp = 0
+        # Initialize cache attributes if they don't exist (lazy initialization)
+        if not hasattr(self, '_current_context_cache'):
+            self._current_context_cache = None
+            self._context_cache_timestamp = 0
+            self._cache_timeout = 5  # seconds
+        else:
+            self._current_context_cache = None
+            self._context_cache_timestamp = 0
     
     def switch_to_context_optimized(self, driver, target_context, max_attempts=2):
         """Optimized context switching with caching and minimal verification"""

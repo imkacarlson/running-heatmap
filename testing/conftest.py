@@ -239,6 +239,12 @@ def session_setup(fast_mode):
     need_apk_build = not optimization.can_skip_build
     need_data_processing = not optimization.can_skip_data
     
+    is_cov_run = os.environ.get('COVERAGE_RUN') == '1'
+    if is_cov_run and (not need_apk_build or not need_data_processing):
+        print("   ℹ️ Coverage run detected, forcing APK build and data processing to ensure code is executed.")
+        need_apk_build = True
+        need_data_processing = True
+
     print(f"\n🏗️ Infrastructure Setup: Building test environment")
     print(f"   📱 APK build needed: {need_apk_build}")
     print(f"   🗂️ Data processing needed: {need_data_processing}")

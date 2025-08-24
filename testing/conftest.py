@@ -309,6 +309,7 @@ def session_setup(fast_mode):
         
         # Define python path for subprocesses
         main_venv_python = project_root / ".venv" / "bin" / "python"
+        is_cov_run = os.environ.get('COVERAGE_RUN') == '1'
 
         # 2. Process test data (GPX import and PMTiles generation)
         if need_data_processing:
@@ -316,9 +317,12 @@ def session_setup(fast_mode):
             
             print("   🔄 Running consolidated data processing...")
             # Run process_data.py to handle both import and PMTiles generation
-            result = subprocess.run([
-                str(main_venv_python), "process_data.py"
-            ], cwd=server_dir, text=True, timeout=120)
+            cmd = [str(main_venv_python)]
+            if is_cov_run:
+                cmd.extend(["-m", "coverage", "run", "--parallel-mode"])
+            cmd.append("process_data.py")
+
+            result = subprocess.run(cmd, cwd=server_dir, text=True, timeout=120)
             
             if result.returncode != 0:
                 raise Exception(f"Data processing failed with return code {result.returncode}")
@@ -361,9 +365,12 @@ def session_setup(fast_mode):
             build_env = os.environ.copy()
             build_env['MOBILE_BUILD_AUTO'] = '1'  # Enable auto mode
             
-            build_process = subprocess.Popen([
-                str(main_venv_python), "build_mobile.py"
-            ], cwd=server_dir, stdin=subprocess.PIPE, 
+            cmd = [str(main_venv_python)]
+            if is_cov_run:
+                cmd.extend(["-m", "coverage", "run", "--parallel-mode"])
+            cmd.append("build_mobile.py")
+
+            build_process = subprocess.Popen(cmd, cwd=server_dir, stdin=subprocess.PIPE,
                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, 
                text=True, env=build_env)
             
@@ -401,9 +408,12 @@ def session_setup(fast_mode):
                 build_env = os.environ.copy()
                 build_env['MOBILE_BUILD_AUTO'] = '1'  # Enable auto mode
                 
-                build_process = subprocess.Popen([
-                    str(main_venv_python), "build_mobile.py"
-                ], cwd=server_dir, stdin=subprocess.PIPE, 
+                cmd = [str(main_venv_python)]
+                if is_cov_run:
+                    cmd.extend(["-m", "coverage", "run", "--parallel-mode"])
+                cmd.append("build_mobile.py")
+
+                build_process = subprocess.Popen(cmd, cwd=server_dir, stdin=subprocess.PIPE,
                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, 
                    text=True, env=build_env)
                 

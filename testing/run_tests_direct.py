@@ -31,6 +31,8 @@ def main():
     os.environ['OPTIMIZATION_ENABLED'] = '1'
     os.environ['SKIP_APK_BUILD'] = '1'
     os.environ['SKIP_DATA_PROCESSING'] = '1'
+    if args.cov:
+        os.environ['COVERAGE_RUN'] = '1'
     
     # Configure pytest arguments
     pytest_args = [

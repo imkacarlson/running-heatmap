@@ -488,6 +488,9 @@ def prepare_optimized_environment(args, optimization):
         'PARALLEL_EXECUTION': '1' if args.parallel else '0',
         'SKIP_CLEANUP': '1' if args.skip_cleanup else '0'
     }
+
+    if args.cov:
+        env_vars['COVERAGE_RUN'] = '1'
     
     print("   Environment configuration:")
     for key, value in env_vars.items():

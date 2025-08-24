@@ -307,12 +307,12 @@ def session_setup(fast_mode):
                 else:
                     print(f"   ⏭️  Excluding {gpx_file.name} from APK (manual upload testing only)")
         
+        # Define python path for subprocesses
+        main_venv_python = project_root / ".venv" / "bin" / "python"
+
         # 2. Process test data (GPX import and PMTiles generation)
         if need_data_processing:
             print("   🗂️ Processing test data (GPX import and PMTiles generation)...")
-            
-            # Use main project's .venv Python which has all server dependencies
-            main_venv_python = project_root / ".venv" / "bin" / "python"
             
             print("   🔄 Running consolidated data processing...")
             # Run process_data.py to handle both import and PMTiles generation

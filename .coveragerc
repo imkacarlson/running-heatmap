@@ -2,6 +2,8 @@
 branch = True
 parallel = True
 source = server
+concurrency = multiprocessing
+sigterm = true
 omit =
     server/*.template
     server/*.xml.template

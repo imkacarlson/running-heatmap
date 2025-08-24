@@ -33,6 +33,8 @@ def main():
     os.environ['SKIP_DATA_PROCESSING'] = '1'
     if args.cov:
         os.environ['COVERAGE_RUN'] = '1'
+        # Enable automatic coverage for all Python subprocesses
+        os.environ['COVERAGE_PROCESS_START'] = str(Path(__file__).parent.parent / '.coveragerc')
     
     # Configure pytest arguments
     pytest_args = [
@@ -59,7 +61,47 @@ def main():
 
     # Run pytest directly
     exit_code = pytest.main(pytest_args + remaining_argv)
+    
+    # Combine coverage data from all processes if coverage was enabled
+    if args.cov:
+        combine_coverage_data()
+    
     return exit_code
+
+def combine_coverage_data():
+    """Combine coverage data from all processes and generate reports"""
+    import sys
+    import subprocess
+    from pathlib import Path
+    
+    try:
+        repo_root = Path(__file__).parent.parent
+        print("\n📊 Combining Python coverage data from all processes...")
+        
+        # Combine all .coverage.* files
+        subprocess.run([
+            sys.executable, '-m', 'coverage', 'combine',
+            '--rcfile', str(repo_root / '.coveragerc')
+        ], cwd=repo_root, check=False)
+        
+        # Generate HTML report
+        subprocess.run([
+            sys.executable, '-m', 'coverage', 'html',
+            '--rcfile', str(repo_root / '.coveragerc'),
+            '-d', 'testing/reports/coverage/python/html'
+        ], cwd=repo_root, check=False)
+        
+        # Generate XML report  
+        subprocess.run([
+            sys.executable, '-m', 'coverage', 'xml',
+            '--rcfile', str(repo_root / '.coveragerc'),
+            '-o', 'testing/reports/coverage/python/cobertura.xml'
+        ], cwd=repo_root, check=False)
+        
+        print("✅ Python coverage combined and reports generated")
+        
+    except Exception as e:
+        print(f"⚠️  Warning: Could not combine coverage data: {e}")
 
 if __name__ == '__main__':
     exit(main())

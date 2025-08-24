@@ -491,6 +491,9 @@ def prepare_optimized_environment(args, optimization):
 
     if args.cov:
         env_vars['COVERAGE_RUN'] = '1'
+        # Enable automatic coverage for all Python subprocesses
+        repo_root = Path(__file__).parent.parent
+        env_vars['COVERAGE_PROCESS_START'] = str(repo_root / '.coveragerc')
     
     print("   Environment configuration:")
     for key, value in env_vars.items():
@@ -590,7 +593,42 @@ def run_tests_sequential(args, metrics: PerformanceMetrics = None, start_time: f
     if metrics:
         metrics.test_execution_time = time.time() - start_time
     
+    # Combine coverage data from all processes if coverage was enabled
+    if args.cov:
+        combine_coverage_data()
+    
     return result.returncode
+
+def combine_coverage_data():
+    """Combine coverage data from all processes and generate reports"""
+    try:
+        repo_root = Path(__file__).parent.parent
+        print("\n📊 Combining Python coverage data from all processes...")
+        
+        # Combine all .coverage.* files
+        subprocess.run([
+            sys.executable, '-m', 'coverage', 'combine',
+            '--rcfile', str(repo_root / '.coveragerc')
+        ], cwd=repo_root, check=False)
+        
+        # Generate HTML report
+        subprocess.run([
+            sys.executable, '-m', 'coverage', 'html',
+            '--rcfile', str(repo_root / '.coveragerc'),
+            '-d', 'testing/reports/coverage/python/html'
+        ], cwd=repo_root, check=False)
+        
+        # Generate XML report  
+        subprocess.run([
+            sys.executable, '-m', 'coverage', 'xml',
+            '--rcfile', str(repo_root / '.coveragerc'),
+            '-o', 'testing/reports/coverage/python/cobertura.xml'
+        ], cwd=repo_root, check=False)
+        
+        print("✅ Python coverage combined and reports generated")
+        
+    except Exception as e:
+        print(f"⚠️  Warning: Could not combine coverage data: {e}")
 
 def run_tests_parallel(args, metrics: PerformanceMetrics = None):
     """Run tests with safe parallel execution"""

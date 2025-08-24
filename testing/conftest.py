@@ -3,6 +3,7 @@ pytest fixtures for GPX to mobile testing
 Session-scoped fixtures handle expensive operations once per test session
 """
 import os
+import sys
 import pytest
 import shutil
 import subprocess
@@ -314,8 +315,25 @@ def session_setup(fast_mode):
                     print(f"   ⏭️  Excluding {gpx_file.name} from APK (manual upload testing only)")
         
         # Define python path for subprocesses
-        main_venv_python = project_root / ".venv" / "bin" / "python"
         is_cov_run = os.environ.get('COVERAGE_RUN') == '1'
+        main_venv_python = project_root / ".venv" / "bin" / "python"
+        
+        # If coverage is needed but not available in main venv, install it
+        if is_cov_run:
+            try:
+                # Test if coverage is available in the main venv
+                result = subprocess.run([
+                    str(main_venv_python), '-c', 'import coverage'
+                ], capture_output=True, timeout=10)
+                if result.returncode != 0:
+                    print("   📦 Installing coverage in main project venv...")
+                    subprocess.run([
+                        str(main_venv_python), '-m', 'pip', 'install', 'coverage[toml]'
+                    ], check=True, timeout=30)
+                    print("   ✅ Coverage installed successfully")
+            except Exception as e:
+                print(f"   ⚠️  Warning: Could not install coverage: {e}")
+                print("   📝 Coverage will be skipped for subprocesses")
 
         # 2. Process test data (GPX import and PMTiles generation)
         if need_data_processing:
@@ -351,11 +369,12 @@ def session_setup(fast_mode):
                 
                 # Run the data processing that was skipped
                 print("   🗂️ Processing test data (GPX import and PMTiles generation)...")
-                main_venv_python = project_root / ".venv" / "bin" / "python"
                 print("   🔄 Running consolidated data processing...")
-                result = subprocess.run([
-                    str(main_venv_python), "process_data.py"
-                ], cwd=server_dir, text=True, timeout=120)
+                cmd = [str(main_venv_python)]
+                if is_cov_run:
+                    cmd.extend(["-m", "coverage", "run", "--parallel-mode"])
+                cmd.append("process_data.py")
+                result = subprocess.run(cmd, cwd=server_dir, text=True, timeout=120)
                 
                 if result.returncode != 0:
                     raise Exception(f"Data processing failed with return code {result.returncode}")
@@ -370,6 +389,13 @@ def session_setup(fast_mode):
             # Run mobile build with auto mode and stdin input for prompts
             build_env = os.environ.copy()
             build_env['MOBILE_BUILD_AUTO'] = '1'  # Enable auto mode
+            
+            # Pass through coverage and instrumentation flags
+            if is_cov_run:
+                build_env['COVERAGE_RUN'] = '1'
+            if os.environ.get('INSTRUMENT_JS') == '1':
+                build_env['INSTRUMENT_JS'] = '1'
+                print("   📦 JS instrumentation enabled for mobile build")
             
             cmd = [str(main_venv_python)]
             if is_cov_run:
@@ -413,6 +439,13 @@ def session_setup(fast_mode):
                 
                 build_env = os.environ.copy()
                 build_env['MOBILE_BUILD_AUTO'] = '1'  # Enable auto mode
+                
+                # Pass through coverage and instrumentation flags
+                if is_cov_run:
+                    build_env['COVERAGE_RUN'] = '1'
+                if os.environ.get('INSTRUMENT_JS') == '1':
+                    build_env['INSTRUMENT_JS'] = '1'
+                    print("   📦 JS instrumentation enabled for fallback mobile build")
                 
                 cmd = [str(main_venv_python)]
                 if is_cov_run:

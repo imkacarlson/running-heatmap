@@ -325,12 +325,16 @@ def session_setup(fast_mode):
             
             print("   ✅ Test data processing complete.")
         else:
-            print("   ⚡ Skipping data processing: Using cached PMTiles (data unchanged)")
+            print("   ⚡ Skipping data processing: Using cached PMTiles and PKL (data unchanged)")
             # Copy cached PMTiles to test environment
             cached_pmtiles_path = project_root / "testing" / "cached_test_data" / "runs.pmtiles"
-            if cached_pmtiles_path.exists():
+            cached_pkl_path = project_root / "testing" / "cached_test_data" / "runs.pkl"
+
+            if cached_pmtiles_path.exists() and cached_pkl_path.exists():
                 shutil.copy2(cached_pmtiles_path, server_dir / "runs.pmtiles")
+                shutil.copy2(cached_pkl_path, server_dir / "runs.pkl")
                 print(f"   📋 Using cached PMTiles: {cached_pmtiles_path}")
+                print(f"   📦 Using cached PKL: {cached_pkl_path}")
             else:
                 print("   ⚠️ Warning: No cached PMTiles found, falling back to data processing")
                 need_data_processing = True  # Force data processing if cache missing
@@ -447,14 +451,22 @@ def session_setup(fast_mode):
                 shutil.copy2(apk_path, cached_apk_path)
                 print(f"   📱 Cached test APK: {cached_apk_path}")
             
-            # Only cache PMTiles if we processed data (or needed to re-copy)
-            if need_data_processing or not (cached_data_dir / "runs.pmtiles").exists():
+            # Only cache PMTiles and runs.pkl if we processed data
+            if need_data_processing:
+                # Cache PMTiles
                 pmtiles_source = server_dir / "runs.pmtiles"
                 if pmtiles_source.exists():
                     cached_pmtiles_path = cached_data_dir / "runs.pmtiles"
                     shutil.copy2(pmtiles_source, cached_pmtiles_path)
                     print(f"   🗺️ Cached PMTiles data: {cached_pmtiles_path}")
                 
+                # Cache runs.pkl
+                pkl_source = server_dir / "runs.pkl"
+                if pkl_source.exists():
+                    cached_pkl_path = cached_data_dir / "runs.pkl"
+                    shutil.copy2(pkl_source, cached_pkl_path)
+                    print(f"   📦 Cached PKL data: {cached_pkl_path}")
+
             print("   ✅ Test artifacts cached for optimization")
             
             # Update change detection baseline if we built or processed anything

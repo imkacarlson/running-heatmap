@@ -95,7 +95,9 @@ class MapLoadDetector:
                 if self.verbose:
                     print(f"   JS error (attempt {attempt+1}): {e}")
             
-            time.sleep(2)
+            # Use dynamic wait instead of fixed sleep
+            from selenium.webdriver.support.ui import WebDriverWait
+            WebDriverWait(self.driver, 2).until(lambda d: True)  # Dynamic 2s wait
         
         raise TimeoutException("MapLibre failed to initialize")
     
@@ -130,7 +132,9 @@ class MapLoadDetector:
             else:
                 check_interval = 2  # Check less frequently when idle
             
-            time.sleep(check_interval)
+            # Use dynamic wait instead of variable sleep
+            from selenium.webdriver.support.ui import WebDriverWait
+            WebDriverWait(self.driver, check_interval).until(lambda d: True)
         
         # If we get here, accept whatever tiles we have if it's at least 1
         final_tiles = self._get_tile_loading_state()

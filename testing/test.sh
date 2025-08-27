@@ -1,15 +1,56 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")"/.. && pwd)"
+cd "$(dirname "$0")"   # into testing/
+
+COV=0
+if [[ "${1:-}" == "--cov" ]]; then
+  COV=1
+  shift
+fi
 
 echo "🧪 Activity Heatmap Mobile App Tests"
-echo "============================================"
+echo "Coverage: $([[ $COV -eq 1 ]] && echo 'ON' || echo 'OFF')"
+echo
 
-# Activate virtual environment
-echo "🐍 Activating Python virtual environment..."
-source test_venv/bin/activate
+# Activate virtual environment if it exists
+if [ -f "test_venv/bin/activate" ]; then
+    echo "🐍 Activating Python virtual environment..."
+    source test_venv/bin/activate
+fi
 
-# Run the enhanced test suite
-echo "🚀 Running tests with enhanced runner..."
-python run_tests.py "$@"
+if [[ $COV -eq 1 ]]; then
+  echo "📦 Instrumenting JS in server/..."
+  (cd "$REPO_ROOT" && npm run --silent cov:js:instrument)
+  export INSTRUMENT_JS=1
+fi
+
+# Run your Python test runner; append flags if coverage
+PY_ARGS=("$@") # Pass through any other arguments
+[[ $COV -eq 1 ]] && PY_ARGS+=("--cov")
+
+# Check which runner to use
+RUNNER="run_tests.py"
+if [[ " ${PY_ARGS[*]} " =~ " --direct " ]]; then
+    RUNNER="run_tests_direct.py"
+fi
+
+echo "🚀 Running tests with enhanced runner ($RUNNER)..."
+python3 $RUNNER "${PY_ARGS[@]}"
+
+if [[ $COV -eq 1 ]]; then
+  echo "🧮 Rendering JS coverage report..."
+  # Use npx from the repo root to ensure it finds the dependencies
+  (cd "$REPO_ROOT" && npx nyc report \
+    --temp-dir "$REPO_ROOT/testing/reports/coverage/js" \
+    --reporter=html --report-dir "$REPO_ROOT/testing/reports/coverage/js/html" \
+    --reporter=lcov \
+    --reporter=cobertura || true)
+
+  echo
+  echo "✅ Python HTML: file://$(cd "$REPO_ROOT" && pwd)/testing/reports/coverage/python/html/index.html"
+  echo "✅ JS HTML:     file://$(cd "$REPO_ROOT" && pwd)/testing/reports/coverage/js/html/index.html"
+fi
 
 echo "🎉 Testing complete!"

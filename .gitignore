@@ -45,12 +45,17 @@ testing/.pytest_cache/
 testing/__pycache__/
 testing/screenshots/
 testing/reports/
+testing/prof/
 testing/chromedriver_linux64.zip
 testing/test_venv/
 testing/vetted-drivers/chromedriver-*
 testing/setup_emulator.sh
 testing/emulator.log
 testing/.change_detector_cache/
+testing/.service_cache/
+testing/cached_test_*/
+testing/*debug*.txt
+testing/testing/
 
 # Claude Code artifacts (but keep commands)
 .claude/*
@@ -61,3 +66,9 @@ testing/.change_detector_cache/
 
 # Spec logs
 logs/
+
+# Coverage reports and data files
+server/.instrumented/
+testing/reports/coverage/
+.coverage
+.coverage.*

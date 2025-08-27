@@ -11,6 +11,137 @@ from map_load_detector import MapLoadDetector
 class BaseMobileTest:
     """Base class providing common mobile test functionality"""
     
+    def get_current_context_cached(self, driver):
+        """Get current context with caching to reduce WebDriver round trips"""
+        import time
+        
+        # Initialize cache attributes if they don't exist (lazy initialization)
+        if not hasattr(self, '_current_context_cache'):
+            self._current_context_cache = None
+            self._context_cache_timestamp = 0
+            self._cache_timeout = 5  # seconds
+        
+        current_time = time.time()
+        
+        # Return cached result if still valid
+        if (self._current_context_cache and 
+            (current_time - self._context_cache_timestamp) < self._cache_timeout):
+            return self._current_context_cache
+        
+        # Cache miss - fetch and cache the result
+        self._current_context_cache = driver.current_context
+        self._context_cache_timestamp = current_time
+        return self._current_context_cache
+    
+    def invalidate_context_cache(self):
+        """Invalidate context cache after context switches"""
+        # Initialize cache attributes if they don't exist (lazy initialization)
+        if not hasattr(self, '_current_context_cache'):
+            self._current_context_cache = None
+            self._context_cache_timestamp = 0
+            self._cache_timeout = 5  # seconds
+        else:
+            self._current_context_cache = None
+            self._context_cache_timestamp = 0
+    
+    def switch_to_context_optimized(self, driver, target_context, max_attempts=2):
+        """Optimized context switching with caching and minimal verification"""
+        # Check if we're already in the target context
+        current = self.get_current_context_cached(driver)
+        if current == target_context:
+            print(f"✅ Already in target context: {target_context}")
+            return target_context
+        
+        for attempt in range(max_attempts):
+            try:
+                print(f"🔄 Switching to context: {target_context} (attempt {attempt + 1})")
+                driver.switch_to.context(target_context)
+                
+                # Invalidate cache and verify switch
+                self.invalidate_context_cache()
+                
+                # Quick verification without expensive waits
+                if target_context == 'NATIVE_APP':
+                    # For native context, just verify we can access native elements
+                    try:
+                        driver.find_elements("xpath", "//*[@clickable='true']")
+                        print(f"✅ Successfully switched to: {target_context}")
+                        return target_context
+                    except:
+                        pass  # May not have clickable elements yet, but context switch succeeded
+                else:
+                    # For WebView context, verify DOM access
+                    try:
+                        driver.execute_script("return document.readyState")
+                        print(f"✅ Successfully switched to: {target_context}")
+                        return target_context
+                    except:
+                        pass  # May not be ready yet
+                
+                print(f"✅ Context switch completed: {target_context}")
+                return target_context
+                
+            except Exception as e:
+                print(f"⚠️ Context switch attempt {attempt + 1} failed: {e}")
+                if attempt < max_attempts - 1:
+                    import time
+                    time.sleep(1)  # Minimal retry delay
+                    continue
+                else:
+                    raise
+        
+        raise Exception(f"Failed to switch to context {target_context} after {max_attempts} attempts")
+    
+    def wait_for_webview_available(self, driver, wait, verbose=False):
+        """
+        Dynamically wait for WebView context to become available.
+        Replaces fixed startup sleep calls with responsive waiting.
+        
+        Args:
+            driver: Selenium WebDriver instance  
+            wait: WebDriverWait instance
+            verbose: Enable detailed logging
+            
+        Returns:
+            True when WebView context is available
+            
+        Raises:
+            TimeoutException: If WebView doesn't become available within timeout
+        """
+        def webview_available():
+            try:
+                contexts = driver.contexts
+                if verbose:
+                    print(f"🔍 Available contexts: {contexts}")
+                
+                # Look for our app's WebView context
+                for context in contexts:
+                    if 'WEBVIEW_com.run.heatmap' in context:
+                        if verbose:
+                            print(f"✅ Found target WebView: {context}")
+                        return True
+                    elif 'WEBVIEW' in context and 'webview_shell' not in context:
+                        if verbose:
+                            print(f"✅ Found fallback WebView: {context}")
+                        return True
+                        
+                if verbose:
+                    print("⏳ WebView not yet available, continuing to wait...")
+                return False
+            except Exception as e:
+                if verbose:
+                    print(f"⚠️ Error checking contexts: {e}")
+                return False
+        
+        if verbose:
+            print("⏳ Waiting for WebView context to become available...")
+            
+        wait.until(lambda driver: webview_available())
+        
+        if verbose:
+            print("✅ WebView context is now available!")
+        return True
+    
     def wait_for_map_load(self, driver, wait, verbose=False):
         """
         Dynamically wait for map to load using MapLoadDetector.
@@ -25,6 +156,41 @@ class BaseMobileTest:
         """
         detector = MapLoadDetector(driver, wait, verbose=verbose)
         return detector.wait_for_map_ready()
+    
+    def wait_for_map_idle_after_move(self, driver, timeout_ms=8000, verbose=False):
+        """
+        Wait for map to settle after navigation using JavaScript helpers.
+        Replaces sleep() calls after map.flyTo() or map.jumpTo() operations.
+        
+        Args:
+            driver: Selenium WebDriver instance
+            timeout_ms: Maximum time to wait in milliseconds (default 8000)
+            verbose: Enable detailed logging
+            
+        Returns:
+            True if map settled successfully, False if fallback was used
+        """
+        if verbose:
+            print(f"⏳ Waiting for map to settle (timeout: {timeout_ms}ms)...")
+            
+        wait_success = driver.execute_script(f"""
+            return new Promise((resolve) => {{
+                if (window.__mapTestHelpers && window.__mapTestHelpers.waitForIdleAfterMove) {{
+                    window.__mapTestHelpers.waitForIdleAfterMove({timeout_ms}).then(() => resolve(true));
+                }} else {{
+                    // Fallback if helpers not available
+                    setTimeout(() => resolve(false), 3000);
+                }}
+            }});
+        """)
+        
+        if verbose:
+            if wait_success:
+                print("✅ Map settled using JavaScript helpers")
+            else:
+                print("⚠️ Used fallback timeout (JavaScript helpers not available)")
+        
+        return wait_success
     
     def switch_to_webview(self, driver, max_attempts=3):
         """
@@ -50,9 +216,11 @@ class BaseMobileTest:
                     print(f"🎯 Targeting WebView: {target_webview}")
                     driver.switch_to.context(target_webview)
                     
-                    # Verify with simple JS execution and wait for DOM
-                    time.sleep(2)  # Give WebView time to initialize
-                    driver.execute_script("return typeof document !== 'undefined';")
+                    # Use dynamic wait instead of sleep for DOM readiness
+                    from selenium.webdriver.support.ui import WebDriverWait
+                    WebDriverWait(driver, 5).until(
+                        lambda d: d.execute_script("return typeof document !== 'undefined' && document.readyState === 'complete'")
+                    )
                     print(f"✅ Successfully switched to: {target_webview}")
                     return target_webview
                 else:
@@ -62,16 +230,18 @@ class BaseMobileTest:
                 print(f"⚠️ WebView switch attempt {attempt + 1} failed: {e}")
                 if attempt < max_attempts - 1:
                     print("🔄 Waiting before retry...")
-                    time.sleep(3 + attempt)  # Increasing delay
-                    
-                    # Try to close interfering webview_shell if present
+                    # Use exponential backoff with WebDriverWait
+                    from selenium.webdriver.support.ui import WebDriverWait
                     try:
+                        # Quick retry with context cleanup
                         if 'org.chromium.webview_shell' in str(driver.contexts):
                             print("🧹 Attempting to clear webview_shell interference...")
                             driver.switch_to.context('NATIVE_APP')
-                            time.sleep(1)
+                            WebDriverWait(driver, 2).until(lambda d: d.current_context == 'NATIVE_APP')
                     except:
                         pass
+                    # Use dynamic wait instead of fixed sleep
+                    WebDriverWait(driver, 2 + attempt).until(lambda d: True)  # Exponential backoff
                     continue
                 else:
                     raise

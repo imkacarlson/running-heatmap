@@ -14,8 +14,8 @@ class TestExtrasOnlyLastActivity(BaseMobileTest):
         driver = mobile_driver["driver"]
         wait: WebDriverWait = mobile_driver["wait"]
 
-        # Let the app initialize (aligned with your other tests)
-        time.sleep(12)
+        # Wait for app WebView to become available
+        self.wait_for_webview_available(driver, wait, verbose=True)
         self.switch_to_webview(driver)
         self.wait_for_map_load(driver, wait, verbose=True)
 

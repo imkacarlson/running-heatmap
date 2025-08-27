@@ -39,8 +39,8 @@ class TestBasicLassoSelection(BaseMobileTest):
         helpers_js = Path(__file__).parent / "map_helpers.js"
         
         # Setup - launch app and wait for initialization
-        print("⏳ Allowing app to fully start up...")
-        time.sleep(12)
+        print("⏳ Waiting for app WebView to become available...")
+        self.wait_for_webview_available(driver, wait, verbose=True)
         
         print("🔄 Switching to WebView context...")
         self.switch_to_webview(driver)
@@ -94,7 +94,9 @@ class TestBasicLassoSelection(BaseMobileTest):
                 zoom: {zoom_level}
             }});
         """)
-        time.sleep(1)  # Brief pause for tiles to load at new location
+        
+        # Wait for map to settle after navigation
+        self.wait_for_map_idle_after_move(driver, timeout_ms=5000, verbose=True)
         
         # Wait for map idle and runs features using deterministic approach
         print("⏳ Waiting for view to go idle after jumpTo...")
@@ -128,7 +130,11 @@ class TestBasicLassoSelection(BaseMobileTest):
         print("🎯 Activating lasso selection mode...")
         lasso_btn = self.find_clickable_element(driver, wait, "#lasso-btn")
         lasso_btn.click()
-        time.sleep(0.5)
+        
+        # Wait for lasso mode to activate
+        WebDriverWait(driver, 5).until(
+            lambda d: d.execute_script("return document.getElementById('lasso-btn').classList.contains('active')")
+        )
         
         # Verify lasso mode is active
         lasso_active = driver.execute_script("""
@@ -197,7 +203,9 @@ class TestBasicLassoSelection(BaseMobileTest):
         print(f"📋 Panel close method: {panel_closed}")
         
         # Wait for panel to close
-        time.sleep(1.0)
+        WebDriverWait(driver, 5).until(
+            lambda d: not d.execute_script("return document.getElementById('side-panel').classList.contains('open')")
+        )
         
         # Verify panel is closed
         panel_closed_check = driver.execute_script("""
@@ -238,7 +246,7 @@ class TestBasicLassoSelection(BaseMobileTest):
         
         # Wait for map to settle at new zoom level
         print("⏳ Waiting for map to settle at new zoom level...")
-        time.sleep(2.0)
+        self.wait_for_map_idle_after_move(driver, timeout_ms=6000, verbose=True)
         
         # Wait for map idle and runs features at new zoom level
         print("⏳ Waiting for view to go idle after zoom out...")
@@ -261,14 +269,20 @@ class TestBasicLassoSelection(BaseMobileTest):
         else:
             print("✅ Features ready at new zoom level")
         
-        # Wait a moment for UI to settle before second test
-        time.sleep(1.0)
+        # Wait for UI to be ready for second test (lasso button available)
+        WebDriverWait(driver, 5).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, "#lasso-btn"))
+        )
         
         # Reactivate lasso mode (it gets deactivated when panel closes)
         print("🎯 Reactivating lasso selection mode for second test...")
         lasso_btn_second = self.find_clickable_element(driver, wait, "#lasso-btn")
         lasso_btn_second.click()
-        time.sleep(0.5)
+        
+        # Wait for lasso mode to activate
+        WebDriverWait(driver, 5).until(
+            lambda d: d.execute_script("return document.getElementById('lasso-btn').classList.contains('active')")
+        )
         
         # Verify lasso mode is active
         lasso_active_check = driver.execute_script("""
@@ -286,7 +300,11 @@ class TestBasicLassoSelection(BaseMobileTest):
             print("❌ Lasso mode not properly activated for second test")
             # Try clicking again
             lasso_btn_second.click()
-            time.sleep(0.5)
+            
+            # Wait for lasso mode to activate after retry
+            WebDriverWait(driver, 5).until(
+                lambda d: d.execute_script("return document.getElementById('lasso-btn').classList.contains('active')")
+            )
         
         # Generate larger polygon with 350px radius to span both activities
         print("📐 Generating larger polygon (350px radius) to encompass both activities...")
@@ -330,7 +348,11 @@ class TestBasicLassoSelection(BaseMobileTest):
         print("   📝 Clicking 'Deselect All' button...")
         deselect_all_btn = self.find_clickable_element(driver, wait, "#deselect-all")
         deselect_all_btn.click()
-        time.sleep(1)
+        
+        # Wait for all checkboxes to be unchecked
+        WebDriverWait(driver, 5).until(
+            lambda d: d.execute_script("return document.querySelectorAll('.run-checkbox:checked').length") == 0
+        )
         
         # Verify all checkboxes are unchecked and no activities are visible
         deselect_verification = driver.execute_script("""
@@ -361,7 +383,11 @@ class TestBasicLassoSelection(BaseMobileTest):
                 checkbox.dispatchEvent(new Event('change', {bubbles: true}));
             }
         """)
-        time.sleep(1)
+        
+        # Wait for checkbox to be checked and UI to update
+        WebDriverWait(driver, 5).until(
+            lambda d: d.execute_script("return document.querySelectorAll('.run-checkbox:checked').length") > 0
+        )
         
         print("   ✅ First activity checkbox clicked")
         
@@ -369,7 +395,11 @@ class TestBasicLassoSelection(BaseMobileTest):
         print("   📝 Minimizing sidebar...")
         collapse_btn = self.find_clickable_element(driver, wait, "#panel-collapse")
         collapse_btn.click()
-        time.sleep(1)
+        
+        # Wait for sidebar to collapse
+        WebDriverWait(driver, 5).until(
+            lambda d: d.execute_script("return document.getElementById('side-panel').classList.contains('collapsed')")
+        )
         
         # Verify sidebar is collapsed
         sidebar_collapsed = driver.execute_script("""
@@ -434,7 +464,11 @@ class TestBasicLassoSelection(BaseMobileTest):
         print("   📝 Reopening sidebar from collapsed state...")
         expand_btn = self.find_clickable_element(driver, wait, "#expand-btn")
         expand_btn.click()
-        time.sleep(1)
+        
+        # Wait for sidebar to expand
+        WebDriverWait(driver, 5).until(
+            lambda d: not d.execute_script("return document.getElementById('side-panel').classList.contains('collapsed')")
+        )
         
         # Verify sidebar is expanded
         sidebar_expanded = driver.execute_script("""
@@ -449,7 +483,11 @@ class TestBasicLassoSelection(BaseMobileTest):
         print("   📝 Closing sidebar with 'x' button...")
         close_btn = self.find_clickable_element(driver, wait, "#panel-close")
         close_btn.click()
-        time.sleep(1)
+        
+        # Wait for sidebar to close
+        WebDriverWait(driver, 5).until(
+            lambda d: not d.execute_script("return document.getElementById('side-panel').classList.contains('open')")
+        )
         
         # Verify sidebar is properly closed and filter is cleared
         final_cleanup_check = driver.execute_script("""
@@ -533,14 +571,17 @@ class TestBasicLassoSelection(BaseMobileTest):
         if len(viewport_points) < 3:
             raise ValueError("Need at least 3 points for polygon")
         
-        # Freeze scroll position to prevent coordinate shifts
-        driver.execute_script("window.scrollTo(0,0)")
-        
-        # Ensure container is visible 
-        driver.execute_script("window.__mapTestHelpers.findMap().getContainer().scrollIntoView({block:'center', inline:'center'})")
-        
-        # Get viewport dimensions for additional clamping
-        vw, vh = driver.execute_script("return [window.innerWidth, window.innerHeight]")
+        # OPTIMIZED: Single script call for setup and viewport dimensions
+        vw, vh = driver.execute_script("""
+            // Freeze scroll position to prevent coordinate shifts
+            window.scrollTo(0,0);
+            
+            // Ensure container is visible 
+            window.__mapTestHelpers.findMap().getContainer().scrollIntoView({block:'center', inline:'center'});
+            
+            // Return viewport dimensions in single call
+            return [window.innerWidth, window.innerHeight];
+        """)
         
         # Belt-and-suspenders viewport clamping
         clamped_points = []
@@ -576,17 +617,24 @@ class TestBasicLassoSelection(BaseMobileTest):
         
         print(f"👆 Starting absolute touch at {first_point}")
         
-        # Draw smooth path between points
+        # OPTIMIZED: Draw path with minimal interpolation for speed
         for i in range(len(clamped_points) - 1):
             point_a = clamped_points[i]
             point_b = clamped_points[i + 1]
             
-            # Interpolated moves for smoothness
-            steps = 12
-            for step in range(1, steps + 1):
-                interpolated_point = lerp(point_a, point_b, step / steps)
-                move_abs(interpolated_point)
-                actions.pointer_action.pause(0.015)
+            # Calculate distance to determine if interpolation is needed
+            distance = ((point_b["x"] - point_a["x"]) ** 2 + (point_b["y"] - point_a["y"]) ** 2) ** 0.5
+            
+            if distance > 100:  # Only interpolate for long moves
+                # Minimal interpolation - just 3 steps instead of 12
+                steps = 3
+                for step in range(1, steps + 1):
+                    interpolated_point = lerp(point_a, point_b, step / steps)
+                    move_abs(interpolated_point)
+                    # Remove individual pauses - ActionBuilder handles timing
+            else:
+                # Short move - go directly to end point
+                move_abs(point_b)
             
             print(f"👆 Drew to absolute point {i+1}: {point_b}")
         
@@ -614,7 +662,8 @@ class TestBasicLassoSelection(BaseMobileTest):
                     'debug_info': f'Success after {elapsed:.1f}s'
                 }
             
-            time.sleep(0.5)
+            # Use shorter polling interval for more responsive checking
+            WebDriverWait(driver, 0.2).until(lambda d: True)
         
         # Timeout - return diagnostic info
         return {

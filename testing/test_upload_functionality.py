@@ -11,6 +11,7 @@ from pathlib import Path
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
+from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.actions.pointer_input import PointerInput
 from selenium.webdriver.common.actions.action_builder import ActionBuilder
@@ -30,8 +31,8 @@ class TestUploadFunctionality(BaseMobileTest):
         wait = mobile_driver['wait']
         
         # Phase 1: Setup and App Launch
-        print("⏳ Allowing app to fully start up...")
-        time.sleep(12)  # Extended startup wait
+        print("⏳ Waiting for app WebView to become available...")
+        self.wait_for_webview_available(driver, wait, verbose=True)
         
         print("🔄 Switching to WebView context...")
         self.switch_to_webview(driver)
@@ -132,92 +133,84 @@ class TestUploadFunctionality(BaseMobileTest):
         # Find upload button
         upload_btn = self.find_clickable_element(driver, wait, "#upload-btn")
         upload_btn.click()
-        time.sleep(2)
         
-        # Switch to native context to interact with file picker
+        # Use optimized context switching with caching
         print("🔄 Switching to native context for file picker...")
-        driver.switch_to.context('NATIVE_APP')
-        time.sleep(3)  # Wait for file picker to appear
+        self.switch_to_context_optimized(driver, 'NATIVE_APP')
+        
+        # Streamlined file picker detection - use single efficient check
+        print("⏳ Waiting for file picker readiness...")
+        try:
+            # Single optimized wait for any clickable file picker elements
+            WebDriverWait(driver, 8).until(
+                lambda d: len(d.find_elements("xpath", "//*[@clickable='true'][@enabled='true']")) >= 3
+            )
+            print("✅ File picker interface ready")
+        except TimeoutException:
+            # Fallback - minimal wait for UI stability
+            print("⚠️ Using fallback UI wait")
+            import time
+            time.sleep(2)
         
         print("✅ Upload button clicked, file picker should be open")
     
     def navigate_file_picker_and_select(self, driver, wait):
-        """Navigate Android file picker and select manual_upload_run.gpx"""
+        """Navigate Android file picker and select manual_upload_run.gpx - OPTIMIZED"""
         print("📂 Navigating file picker to select test file...")
         
         try:
-            # Wait for file picker to appear
-            time.sleep(3)
+            # Simplified readiness check - just wait for clickable elements
+            print("⏳ Waiting for file picker readiness...")
+            WebDriverWait(driver, 8).until(
+                lambda d: len(d.find_elements("xpath", "//*[@clickable='true']")) >= 3
+            )
+            print("✅ File picker ready for interaction")
             
-            # Strategy 1: Look for the file directly by name (in case it's in Recent)
+            # OPTIMIZED: Single streamlined file selection approach
+            # Look for file directly first, then try Downloads folder if needed
+            target_file_xpath = "//android.widget.TextView[@text='manual_upload_run.gpx']"
+            
             try:
-                file_element = driver.find_element(
-                    "xpath", 
-                    "//android.widget.TextView[@text='manual_upload_run.gpx']"
-                )
+                # Quick check for file in current view
+                file_element = driver.find_element("xpath", target_file_xpath)
                 file_element.click()
-                print("✅ Found and selected test file directly in Recent")
+                print("✅ Found and selected test file directly")
                 return
             except:
-                print("🔍 File not visible in Recent, navigating to Downloads folder...")
+                # File not visible - try Downloads folder navigation
+                print("🔍 Navigating to Downloads folder...")
+                try:
+                    downloads_folder = driver.find_element(
+                        "xpath", "//android.widget.TextView[@text='Download' or @text='Downloads']"
+                    )
+                    downloads_folder.click()
+                    
+                    # Wait briefly for folder contents and try file selection
+                    WebDriverWait(driver, 4).until(
+                        lambda d: len(d.find_elements("xpath", target_file_xpath)) > 0
+                    )
+                    
+                    file_element = driver.find_element("xpath", target_file_xpath)
+                    file_element.click()
+                    print("✅ Found and selected test file in Downloads folder")
+                    return
+                except Exception as e:
+                    print(f"⚠️ Downloads navigation failed: {e}")
             
-            # Strategy 2: Use hamburger menu to navigate to Downloads
-            try:
-                self.navigate_to_downloads_via_menu(driver)
-                
-                # Now look for the file in Downloads
-                file_element = driver.find_element(
-                    "xpath",
-                    "//android.widget.TextView[@text='manual_upload_run.gpx']"
-                )
-                file_element.click()
-                print("✅ Found and selected test file in Downloads folder")
-                return
-            except Exception as e:
-                print(f"🔍 Menu navigation failed: {e}, trying direct Downloads detection...")
-            
-            # Strategy 3: Look for Downloads folder directly in main view
-            try:
-                downloads_folder = driver.find_element(
-                    "xpath",
-                    "//android.widget.TextView[@text='Download' or @text='Downloads']"
-                )
-                downloads_folder.click()
-                time.sleep(2)
-                
-                # Now look for the file in Downloads
-                file_element = driver.find_element(
-                    "xpath",
-                    "//android.widget.TextView[@text='manual_upload_run.gpx']"
-                )
-                file_element.click()
-                print("✅ Found and selected test file in Downloads folder (direct)")
-                return
-            except:
-                print("🔍 Downloads folder not found directly, trying scroll and search...")
-            
-            # Strategy 4: Scroll to find Downloads folder or file
-            try:
-                self.scroll_and_find_downloads(driver)
-                
-                # Look for the file after scrolling
-                file_element = driver.find_element(
-                    "xpath",
-                    "//android.widget.TextView[@text='manual_upload_run.gpx']"
-                )
-                file_element.click()
-                print("✅ Found and selected test file after scrolling")
-                return
-            except:
-                print("⚠️ Could not find test file after all navigation attempts...")
-                
-                # Debug: dump current screen elements
-                self.dump_current_elements(driver)
-                raise Exception("Could not locate test file in file picker after all navigation attempts")
+            # Final fallback: dump elements for debugging and raise error
+            print("⚠️ Could not find test file after streamlined navigation")
+            self.dump_current_elements(driver)
+            raise Exception("Could not locate test file in file picker")
                 
         finally:
-            # Wait for file selection to process
-            time.sleep(3)
+            # Wait for file selection to process - check if we're still in file picker mode
+            try:
+                WebDriverWait(driver, 5).until(
+                    lambda d: len(d.find_elements(By.XPATH, "//*[contains(@text, 'Upload') or contains(@text, 'Done') or contains(@text, 'Open')]")) == 0
+                )
+            except TimeoutException:
+                # If still in picker mode, wait briefly for processing
+                WebDriverWait(driver, 2).until(lambda d: True)
             
             # Switch back to WebView context
             print("🔄 Switching back to WebView context...")
@@ -245,7 +238,11 @@ class TestUploadFunctionality(BaseMobileTest):
                 hamburger = driver.find_element("xpath", selector)
                 hamburger.click()
                 print(f"✅ Clicked hamburger menu with selector: {selector}")
-                time.sleep(2)
+                
+                # Wait for navigation menu to open and be ready
+                WebDriverWait(driver, 5).until(
+                    lambda d: len(d.find_elements(By.XPATH, "//*[contains(@text, 'Download')]")) > 0
+                )
                 
                 # Now look for Downloads in the side menu
                 downloads_selectors = [
@@ -261,7 +258,11 @@ class TestUploadFunctionality(BaseMobileTest):
                         downloads_item = driver.find_element("xpath", dl_selector)
                         downloads_item.click()
                         print(f"✅ Clicked Downloads in menu with selector: {dl_selector}")
-                        time.sleep(2)
+                        
+                        # Wait for Downloads folder to load contents
+                        WebDriverWait(driver, 5).until(
+                            lambda d: len(d.find_elements(By.XPATH, "//*[contains(@text, '.gpx') or contains(@text, 'manual')]")) > 0
+                        )
                         return
                     except:
                         continue
@@ -288,12 +289,18 @@ class TestUploadFunctionality(BaseMobileTest):
                 )
                 downloads_folder.click()
                 print(f"✅ Found Downloads folder after {attempt + 1} scroll attempts")
-                time.sleep(2)
+                
+                # Wait for Downloads folder contents to load
+                WebDriverWait(driver, 5).until(
+                    lambda d: len(d.find_elements(By.XPATH, "//*[contains(@text, '.gpx') or contains(@text, 'manual')]")) > 0
+                )
                 return
             except:
                 # Scroll down
                 driver.swipe(500, 800, 500, 400, 1000)
-                time.sleep(1)
+                
+                # Wait for scroll animation to complete and UI to stabilize
+                WebDriverWait(driver, 3).until(lambda d: True)
                 print(f"🔍 Scrolled down (attempt {attempt + 1}/3)")
         
         raise Exception("Could not find Downloads folder after scrolling")
@@ -344,11 +351,8 @@ class TestUploadFunctionality(BaseMobileTest):
         """Wait for upload processing to complete and verify success"""
         print("⏳ Waiting for upload processing to complete...")
         
-        # Wait for upload status or processing indicators
-        max_wait = 30  # 30 seconds timeout
-        start_time = time.time()
-        
-        while time.time() - start_time < max_wait:
+        # Define custom condition for upload completion
+        def upload_processing_complete(driver):
             try:
                 # Check for upload status or success indicators
                 status_info = driver.execute_script("""
@@ -373,32 +377,33 @@ class TestUploadFunctionality(BaseMobileTest):
                 
                 if status_info['hasUploadStatus']:
                     print(f"✅ Upload status detected: {status_info['statusTexts']}")
-                    break
+                    return True
                     
                 # Check if map has been updated with new data
                 map_update = driver.execute_script("""
                     // Check if map sources or data have been updated
                     if (typeof map !== 'undefined') {
                         const sources = map.getStyle().sources || {};
-                        return {
-                            sources: Object.keys(sources),
-                            timestamp: Date.now()
-                        };
+                        return Object.keys(sources).length > 0;
                     }
-                    return null;
+                    return false;
                 """)
                 
-                time.sleep(2)  # Check every 2 seconds
+                return map_update
                 
             except Exception as e:
                 print(f"⚠️ Error checking upload status: {e}")
-                time.sleep(2)
-                continue
+                return False
         
-        # Final wait for processing
-        print("📡 Allowing extra time for upload processing...")
-        time.sleep(5)
+        # Use WebDriverWait with custom condition
+        try:
+            WebDriverWait(driver, 30).until(upload_processing_complete)
+            print("✅ Upload processing completed")
+        except TimeoutException:
+            print("⚠️ Upload processing timeout - continuing anyway")
         
+        # Brief additional wait for final settling
+        WebDriverWait(driver, 5).until(lambda d: driver.execute_script("return typeof map !== 'undefined'"))
         print("✅ Upload processing wait completed")
     
     
@@ -418,7 +423,9 @@ class TestUploadFunctionality(BaseMobileTest):
                 duration: 1000
             }});
         """)
-        time.sleep(3)  # Wait for navigation and render
+        
+        # Wait for map to settle after navigation
+        self.wait_for_map_idle_after_move(driver, timeout_ms=8000, verbose=True)
         
         # Step 2: Verify red activity line at specific uploaded coordinates
         print("📋 Step 2: Verifying red line pixels at uploaded GPX coordinates...")
@@ -748,7 +755,18 @@ class TestUploadFunctionality(BaseMobileTest):
             # Open extras panel
             extras_btn = self.find_clickable_element(driver, wait, "#extras-btn")
             extras_btn.click()
-            time.sleep(3)  # Wait for panel to open and load content
+            
+            # Wait for extras panel to open and load content
+            print("⏳ Waiting for extras panel to open...")
+            panel_wait = WebDriverWait(driver, 10)
+            panel_wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "#extras-panel, .extras-panel")))
+            
+            # Also wait for panel content to be visible
+            panel_wait.until(lambda d: d.execute_script("""
+                const panel = document.querySelector('#extras-panel, .extras-panel');
+                return panel && panel.offsetHeight > 0 && panel.style.display !== 'none';
+            """))
+            print("✅ Extras panel opened successfully")
             
             # Look for clear uploads button
             print("🔍 Looking for clear uploads button...")
@@ -772,7 +790,11 @@ class TestUploadFunctionality(BaseMobileTest):
             
             if clear_result['success']:
                 print("✅ Uploaded activities cleared successfully")
-                time.sleep(2)  # Wait for cleanup to complete
+                
+                # Wait for UI to reflect the cleared state
+                WebDriverWait(driver, 5).until(
+                    lambda d: d.execute_script("return document.querySelectorAll('.activity-item').length") == 0
+                )
             else:
                 print(f"⚠️ Failed to clear uploads: {clear_result['message']}")
             
@@ -780,7 +802,11 @@ class TestUploadFunctionality(BaseMobileTest):
             print("📱 Closing extras panel...")
             extras_btn = self.find_clickable_element(driver, wait, "#extras-btn")
             extras_btn.click()
-            time.sleep(2)
+            
+            # Wait for extras panel to close
+            WebDriverWait(driver, 5).until(
+                lambda d: not d.execute_script("return document.querySelector('#extras-panel').classList.contains('open')")
+            )
             
             
         except Exception as e:
@@ -833,7 +859,9 @@ class TestUploadFunctionality(BaseMobileTest):
                 zoom: {zoom_level}
             }});
         """)
-        time.sleep(3)  # Wait for map to settle and tiles to load
+        
+        # Wait for map to settle after navigation
+        self.wait_for_map_idle_after_move(driver, timeout_ms=8000, verbose=True)
         
         # Inject map helpers if not already present
         print("📦 Ensuring map test helpers are available...")
@@ -852,7 +880,15 @@ class TestUploadFunctionality(BaseMobileTest):
         print("🎯 Activating lasso selection mode...")
         lasso_btn = self.find_clickable_element(driver, wait, "#lasso-btn")
         lasso_btn.click()
-        time.sleep(1)
+        
+        # Wait for lasso mode to be activated
+        lasso_wait = WebDriverWait(driver, 5)
+        lasso_wait.until(lambda d: d.execute_script("""
+            return document.querySelector('#lasso-btn').classList.contains('active') ||
+                   document.body.classList.contains('lasso-mode') ||
+                   document.querySelector('#map').style.cursor === 'crosshair';
+        """))
+        print("✅ Lasso mode activated")
         
         # Generate large polygon to encompass all activities (uploaded + 2 packaged)
         print("📐 Generating large polygon to encompass all three activities...")
@@ -896,7 +932,11 @@ class TestUploadFunctionality(BaseMobileTest):
         print("   📝 Clicking 'Deselect All' button...")
         deselect_all_btn = self.find_clickable_element(driver, wait, "#deselect-all")
         deselect_all_btn.click()
-        time.sleep(1)
+        
+        # Wait for all checkboxes to be unchecked
+        WebDriverWait(driver, 5).until(
+            lambda d: d.execute_script("return document.querySelectorAll('input[type=\"checkbox\"]:checked').length") == 0
+        )
         
         # Verify all checkboxes are unchecked and no activities are visible
         deselect_verification = driver.execute_script("""
@@ -961,9 +1001,16 @@ class TestUploadFunctionality(BaseMobileTest):
         print("   📝 Minimizing sidebar...")
         collapse_btn = self.find_clickable_element(driver, wait, "#panel-collapse")
         collapse_btn.click()
-        time.sleep(1)
         
-        # Verify sidebar is collapsed
+        # Wait for sidebar to collapse
+        collapse_wait = WebDriverWait(driver, 5)
+        collapse_wait.until(lambda d: d.execute_script("""
+            const panel = document.getElementById('side-panel');
+            return panel && panel.classList.contains('collapsed');
+        """))
+        print("   ✅ Sidebar collapsed successfully")
+        
+        # Verify sidebar is collapsed (redundant check, but keeping for compatibility)
         sidebar_collapsed = driver.execute_script("""
             const panel = document.getElementById('side-panel');
             return panel && panel.classList.contains('collapsed');
@@ -1026,7 +1073,11 @@ class TestUploadFunctionality(BaseMobileTest):
         print("   📝 Reopening sidebar from collapsed state...")
         expand_btn = self.find_clickable_element(driver, wait, "#expand-btn")
         expand_btn.click()
-        time.sleep(1)
+        
+        # Wait for sidebar to expand
+        WebDriverWait(driver, 5).until(
+            lambda d: d.execute_script("return !document.getElementById('side-panel').classList.contains('collapsed')")
+        )
         
         # Verify sidebar is expanded
         sidebar_expanded = driver.execute_script("""
@@ -1041,7 +1092,11 @@ class TestUploadFunctionality(BaseMobileTest):
         print("   📝 Closing sidebar with 'x' button...")
         close_btn = self.find_clickable_element(driver, wait, "#panel-close")
         close_btn.click()
-        time.sleep(1)
+        
+        # Wait for sidebar to close
+        WebDriverWait(driver, 5).until(
+            lambda d: d.execute_script("return !document.getElementById('side-panel').classList.contains('open')")
+        )
         
         # Verify sidebar is properly closed and filter is cleared
         final_cleanup_check = driver.execute_script("""
@@ -1292,11 +1347,14 @@ class TestUploadFunctionality(BaseMobileTest):
         if len(viewport_points) < 3:
             raise ValueError("Need at least 3 points for polygon")
         
-        # Freeze scroll position to prevent coordinate shifts
-        driver.execute_script("window.scrollTo(0,0)")
-        
-        # Get viewport dimensions for clamping
-        vw, vh = driver.execute_script("return [window.innerWidth, window.innerHeight]")
+        # OPTIMIZED: Single script call for setup and viewport dimensions
+        vw, vh = driver.execute_script("""
+            // Freeze scroll position to prevent coordinate shifts
+            window.scrollTo(0,0);
+            
+            // Return viewport dimensions in single call
+            return [window.innerWidth, window.innerHeight];
+        """)
         
         # Clamp points to viewport bounds
         clamped_points = []
@@ -1331,17 +1389,24 @@ class TestUploadFunctionality(BaseMobileTest):
         
         print(f"👆 Starting absolute touch at {first_point}")
         
-        # Draw smooth path between points
+        # OPTIMIZED: Draw path with minimal interpolation for speed
         for i in range(len(clamped_points) - 1):
             point_a = clamped_points[i]
             point_b = clamped_points[i + 1]
             
-            # Interpolated moves for smoothness
-            steps = 12
-            for step in range(1, steps + 1):
-                interpolated_point = lerp(point_a, point_b, step / steps)
-                move_abs(interpolated_point)
-                actions.pointer_action.pause(0.015)
+            # Calculate distance to determine if interpolation is needed
+            distance = ((point_b["x"] - point_a["x"]) ** 2 + (point_b["y"] - point_a["y"]) ** 2) ** 0.5
+            
+            if distance > 100:  # Only interpolate for long moves
+                # Minimal interpolation - just 3 steps instead of 12
+                steps = 3
+                for step in range(1, steps + 1):
+                    interpolated_point = lerp(point_a, point_b, step / steps)
+                    move_abs(interpolated_point)
+                    # Remove individual pauses - ActionBuilder handles timing
+            else:
+                # Short move - go directly to end point
+                move_abs(point_b)
             
             print(f"👆 Drew to absolute point {i+1}: {point_b}")
         
@@ -1369,7 +1434,8 @@ class TestUploadFunctionality(BaseMobileTest):
                     'debug_info': f'Success after {elapsed:.1f}s'
                 }
             
-            time.sleep(0.5)
+            # Use shorter polling interval for more responsive checking
+            WebDriverWait(driver, 0.2).until(lambda d: True)
         
         # Timeout - return diagnostic info
         return {

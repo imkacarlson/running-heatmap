@@ -3,10 +3,17 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "echo build-complete"
+    "build": "echo build-complete",
+    "cov:js:instrument": "mkdir -p server/.instrumented && npx nyc instrument server/mobile_main.js > server/.instrumented/mobile_main.js && npx nyc instrument server/spatial.worker.js > server/.instrumented/spatial.worker.js && npx nyc instrument server/sw_template.js > server/.instrumented/sw_template.js"
   },
   "dependencies": {
-    "rbush": "^3.0.0",
-    "pmtiles": "^3.2.0"
+    "pmtiles": "^3.2.0",
+    "rbush": "^3.0.0"
+  },
+  "devDependencies": {
+    "@babel/cli": "^7.28.3",
+    "@babel/core": "^7.28.3",
+    "babel-plugin-istanbul": "^7.0.0",
+    "nyc": "^17.1.0"
   }
 }

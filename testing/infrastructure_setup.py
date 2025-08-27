@@ -96,7 +96,13 @@ def check_and_start_emulator(metrics: PerformanceMetrics):
                     if boot_result.returncode == 0 and '1' in boot_result.stdout.strip():
                         metrics.emulator_startup_time = time.time() - emulator_start_time
                         print(f"✅ Emulator is ready! (started in {metrics.emulator_startup_time:.1f}s)")
-                        time.sleep(3)  # Give it a moment to fully settle
+                        # Dynamic wait for emulator settling instead of fixed 3s
+                        try:
+                            # Quick stability check instead of fixed sleep
+                            subprocess.run(['adb', 'shell', 'getprop', 'sys.boot_completed'], 
+                                         capture_output=True, timeout=2)
+                        except:
+                            time.sleep(1)  # Minimal fallback if adb check fails
                         return {'started_emulator': True, 'emulator_process': emulator_process}
                     elif counter % 15 == 0:  # Show boot progress occasionally
                         print(f"   Emulator detected, waiting for boot completion... ({counter}s)")
@@ -116,8 +122,9 @@ def check_and_start_emulator(metrics: PerformanceMetrics):
             if counter % 15 == 0:
                 print(f"   ADB timeout, retrying... ({counter}s)")
         
-        time.sleep(3)
-        counter += 3
+        # Dynamic wait instead of fixed 3s intervals
+        time.sleep(1)  # Reduced polling interval for faster detection
+        counter += 1
     
     metrics.emulator_startup_time = time.time() - emulator_start_time
     print(f"❌ Emulator failed to start within timeout ({metrics.emulator_startup_time:.1f}s)")
@@ -152,11 +159,12 @@ def start_appium_server(metrics: PerformanceMetrics):
             text=True
         )
         
-        # Wait for server to start
+        # Wait for server to start with adaptive polling
         print("⏳ Waiting for Appium server to start...")
-        for attempt in range(30):
-            time.sleep(1)
-            
+        import requests
+        
+        max_attempts = 60  # 30 seconds total with 0.5s intervals
+        for attempt in range(max_attempts):
             # Check if process is still running
             if process.poll() is not None:
                 stdout, stderr = process.communicate()
@@ -164,16 +172,23 @@ def start_appium_server(metrics: PerformanceMetrics):
                 print(f"   STDERR: {stderr}")
                 return None
             
-            # Try to connect to server
+            # Try to connect to server (no sleep before first attempt)
             try:
-                import requests
-                response = requests.get("http://localhost:4723/wd/hub/status", timeout=3)
+                response = requests.get("http://localhost:4723/wd/hub/status", timeout=1)
                 if response.status_code == 200:
                     metrics.appium_startup_time = time.time() - appium_start_time
                     print(f"✅ Appium server is ready (started in {metrics.appium_startup_time:.1f}s)")
                     return process
             except:
-                continue
+                pass
+            
+            # Optimized adaptive polling - faster initial checks
+            if attempt < 10:
+                time.sleep(0.1)  # First 1 second: check every 100ms (faster startup detection)
+            elif attempt < 30:
+                time.sleep(0.3)  # Next 6 seconds: check every 300ms  
+            else:
+                time.sleep(0.8)  # After 7 seconds: check every 800ms
         
         metrics.appium_startup_time = time.time() - appium_start_time
         print(f"❌ Appium server failed to start within timeout ({metrics.appium_startup_time:.1f}s)")
@@ -228,9 +243,9 @@ def shutdown_emulator(emulator_info):
         if result.returncode == 0:
             print("   ✅ Emulator shutdown command sent")
             
-            # Wait for shutdown
-            for i in range(5):
-                time.sleep(2)
+            # Optimized shutdown polling - check more frequently
+            for i in range(10):
+                time.sleep(1)  # Check every 1s instead of 2s for faster detection
                 result = subprocess.run(['adb', 'devices'], capture_output=True, text=True)
                 devices = [line for line in result.stdout.split('\n') if 'emulator-' in line and '\tdevice' in line]
                 if not devices:

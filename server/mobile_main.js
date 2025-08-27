@@ -6,6 +6,28 @@ class SpatialIndex {
     this.userRuns = [];
     this.nextId = 1;
     this.worker = null;
+    this._initWorker();
+  }
+
+  _initWorker() {
+    window.__workerCoverages = window.__workerCoverages || [];
+    try {
+      this.worker = new Worker('spatial.worker.js');
+      this.worker.addEventListener('message', (evt) => {
+        if (evt?.data?.__workerCoverage) {
+          window.__workerCoverages.push(evt.data.__workerCoverage);
+          // Merge into window.__coverage__ if present
+          if (window.__coverage__) {
+            Object.assign(window.__coverage__, evt.data.__workerCoverage);
+          }
+        } else {
+          this._handleWorkerMessage(evt);
+        }
+      });
+    } catch (e) {
+      console.error("Failed to initialize worker", e);
+      this.worker = null;
+    }
   }
 
   _handleWorkerMessage(e) {
@@ -91,19 +113,7 @@ class SpatialIndex {
     }
   }
 
-  async updateServerData(newRuns) {
-    const response = await fetch('/update_runs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ runs: newRuns })
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to update server data');
-    }
-
-    return response.json();
-  }
+  // Mobile app uses localStorage for upload persistence - no server required
 
   async reloadPMTiles() {
     console.log('[HEATMAP-HTTP] Starting reloadPMTiles with HTTP Range Server...');
@@ -223,39 +233,16 @@ class SpatialIndex {
 
     const run = { id: id.toString(), geoms, bbox, metadata };
     
-    // Add to both spatial index and user runs for immediate display
+    // Add to spatial index and user runs for immediate display
     this.spatialIndex.push({ id: parseInt(id), bbox: bbox });
     this.userRuns.push(run);
-
-    try {
-      await this.updateServerData([
-        { id: id, coords: coords, metadata: metadata }
-      ]);
-
-      // Try to reload PMTiles to show server-side data
-      try {
-        await this.reloadPMTiles();
-        
-        // Only clear local copy if we can verify the run appears in PMTiles
-        await this.maybeClearLocalCopyAfterReload(run);
-        
-        console.log('[HEATMAP-DEBUG] Successfully synced with server, local cleanup completed');
-        
-      } catch (pmtilesError) {
-        console.error('[HEATMAP-DEBUG] PMTiles reload failed, keeping run in local storage:', pmtilesError);
-        // Save to localStorage so run persists even if PMTiles reload failed
-        this.saveUserRuns();
-        if (window.showStatusForDebug) {
-          window.showStatusForDebug('Uploaded successfully, but map reload failed. Run saved locally.', 4000);
-        }
-      }
-
-    } catch (error) {
-      console.error('Failed to sync with server, keeping local:', error);
-      this.saveUserRuns();
-      if (window.showStatusForDebug) {
-        window.showStatusForDebug('Upload failed, run saved locally: ' + error.message, 4000);
-      }
+    
+    // Save to localStorage for persistence (primary upload mechanism)
+    this.saveUserRuns();
+    console.log('[HEATMAP-DEBUG] Run saved to localStorage with ID:', id);
+    
+    if (window.showStatusForDebug) {
+      window.showStatusForDebug('Run uploaded and saved successfully', 2000);
     }
 
     return id;

@@ -1,0 +1,34 @@
+[run]
+branch = True
+parallel = True
+source = testing,server
+concurrency = multiprocessing
+sigterm = true
+omit =
+    server/*.template
+    server/*.xml.template
+    server/*.java.template
+    server/*.js
+    server/*worker.js
+    server/*template.js
+    testing/test_*.py
+    testing/conftest.py
+    testing/node_modules/*
+    testing/cached_*/*
+    testing/reports/*
+
+[report]
+show_missing = True
+skip_covered = False
+
+[xml]
+output = testing/reports/coverage/python/cobertura.xml
+
+[paths]
+# Map temp session paths back to repo paths so coverage merges correctly
+server =
+    server
+    /tmp/heatmap_master_session_*/server
+testing =
+    testing
+    /tmp/heatmap_master_session_*/testing

@@ -279,7 +279,7 @@ def run_test_group_sequential(test_files: List[Path], profile_args: List[str] = 
         print(f"   ❌ Test execution failed: {e}")
         return 1, execution_time, execution_info
 
-def analyze_optimization_opportunities(metrics: PerformanceMetrics):
+def analyze_optimization_opportunities(metrics: PerformanceMetrics, args=None):
     """Analyze what optimizations can be applied to the current test run."""
     print("🔍 Analyzing optimization opportunities...")
     
@@ -290,20 +290,30 @@ def analyze_optimization_opportunities(metrics: PerformanceMetrics):
     print(f"   Source code unchanged: {'✅' if optimization.source_unchanged else '❌'}")
     print(f"   Test data unchanged: {'✅' if optimization.data_unchanged else '❌'}")
     
-    if optimization.can_skip_build:
+    # Check force flags directly from args to avoid chicken-and-egg problem
+    force_build = args and args.force_build
+    force_data = args and args.force_data
+    
+    # Determine actual build decisions considering force flags
+    actual_skip_apk = optimization.can_skip_build and not force_build
+    actual_skip_data = optimization.can_skip_data and not force_data
+    
+    print(f"   🔧 Force flags: --force-build={force_build}, --force-data={force_data}")
+    
+    if actual_skip_apk:
         print("   🚀 Can skip APK build (using cached)")
         metrics.add_optimization("APK build cache hit")
         metrics.set_cache_hit("apk_build", True)
     else:
-        print("   🔨 APK build required")
+        print("   🔨 APK build required" + (" (forced by --force-build)" if force_build else ""))
         metrics.set_cache_hit("apk_build", False)
         
-    if optimization.can_skip_data:
+    if actual_skip_data:
         print("   🚀 Can skip data processing (using cached)")
         metrics.add_optimization("Data processing cache hit")
         metrics.set_cache_hit("data_processing", True)
     else:
-        print("   📊 Data processing required")
+        print("   📊 Data processing required" + (" (forced by --force-data)" if force_data else ""))
         metrics.set_cache_hit("data_processing", False)
     
     return optimization
@@ -531,8 +541,10 @@ def build_pytest_command(args):
     if args.cov:
         from pathlib import Path
         repo_root = Path(__file__).parent.parent
+        # Collect coverage for our Python test harness/utilities (not JS server)
+        # Pytest runs from the testing/ directory, so target the current dir.
         cmd += [
-            "--cov=server",
+            "--cov=.",
             "--cov-branch",
             f"--cov-config={repo_root / '.coveragerc'}",
             "--cov-report=term-missing:skip-covered",
@@ -600,33 +612,67 @@ def run_tests_sequential(args, metrics: PerformanceMetrics = None, start_time: f
     return result.returncode
 
 def combine_coverage_data():
-    """Combine coverage data from all processes and generate reports"""
+    """Combine coverage data from all processes and generate reports.
+
+    Looks for `.coverage*` files in:
+      - repo root
+      - server/
+      - any temporary test envs: /tmp/heatmap_master_session_*/server/
+    """
     try:
         repo_root = Path(__file__).parent.parent
         print("\n📊 Combining Python coverage data from all processes...")
-        
-        # Combine all .coverage.* files
-        subprocess.run([
+
+        # Discover coverage data files
+        coverage_files = []
+        # Look for data files in repo root, testing/, and server/ (historic)
+        for base in [repo_root, repo_root / 'testing', repo_root / 'server']:
+            # Add the plain .coverage file if present
+            cov_file = base / '.coverage'
+            if cov_file.is_file():
+                coverage_files.append(str(cov_file))
+            # Add any parallel data files like .coverage.<pid>
+            for p in base.glob('.coverage.*'):
+                if p.is_file():
+                    coverage_files.append(str(p))
+        # temp test envs
+        tmp_dir = Path('/tmp')
+        if tmp_dir.exists():
+            # Collect any stray coverage fragments from prior isolated runs
+            for p in tmp_dir.glob('heatmap_master_session_*/server/.coverage.*'):
+                if p.is_file():
+                    coverage_files.append(str(p))
+            for p in tmp_dir.glob('heatmap_master_session_*/testing/.coverage.*'):
+                if p.is_file():
+                    coverage_files.append(str(p))
+
+        # Run combine; pass discovered files explicitly if any
+        combine_cmd = [
             sys.executable, '-m', 'coverage', 'combine',
-            '--rcfile', str(repo_root / '.coveragerc')
-        ], cwd=repo_root, check=False)
-        
-        # Generate HTML report
+            '--rcfile', str(repo_root / '.coveragerc'),
+            '--data-file', '.coverage'
+        ]
+        if coverage_files:
+            combine_cmd.extend(coverage_files)
+
+        subprocess.run(combine_cmd, cwd=repo_root, check=False)
+
+        # Generate HTML and XML reports
         subprocess.run([
             sys.executable, '-m', 'coverage', 'html',
             '--rcfile', str(repo_root / '.coveragerc'),
+            '--data-file', '.coverage',
             '-d', 'testing/reports/coverage/python/html'
         ], cwd=repo_root, check=False)
-        
-        # Generate XML report  
         subprocess.run([
             sys.executable, '-m', 'coverage', 'xml',
             '--rcfile', str(repo_root / '.coveragerc'),
+            '--data-file', '.coverage',
             '-o', 'testing/reports/coverage/python/cobertura.xml'
         ], cwd=repo_root, check=False)
-        
+
         print("✅ Python coverage combined and reports generated")
-        
+
     except Exception as e:
         print(f"⚠️  Warning: Could not combine coverage data: {e}")
 
@@ -976,7 +1022,7 @@ def main():
     optimization = None
     if not args.no_optimize:
         try:
-            optimization = analyze_optimization_opportunities(metrics)
+            optimization = analyze_optimization_opportunities(metrics, args)
         except Exception as e:
             print(f"⚠️  Warning: Optimization analysis failed: {e}")
             print("   Continuing with traditional mode...")
@@ -1042,6 +1088,16 @@ def main():
         
         # Finalize performance metrics
         metrics.finalize()
+        
+        # Correct metrics if environment overrides were applied after analysis
+        skip_apk_final = os.environ.get('SKIP_APK_BUILD')
+        skip_data_final = os.environ.get('SKIP_DATA_PROCESSING')
+        if skip_apk_final == '0':  # --force-build was used
+            metrics.set_cache_hit("apk_build", False)
+            print(f"   🔧 Corrected APK cache status: forced rebuild detected")
+        if skip_data_final == '0':  # --force-data was used  
+            metrics.set_cache_hit("data_processing", False)
+            print(f"   🔧 Corrected data cache status: forced rebuild detected")
         
         # Open test report with performance metrics
         open_test_report(args.report_file, metrics, args.profile)

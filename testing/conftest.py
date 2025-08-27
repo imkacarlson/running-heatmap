@@ -136,20 +136,9 @@ def pytest_configure(config):
     config._appium_driver_ref = {}
 
 def pytest_sessionfinish(session, exitstatus):
-    drv = getattr(session.config, "_appium_driver_ref", {}).get("driver")
-    if not drv:
-        return
-    try:
-        from pathlib import Path
-        from js_coverage import collect_js_coverage
-        # Ensure the path is relative to the testing directory
-        report_dir = Path(__file__).parent / "reports/coverage/js"
-        collect_js_coverage(drv, report_dir)
-        print(f"✅ JS coverage collected to {report_dir}")
-    except Exception as e:
-        # Do not fail the suite if coverage collection has issues
-        print(f"⚠️  Could not collect JS coverage: {e}")
-        pass
+    # JS coverage is now collected per-test in mobile_driver fixture
+    # This hook is kept for potential future session-level cleanup
+    pass
 
 def pytest_addoption(parser):
     """Add custom command line options"""
@@ -165,7 +154,7 @@ def fast_mode(request):
     """Access the --fast flag value"""
     return request.config.getoption("--fast")
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")  # Always use function scope when FORCE_BUILD might be set
 def session_setup(fast_mode):
     """
     Infrastructure setup fixture to handle all expensive, one-time setup operations.
@@ -179,14 +168,57 @@ def session_setup(fast_mode):
     - Skip APK build when source files unchanged, use existing APK
     - Skip data processing when GPX files unchanged, use existing PMTiles
     """
+    import sys
+    
+    # Create debug file to confirm fixture execution and track what's happening
+    debug_file = Path(__file__).parent / "fixture_debug.txt"
+    with open(debug_file, "w") as f:
+        f.write(f"SESSION_SETUP FIXTURE EXECUTED - fast_mode={fast_mode}\n")
+        f.write(f"SKIP_APK_BUILD={os.environ.get('SKIP_APK_BUILD')}\n")
+        f.write(f"SKIP_DATA_PROCESSING={os.environ.get('SKIP_DATA_PROCESSING')}\n")
+        f.write(f"INSTRUMENT_JS={os.environ.get('INSTRUMENT_JS')}\n")
+        f.write(f"COVERAGE_RUN={os.environ.get('COVERAGE_RUN')}\n")
+    
+    # Also create instrumented files check
+    instr_debug_file = Path(__file__).parent / "instrumented_debug.txt"
+    
+    # Try multiple approaches to ensure output appears
+    message = f"\n🚀 SESSION_SETUP FIXTURE STARTING - fast_mode={fast_mode}"
+    print(message)
+    sys.stderr.write(message + "\n")  # Also write to stderr
+    sys.stdout.flush()
+    sys.stderr.flush()
+    
+    env_message = f"   🔧 Environment check: SKIP_APK_BUILD={os.environ.get('SKIP_APK_BUILD')}"
+    print(env_message)
+    sys.stdout.flush()
+    sys.stderr.write(env_message + "\n")
+    
+    sys.stdout.flush()  # Force immediate output
+    sys.stderr.flush()
+    
     # Define project_root at the top so it's available for both modes
     project_root = Path(__file__).parent.parent
     
-    # Import change detector for automatic optimization
-    from change_detector import ChangeDetector, BuildOptimization
+    # Import change detector for automatic optimization with error handling
+    try:
+        from change_detector import ChangeDetector, BuildOptimization
+        print("   ✅ Change detector imported successfully")
+        sys.stdout.flush()
+    except ImportError as e:
+        print(f"   ❌ Failed to import change detector: {e}")
+        sys.stdout.flush()
+        raise
     
     # Initialize change detector
-    change_detector = ChangeDetector(project_root)
+    try:
+        change_detector = ChangeDetector(project_root)
+        print("   ✅ Change detector initialized successfully")
+        sys.stdout.flush()
+    except Exception as e:
+        print(f"   ❌ Failed to initialize change detector: {e}")
+        sys.stdout.flush()
+        raise
     
     if fast_mode:
         print("\n⚡ Fast mode: Using cached test APK from previous full build.")
@@ -212,19 +244,18 @@ def session_setup(fast_mode):
         }
         return
     
-    # Automatic optimization mode: analyze what needs to be built
-    print("\n🔍 Analyzing changes to optimize test build process...")
-    optimization = change_detector.get_build_optimization()
+    # Use optimization decisions from run_tests.py (single source of truth)
+    print("\n🔍 Using optimization decisions from run_tests.py...")
+    skip_apk_build = os.environ.get('SKIP_APK_BUILD') == '1'
+    skip_data_processing = os.environ.get('SKIP_DATA_PROCESSING') == '1'
     
-    print(f"   📊 Build Analysis:")
-    print(f"      APK exists: {optimization.apk_exists}")
-    print(f"      Source unchanged: {optimization.source_unchanged}")
-    print(f"      Data unchanged: {optimization.data_unchanged}")
-    print(f"      Can skip build: {optimization.can_skip_build}")
-    print(f"      Can skip data: {optimization.can_skip_data}")
+    print(f"   🔧 Environment variables from run_tests.py:")
+    print(f"      SKIP_APK_BUILD = '{os.environ.get('SKIP_APK_BUILD')}' → skip_apk_build = {skip_apk_build}")
+    print(f"      SKIP_DATA_PROCESSING = '{os.environ.get('SKIP_DATA_PROCESSING')}' → skip_data_processing = {skip_data_processing}")
+    sys.stdout.flush()
     
     # If we can use cached artifacts, use them directly
-    if optimization.can_skip_build and optimization.can_skip_data:
+    if skip_apk_build and skip_data_processing:
         print("\n⚡ Optimization: All cached artifacts are up-to-date, using existing APK and data.")
         cached_apk_path = project_root / "testing" / "cached_test_apk" / "app-debug.apk"
         cached_pmtiles_path = project_root / "testing" / "cached_test_data" / "runs.pmtiles"
@@ -236,19 +267,22 @@ def session_setup(fast_mode):
         }
         return
 
-    # Determine what needs to be built based on optimization analysis
-    need_apk_build = not optimization.can_skip_build
-    need_data_processing = not optimization.can_skip_data
-    
-    is_cov_run = os.environ.get('COVERAGE_RUN') == '1'
-    if is_cov_run and (not need_apk_build or not need_data_processing):
-        print("   ℹ️ Coverage run detected, forcing APK build and data processing to ensure code is executed.")
-        need_apk_build = True
-        need_data_processing = True
+    # Determine what actually needs to be built based on run_tests.py decisions
+    need_apk_build = not skip_apk_build
+    need_data_processing = not skip_data_processing
 
     print(f"\n🏗️ Infrastructure Setup: Building test environment")
     print(f"   📱 APK build needed: {need_apk_build}")
     print(f"   🗂️ Data processing needed: {need_data_processing}")
+    
+    # Write critical decisions to debug file (bypass pytest output buffering)
+    with open(debug_file, "a") as f:
+        f.write(f"FINAL_DECISIONS:\n")
+        f.write(f"  skip_apk_build={skip_apk_build}\n")
+        f.write(f"  skip_data_processing={skip_data_processing}\n") 
+        f.write(f"  need_apk_build={need_apk_build}\n")
+        f.write(f"  need_data_processing={need_data_processing}\n")
+        f.write(f"  will_execute_build_mobile_py={need_apk_build}\n")
     
     test_env = Path(tempfile.mkdtemp(prefix="heatmap_master_session_"))
     server_dir = test_env / "server"
@@ -273,6 +307,46 @@ def session_setup(fast_mode):
             src_file = project_root / "server" / file_name
             if src_file.exists():
                 shutil.copy2(src_file, server_dir / file_name)
+        
+        # Copy .instrumented directory if it exists and instrumentation is enabled
+        instrument_js = os.environ.get("INSTRUMENT_JS")
+        print(f"\n   📦 JavaScript Instrumentation Check:")
+        print(f"      INSTRUMENT_JS = '{instrument_js}'")
+        sys.stdout.flush()
+        
+        if instrument_js == "1":
+            instrumented_dir = project_root / "server" / ".instrumented"
+            print(f"      Source instrumented directory: {instrumented_dir}")
+            print(f"      Directory exists: {instrumented_dir.exists()}")
+            
+            if instrumented_dir.exists():
+                files = list(instrumented_dir.iterdir())
+                print(f"      Files in instrumented directory:")
+                for f in files:
+                    print(f"         • {f.name} ({f.stat().st_size} bytes)")
+                
+                dest_instrumented = server_dir / ".instrumented" 
+                print(f"      Destination: {dest_instrumented}")
+                
+                try:
+                    shutil.copytree(instrumented_dir, dest_instrumented)
+                    copied_files = list(dest_instrumented.iterdir())
+                    print(f"      ✅ Copied .instrumented directory: {len(copied_files)} files")
+                    print(f"      Copied files:")
+                    for f in copied_files:
+                        print(f"         • {f.name} ({f.stat().st_size} bytes)")
+                except Exception as e:
+                    print(f"      ❌ Failed to copy instrumented directory: {e}")
+            else:
+                print(f"      ❌ Instrumented directory not found: {instrumented_dir}")
+                print(f"      📋 Contents of server directory:")
+                server_src_dir = project_root / "server"
+                for item in server_src_dir.iterdir():
+                    print(f"         • {item.name}")
+        else:
+            print(f"      ⏭️ Skipping instrumented directory copy (INSTRUMENT_JS = '{instrument_js}', expected '1')")
+        
+        sys.stdout.flush()
         
         # Copy package.json and node_modules for mobile build dependencies
         package_json = project_root / "package.json"
@@ -343,7 +417,7 @@ def session_setup(fast_mode):
             # Run process_data.py to handle both import and PMTiles generation
             cmd = [str(main_venv_python)]
             if is_cov_run:
-                cmd.extend(["-m", "coverage", "run", "--parallel-mode"])
+                cmd.extend(["-m", "coverage", "run", "--parallel-mode", "--rcfile", str(project_root / '.coveragerc')])
             cmd.append("process_data.py")
 
             result = subprocess.run(cmd, cwd=server_dir, text=True, timeout=120)
@@ -372,7 +446,7 @@ def session_setup(fast_mode):
                 print("   🔄 Running consolidated data processing...")
                 cmd = [str(main_venv_python)]
                 if is_cov_run:
-                    cmd.extend(["-m", "coverage", "run", "--parallel-mode"])
+                    cmd.extend(["-m", "coverage", "run", "--parallel-mode", "--rcfile", str(project_root / '.coveragerc')])
                 cmd.append("process_data.py")
                 result = subprocess.run(cmd, cwd=server_dir, text=True, timeout=120)
                 
@@ -383,10 +457,14 @@ def session_setup(fast_mode):
         
         # 3. Build mobile APK with test data
         if need_apk_build:
+            # Track APK build execution in debug file (bypass pytest buffering)
+            with open(debug_file, "a") as f:
+                f.write(f"APK_BUILD_STARTING: need_apk_build={need_apk_build}\n")
+            
             print("   📱 Building mobile APK with test data (this may take 5-10 minutes)...")
             print("   🔍 APK Build Output (verbose mode):")
             
-            # Run mobile build with auto mode and stdin input for prompts
+            # Run mobile build with auto mode and stdin input for prompts INSIDE the isolated env
             build_env = os.environ.copy()
             build_env['MOBILE_BUILD_AUTO'] = '1'  # Enable auto mode
             
@@ -399,12 +477,22 @@ def session_setup(fast_mode):
             
             cmd = [str(main_venv_python)]
             if is_cov_run:
-                cmd.extend(["-m", "coverage", "run", "--parallel-mode"])
+                cmd.extend([
+                    "-m", "coverage", "run", "--parallel-mode",
+                    "--rcfile", str(project_root / '.coveragerc'),
+                    "--source", str(server_dir)  # ensure build_mobile.py in isolated env is measured
+                ])
             cmd.append("build_mobile.py")
 
-            build_process = subprocess.Popen(cmd, cwd=server_dir, stdin=subprocess.PIPE,
-               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, 
-               text=True, env=build_env)
+            build_process = subprocess.Popen(
+                cmd,
+                cwd=server_dir,  # IMPORTANT: build inside the isolated server dir
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                env=build_env,
+            )
             
             # Automatically answer "y" to any prompts
             stdout, _ = build_process.communicate(input="y\ny\n", timeout=600)
@@ -417,7 +505,7 @@ def session_setup(fast_mode):
             
             print("   ✅ Mobile APK built successfully.")
             
-            # Use the newly built APK
+            # Use the newly built APK (now in the isolated env)
             apk_path = test_env / "mobile/android/app/build/outputs/apk/debug/app-debug.apk"
         else:
             print("   ⚡ Skipping APK build: Using cached APK (source unchanged)")
@@ -449,7 +537,11 @@ def session_setup(fast_mode):
                 
                 cmd = [str(main_venv_python)]
                 if is_cov_run:
-                    cmd.extend(["-m", "coverage", "run", "--parallel-mode"])
+                    cmd.extend([
+                        "-m", "coverage", "run", "--parallel-mode",
+                        "--rcfile", str(project_root / '.coveragerc'),
+                        "--source", str(server_dir)  # measure isolated server path
+                    ])
                 cmd.append("build_mobile.py")
 
                 build_process = subprocess.Popen(cmd, cwd=server_dir, stdin=subprocess.PIPE,
@@ -529,6 +621,28 @@ def session_setup(fast_mode):
             print(f"   ⚠️ Warning: Could not cache test artifacts: {e}")
         
         # Provide session data to tests
+        # Final instrumented files check
+        with open(instr_debug_file, "a") as f:
+            f.write(f"\n=== FINAL STATE BEFORE YIELD ===\n")
+            f.write(f"test_env = {test_env}\n")
+            f.write(f"server_dir = {server_dir}\n")
+            
+            # Check if instrumented files exist in test environment
+            test_instrumented = server_dir / ".instrumented"
+            f.write(f"test_instrumented = {test_instrumented}\n")
+            f.write(f"test_instrumented.exists() = {test_instrumented.exists()}\n")
+            
+            if test_instrumented.exists():
+                files = list(test_instrumented.iterdir())
+                f.write(f"instrumented files in test env: {[f.name for f in files]}\n")
+            
+            # Check original instrumented files still exist
+            orig_instrumented = project_root / "server" / ".instrumented"
+            f.write(f"orig_instrumented.exists() = {orig_instrumented.exists()}\n")
+            if orig_instrumented.exists():
+                orig_files = list(orig_instrumented.iterdir())
+                f.write(f"original instrumented files: {[f.name for f in orig_files]}\n")
+        
         session_data = {
             'package_name': 'com.run.heatmap',
             'apk_path': str(apk_path),
@@ -540,6 +654,22 @@ def session_setup(fast_mode):
         yield session_data
         
     finally:
+        # Before cleanup, preserve any coverage fragments from the isolated env
+        try:
+            project_root = Path(__file__).parent.parent
+            server_cov_dir = project_root / "server"
+            server_cov_dir.mkdir(exist_ok=True)
+            # Copy .coverage.* fragments so run_tests.py can combine later
+            for cov_file in (server_dir.glob('.coverage.*') if 'server_dir' in locals() else []):
+                dest = server_cov_dir / cov_file.name
+                try:
+                    shutil.copy2(cov_file, dest)
+                    print(f"   📊 Preserved coverage fragment: {dest}")
+                except Exception as e:
+                    print(f"   ⚠️ Warning: Could not preserve coverage fragment {cov_file}: {e}")
+        except Exception as e:
+            print(f"   ⚠️ Warning during coverage preservation: {e}")
+
         # Cleanup using modularized cleanup utility
         cleanup_test_environment(str(test_env))
 
@@ -592,6 +722,18 @@ def mobile_driver(request, session_setup):
         'session_data': session_setup
     }
     
+    # Collect JS coverage BEFORE driver cleanup
+    try:
+        from pathlib import Path
+        from js_coverage import collect_js_coverage
+        # Ensure the path is relative to the testing directory
+        report_dir = Path(__file__).parent / "reports/coverage/js"
+        collect_js_coverage(driver, report_dir)
+        print(f"✅ JS coverage collected to {report_dir}")
+    except Exception as e:
+        # Do not fail the suite if coverage collection has issues
+        print(f"⚠️  Could not collect JS coverage: {e}")
+    
     # Cleanup using modularized cleanup utility
     cleanup_mobile_driver(driver)
 
@@ -613,4 +755,3 @@ def pytest_runtest_makereport(item, call):
         report.extra = []
     
     return report
-

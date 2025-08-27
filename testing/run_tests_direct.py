@@ -69,37 +69,51 @@ def main():
     return exit_code
 
 def combine_coverage_data():
-    """Combine coverage data from all processes and generate reports"""
+    """Combine coverage data from all processes and generate reports.
+
+    Also searches for data files in server/ and temp test envs under /tmp.
+    """
     import sys
     import subprocess
     from pathlib import Path
-    
+
     try:
         repo_root = Path(__file__).parent.parent
         print("\n📊 Combining Python coverage data from all processes...")
-        
-        # Combine all .coverage.* files
-        subprocess.run([
+
+        # Discover coverage data files
+        coverage_files = []
+        for base in [repo_root, repo_root / 'server']:
+            coverage_files.extend([str(p) for p in base.glob('.coverage*') if p.is_file()])
+        tmp_dir = Path('/tmp')
+        if tmp_dir.exists():
+            for p in tmp_dir.glob('heatmap_master_session_*/server/.coverage*'):
+                if p.is_file():
+                    coverage_files.append(str(p))
+
+        combine_cmd = [
             sys.executable, '-m', 'coverage', 'combine',
             '--rcfile', str(repo_root / '.coveragerc')
-        ], cwd=repo_root, check=False)
-        
-        # Generate HTML report
+        ]
+        if coverage_files:
+            combine_cmd.extend(coverage_files)
+
+        subprocess.run(combine_cmd, cwd=repo_root, check=False)
+
+        # Generate HTML and XML reports
         subprocess.run([
             sys.executable, '-m', 'coverage', 'html',
             '--rcfile', str(repo_root / '.coveragerc'),
             '-d', 'testing/reports/coverage/python/html'
         ], cwd=repo_root, check=False)
-        
-        # Generate XML report  
         subprocess.run([
             sys.executable, '-m', 'coverage', 'xml',
             '--rcfile', str(repo_root / '.coveragerc'),
             '-o', 'testing/reports/coverage/python/cobertura.xml'
         ], cwd=repo_root, check=False)
-        
+
         print("✅ Python coverage combined and reports generated")
-        
+
     except Exception as e:
         print(f"⚠️  Warning: Could not combine coverage data: {e}")
 

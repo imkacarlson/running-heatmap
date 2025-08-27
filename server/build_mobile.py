@@ -284,10 +284,7 @@ def create_mobile_files(mobile_dir):
             shutil.copy(rbush_path, os.path.join(mobile_dir, 'rbush.min.js'))
             print("   - Updated rbush.min.js from node_modules")
 
-        server_script = os.path.join(SCRIPT_DIR, 'app.py')
-        if os.path.exists(server_script):
-            shutil.copy(server_script, os.path.join(mobile_dir, 'app.py'))
-            print("   - Updated app.py for upload handling")
+        # Flask server removed - mobile app uses localStorage for uploads
     else:
         print("   - Warning: mobile_main.js not found. The mobile app may not work correctly.")
 

@@ -264,9 +264,13 @@ def create_mobile_files(mobile_dir):
     shutil.copy(os.path.join(SCRIPT_DIR, 'mobile_template.html'), os.path.join(mobile_dir, 'index.html'))
     print("   - Updated index.html from mobile_template.html")
     
-    # Copy service worker
-    shutil.copy(js_src('sw_template.js'), os.path.join(mobile_dir, 'sw.js'))
-    print("   - Updated sw.js from sw_template.js")
+    # Service worker is unused in current app; skip if not present
+    sw_src = js_src('sw_template.js')
+    if os.path.exists(sw_src):
+        shutil.copy(sw_src, os.path.join(mobile_dir, 'sw.js'))
+        print("   - Updated sw.js from sw_template.js")
+    else:
+        print("   - Skipping sw.js (service worker not used)")
     
     # Copy main JS and dependencies
     shutil.copy(js_src('mobile_main.js'), os.path.join(mobile_dir, 'main.js'))
@@ -335,7 +339,7 @@ def setup_www_directory(mobile_dir, quick_build):
         shutil.move(data_src, os.path.join(www_dir, 'data'))
         print(f"   - Moved data directory to {www_dir}")
 
-    assets = ['index.html', 'main.js', 'sw.js', 'spatial.worker.js', 'rbush.min.js']
+    assets = ['index.html', 'main.js', 'spatial.worker.js', 'rbush.min.js']
 
     all_moved = True
     for asset in assets:

@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "build": "echo build-complete",
-    "cov:js:instrument": "mkdir -p server/.instrumented && npx nyc instrument server/mobile_main.js > server/.instrumented/mobile_main.js && npx nyc instrument server/spatial.worker.js > server/.instrumented/spatial.worker.js && npx nyc instrument server/sw_template.js > server/.instrumented/sw_template.js"
+    "cov:js:instrument": "rm -rf server/.instrumented && npx nyc instrument server server/.instrumented --compact=false"
   },
   "dependencies": {
     "pmtiles": "^3.2.0",

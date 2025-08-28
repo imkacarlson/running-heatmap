@@ -5,13 +5,20 @@ REPO_ROOT="$(cd "$(dirname "$0")"/.. && pwd)"
 cd "$(dirname "$0")"   # into testing/
 
 COV=0
-if [[ "${1:-}" == "--cov" ]]; then
-  COV=1
+while [[ ${1:-} == --* ]]; do
+  case "$1" in
+    --cov)
+      COV=1
+      ;;
+    *)
+      break
+      ;;
+  esac
   shift
-fi
+done
 
 echo "🧪 Activity Heatmap Mobile App Tests"
-echo "Coverage: $([[ $COV -eq 1 ]] && echo 'ON' || echo 'OFF')"
+echo "Coverage:     $([[ $COV -eq 1 ]] && echo 'ON' || echo 'OFF')"
 echo
 
 # Activate virtual environment if it exists
@@ -51,6 +58,8 @@ if [[ $COV -eq 1 ]]; then
   echo
   echo "✅ Python HTML: file://$(cd "$REPO_ROOT" && pwd)/testing/reports/coverage/python/html/index.html"
   echo "✅ JS HTML:     file://$(cd "$REPO_ROOT" && pwd)/testing/reports/coverage/js/html/index.html"
+  echo "✅ CSS HTML:    file://$(cd "$REPO_ROOT" && pwd)/testing/reports/coverage/css/html/index.html"
+  echo "✅ DOM HTML:    file://$(cd "$REPO_ROOT" && pwd)/testing/reports/coverage/dom/html/index.html"
 fi
 
 echo "🎉 Testing complete!"

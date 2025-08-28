@@ -335,6 +335,17 @@ def session_setup(fast_mode):
                     print(f"      Copied files:")
                     for f in copied_files:
                         print(f"         • {f.name} ({f.stat().st_size} bytes)")
+
+                    # Append a small coverage bridge into the instrumented worker so it can respond
+                    try:
+                        worker_path = dest_instrumented / 'spatial.worker.js'
+                        if worker_path.exists():
+                            with open(worker_path, 'a') as wf:
+                                wf.write("\n/* istanbul coverage bridge */\n")
+                                wf.write("self.addEventListener('message', function(e){ try { if (e && e.data && e.data.type==='__dump_coverage__') { if (self.__coverage__) { self.postMessage({type:'__coverage__', coverage: self.__coverage__}); } else { self.postMessage({type:'__coverage__', coverage: null}); } } } catch(err){} });\n")
+                            print("      🔗 Appended coverage bridge to spatial.worker.js")
+                    except Exception as e:
+                        print(f"      ⚠️  Could not append worker coverage bridge: {e}")
                 except Exception as e:
                     print(f"      ❌ Failed to copy instrumented directory: {e}")
             else:
@@ -417,7 +428,11 @@ def session_setup(fast_mode):
             # Run process_data.py to handle both import and PMTiles generation
             cmd = [str(main_venv_python)]
             if is_cov_run:
-                cmd.extend(["-m", "coverage", "run", "--parallel-mode", "--rcfile", str(project_root / '.coveragerc')])
+                cmd.extend([
+                    "-m", "coverage", "run", "--parallel-mode",
+                    "--rcfile", str(project_root / '.coveragerc'),
+                    "--source", str(server_dir)  # ensure process_data.py in isolated env is measured
+                ])
             cmd.append("process_data.py")
 
             result = subprocess.run(cmd, cwd=server_dir, text=True, timeout=120)
@@ -446,7 +461,11 @@ def session_setup(fast_mode):
                 print("   🔄 Running consolidated data processing...")
                 cmd = [str(main_venv_python)]
                 if is_cov_run:
-                    cmd.extend(["-m", "coverage", "run", "--parallel-mode", "--rcfile", str(project_root / '.coveragerc')])
+                    cmd.extend([
+                        "-m", "coverage", "run", "--parallel-mode",
+                        "--rcfile", str(project_root / '.coveragerc'),
+                        "--source", str(server_dir)
+                    ])
                 cmd.append("process_data.py")
                 result = subprocess.run(cmd, cwd=server_dir, text=True, timeout=120)
                 
@@ -703,7 +722,7 @@ def mobile_driver(request, session_setup):
         config.TestConfig.APPIUM_SERVER,
         options=options
     )
-    
+
     # Stash driver for session-level cleanup and JS coverage
     request.config._appium_driver_ref["driver"] = driver
 
@@ -712,7 +731,56 @@ def mobile_driver(request, session_setup):
     
     # Create WebDriverWait instance
     wait = WebDriverWait(driver, config.TestConfig.EXPLICIT_WAIT)
-    
+
+    # Begin CSS coverage tracking when JS instrumentation is enabled
+    if os.getenv("INSTRUMENT_JS"):
+        try:
+            from js_coverage import start_css_coverage
+
+            # Ensure we inject into an actual WebView context
+            print("🔎 Waiting for WebView context to start CSS coverage...")
+            webview_name = None
+            for _ in range(40):  # ~10s total (40 * 0.25s)
+                try:
+                    ctxs = driver.contexts
+                    webviews = [c for c in ctxs if c.startswith("WEBVIEW")]
+                    if webviews:
+                        webview_name = webviews[0]
+                        break
+                except Exception:
+                    pass
+                time.sleep(0.25)
+
+            if webview_name:
+                prev_ctx = None
+                try:
+                    prev_ctx = driver.current_context
+                except Exception:
+                    prev_ctx = None
+
+                try:
+                    driver.switch_to.context(webview_name)
+                    start_css_coverage(driver)
+                    print("✅ CSS coverage tracking started (WebView)")
+                    # Also start DOM coverage tracking
+                    try:
+                        from js_coverage import start_dom_coverage, start_worker_coverage
+                        start_dom_coverage(driver)
+                        start_worker_coverage(driver)
+                        print("✅ DOM + Worker coverage tracking started (WebView)")
+                    except Exception as e:
+                        print(f"⚠️  Could not start DOM/Worker coverage tracking: {e}")
+                finally:
+                    # Switch back to native to avoid affecting tests
+                    try:
+                        driver.switch_to.context(prev_ctx or "NATIVE_APP")
+                    except Exception:
+                        pass
+            else:
+                print("⚠️  No WebView context found; skipping CSS coverage start")
+        except Exception as e:  # noqa: BLE001 - best effort
+            print(f"⚠️  Could not start CSS coverage tracking: {e}")
+
     print(f"✅ Mobile driver ready")
     
     # Yield driver and wait instance to tests
@@ -725,11 +793,19 @@ def mobile_driver(request, session_setup):
     # Collect JS coverage BEFORE driver cleanup
     try:
         from pathlib import Path
-        from js_coverage import collect_js_coverage
+        from js_coverage import collect_js_coverage, stop_css_coverage, collect_dom_coverage
         # Ensure the path is relative to the testing directory
         report_dir = Path(__file__).parent / "reports/coverage/js"
         collect_js_coverage(driver, report_dir)
         print(f"✅ JS coverage collected to {report_dir}")
+
+        if os.getenv("INSTRUMENT_JS"):
+            css_dir = Path(__file__).parent / "reports/coverage/css"
+            stop_css_coverage(driver, css_dir)
+            print(f"✅ CSS coverage collected to {css_dir}")
+            dom_dir = Path(__file__).parent / "reports/coverage/dom"
+            collect_dom_coverage(driver, dom_dir)
+            print(f"✅ DOM coverage collected to {dom_dir}")
     except Exception as e:
         # Do not fail the suite if coverage collection has issues
         print(f"⚠️  Could not collect JS coverage: {e}")

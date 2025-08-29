@@ -276,8 +276,6 @@ def create_mobile_files(mobile_dir):
     shutil.copy(js_src('mobile_main.js'), os.path.join(mobile_dir, 'main.js'))
     print("   - Updated main.js from mobile_main.js")
 
-    shutil.copy(js_src('spatial.worker.js'), os.path.join(mobile_dir, 'spatial.worker.js'))
-    print("   - Updated spatial.worker.js")
 
     mobile_main_js_path = js_src('mobile_main.js')
     if os.path.exists(mobile_main_js_path):
@@ -339,7 +337,7 @@ def setup_www_directory(mobile_dir, quick_build):
         shutil.move(data_src, os.path.join(www_dir, 'data'))
         print(f"   - Moved data directory to {www_dir}")
 
-    assets = ['index.html', 'main.js', 'spatial.worker.js', 'rbush.min.js']
+    assets = ['index.html', 'main.js', 'rbush.min.js']
 
     all_moved = True
     for asset in assets:

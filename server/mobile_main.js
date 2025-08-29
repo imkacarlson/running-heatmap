@@ -5,52 +5,10 @@ class SpatialIndex {
     this.spatialIndex = [];
     this.userRuns = [];
     this.nextId = 1;
-    this.worker = null;
-    this._initWorker();
   }
 
-  _initWorker() {
-    window.__workerCoverages = window.__workerCoverages || [];
-    try {
-      this.worker = new Worker('spatial.worker.js');
-      this.worker.addEventListener('message', (evt) => {
-        if (evt?.data?.__workerCoverage) {
-          window.__workerCoverages.push(evt.data.__workerCoverage);
-          // Merge into window.__coverage__ if present
-          if (window.__coverage__) {
-            Object.assign(window.__coverage__, evt.data.__workerCoverage);
-          }
-        } else {
-          this._handleWorkerMessage(evt);
-        }
-      });
-    } catch (e) {
-      console.error("Failed to initialize worker", e);
-      this.worker = null;
-    }
-  }
 
-  _handleWorkerMessage(e) {
-    if (!this._pending) return;
-    if (e.data.type === 'chunk') {
-      this._features.push(...e.data.features);
-    } else if (e.data.type === 'progress') {
-      if (this._progress) this._progress(e.data.value);
-    } else if (e.data.type === 'complete') {
-      this._pending.resolve({type:'FeatureCollection', features:this._features});
-      this._pending = null;
-      this._features = [];
-    }
-  }
 
-  _queryWorker(bbox, zoom, ids, progress) {
-    return new Promise(resolve => {
-      this._pending = {resolve};
-      this._features = [];
-      this._progress = progress;
-      this.worker.postMessage({bbox, zoom, filterIds: ids, batch:500});
-    });
-  }
 
   async loadData() {
     try {
@@ -306,21 +264,7 @@ class SpatialIndex {
     };
   }
 
-  async getRunsForBoundsAsync(minLat, minLng, maxLat, maxLng, zoom) {
-    if (!this.loaded) {
-      return { type: 'FeatureCollection', features: [] };
-    }
-    const bbox = [minLng, minLat, maxLng, maxLat];
-    return this._queryWorker(bbox, zoom, null, null);
-  }
 
-  filterRunsByIds(runIds, minLat, minLng, maxLat, maxLng, zoom, progressCb) {
-    if (!this.loaded) {
-      return Promise.resolve({ type: 'FeatureCollection', features: [] });
-    }
-    const bbox = [minLng, minLat, maxLng, maxLat];
-    return this._queryWorker(bbox, zoom, runIds, progressCb);
-  }
 
   // Query uploaded runs using the spatial index (legacy support)
   getRunsInPolygon(polygonCoords) {

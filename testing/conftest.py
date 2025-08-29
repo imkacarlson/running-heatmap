@@ -298,7 +298,7 @@ def session_setup(fast_mode):
         essential_files = [
             "process_data.py", "build_mobile.py",
             "mobile_template.html", "mobile_main.js", "sw_template.js", 
-            "spatial.worker.js", "AndroidManifest.xml.template", 
+            "AndroidManifest.xml.template", 
             "MainActivity.java.template", "HttpRangeServerPlugin.java.template",
             "network_security_config.xml.template"
         ]
@@ -336,16 +336,6 @@ def session_setup(fast_mode):
                     for f in copied_files:
                         print(f"         • {f.name} ({f.stat().st_size} bytes)")
 
-                    # Append a small coverage bridge into the instrumented worker so it can respond
-                    try:
-                        worker_path = dest_instrumented / 'spatial.worker.js'
-                        if worker_path.exists():
-                            with open(worker_path, 'a') as wf:
-                                wf.write("\n/* istanbul coverage bridge */\n")
-                                wf.write("self.addEventListener('message', function(e){ try { if (e && e.data && e.data.type==='__dump_coverage__') { if (self.__coverage__) { self.postMessage({type:'__coverage__', coverage: self.__coverage__}); } else { self.postMessage({type:'__coverage__', coverage: null}); } } } catch(err){} });\n")
-                            print("      🔗 Appended coverage bridge to spatial.worker.js")
-                    except Exception as e:
-                        print(f"      ⚠️  Could not append worker coverage bridge: {e}")
                 except Exception as e:
                     print(f"      ❌ Failed to copy instrumented directory: {e}")
             else:

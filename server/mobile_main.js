@@ -14,12 +14,11 @@ class SpatialIndex {
     try {
       console.log('[HEATMAP-DEBUG] Initializing SpatialIndex.loadData');
       this.spatialIndex = [];
-      this.loadUserRuns();
+      this.userRuns = [];
 
       // Give local uploads an ID space that cannot collide with PMTiles
       const LOCAL_ID_BASE = 1_000_000; // anything comfortably above PMTiles IDs
-      const maxLocal = this.userRuns.reduce((m, r) => Math.max(m, parseInt(r.id) || 0), 0);
-      this.nextId = Math.max(maxLocal + 1, LOCAL_ID_BASE);
+      this.nextId = LOCAL_ID_BASE;
 
       this.loaded = true;
       console.log(`[HEATMAP-DEBUG] SpatialIndex.loadData complete. Found ${this.userRuns.length} user runs.`);
@@ -38,40 +37,7 @@ class SpatialIndex {
     }
   }
 
-  loadUserRuns() {
-    console.log('[HEATMAP-DEBUG] Checking for locally stored runs...');
-    const stored = localStorage.getItem('userRuns');
-    if (!stored) {
-      console.log('[HEATMAP-DEBUG] No stored runs found.');
-      return;
-    }
-    try {
-      const arr = JSON.parse(stored);
-      arr.forEach(run => {
-        const id = run.id.toString();
-        this.spatialIndex.push({ id: parseInt(id), bbox: run.bbox });
-        this.userRuns.push(run);
-        const num = parseInt(id);
-        if (num >= this.nextId) this.nextId = num + 1;
-      });
-      console.log(`[HEATMAP-DEBUG] Loaded ${arr.length} user runs from localStorage.`);
-    } catch (e) {
-      console.error('[HEATMAP-DEBUG] Failed to parse stored runs:', e);
-      if (window.showStatusForDebug) {
-        window.showStatusForDebug(`Error parsing stored runs: ${e.message}`, 3000);
-      }
-    }
-  }
-
-  saveUserRuns() {
-    try {
-      localStorage.setItem('userRuns', JSON.stringify(this.userRuns));
-    } catch (e) {
-      console.error('Failed to save user runs', e);
-    }
-  }
-
-  // Mobile app uses localStorage for upload persistence - no server required
+  // Local upload persistence removed; runs are session-only in memory
 
   
 
@@ -109,9 +75,8 @@ class SpatialIndex {
     this.spatialIndex.push({ id: parseInt(id), bbox: bbox });
     this.userRuns.push(run);
     
-    // Save to localStorage for persistence (primary upload mechanism)
-    this.saveUserRuns();
-    console.log('[HEATMAP-DEBUG] Run saved to localStorage with ID:', id);
+    // Persistence removed; runs are stored in-memory only
+    console.log('[HEATMAP-DEBUG] Run stored in-memory with ID:', id);
     
     if (window.showStatusForDebug) {
       window.showStatusForDebug('Run uploaded and saved successfully', 2000);

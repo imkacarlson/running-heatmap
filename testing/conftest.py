@@ -297,7 +297,7 @@ def session_setup(fast_mode):
         # Copy essential server files
         essential_files = [
             "process_data.py", "build_mobile.py",
-            "mobile_template.html", "mobile_main.js", "sw_template.js", 
+            "mobile_template.html", "mobile_main.js", 
             "AndroidManifest.xml.template", 
             "MainActivity.java.template", "HttpRangeServerPlugin.java.template",
             "network_security_config.xml.template"

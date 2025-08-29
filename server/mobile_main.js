@@ -206,63 +206,6 @@ class SpatialIndex {
     return id;
   }
 
-  getRunsForBounds(minLat, minLng, maxLat, maxLng, zoom) {
-    if (!this.loaded) {
-      return { type: 'FeatureCollection', features: [] };
-    }
-
-    const features = [];
-    const bbox = [minLng, minLat, maxLng, maxLat];
-    
-    // Use spatial index to find runs that intersect with bounds
-    for (const indexEntry of this.spatialIndex) {
-      const runBbox = indexEntry.bbox;
-
-      // Check if run bbox intersects with query bbox
-      if (this.bboxIntersects(runBbox, bbox)) {
-        const run = this.userRuns.find(r => r.id.toString() === indexEntry.id.toString());
-        const runData = run;
-        const runId = indexEntry.id.toString();
-        if (!runData) continue;
-        
-        if (runData && runData.geoms) {
-          // Choose appropriate zoom level with fallback
-          const zoomLevel = this.getZoomLevel(zoom);
-          let geom = runData.geoms[zoomLevel];
-
-          // Fallback to other zoom levels if current one is invalid/empty
-          if (!geom || !geom.coordinates || geom.coordinates.length === 0) {
-            geom = runData.geoms['mid'] || runData.geoms['low'] || runData.geoms['high'] || runData.geoms['full'];
-          }
-          
-          // Validate geometry before adding
-          if (geom && geom.coordinates && geom.coordinates.length > 1) {
-            features.push({
-              type: 'Feature',
-              geometry: geom,
-              properties: {
-                id: runId,
-                zoom: zoom,
-                zoomLevel: zoomLevel,
-                ...runData.metadata
-              }
-            });
-          } else {
-            console.warn(`Invalid geometry for run ${runId} at zoom ${zoom}:`, geom);
-            // Show user notification for debugging
-            if (window.showStatusForDebug) {
-              window.showStatusForDebug(`Run ${runId} has invalid geometry at zoom ${zoom}`, 2000);
-            }
-          }
-        }
-      }
-    }
-
-    return {
-      type: 'FeatureCollection',
-      features: features
-    };
-  }
 
 
 

@@ -73,9 +73,7 @@ class SpatialIndex {
 
   // Mobile app uses localStorage for upload persistence - no server required
 
-  async reloadPMTiles() {
-    // Removed as unused by current app flow and tests.
-  }
+  
 
 
   simplify(coords, tolerance) {

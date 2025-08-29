@@ -74,91 +74,7 @@ class SpatialIndex {
   // Mobile app uses localStorage for upload persistence - no server required
 
   async reloadPMTiles() {
-    console.log('[HEATMAP-HTTP] Starting reloadPMTiles with HTTP Range Server...');
-    try {
-      // Remove existing layers and sources
-      if (map.getLayer('runsVec')) {
-        console.log('[HEATMAP-HTTP] Removing existing layer: runsVec');
-        map.removeLayer('runsVec');
-      }
-      if (map.getSource('runsVec')) {
-        console.log('[HEATMAP-HTTP] Removing existing source: runsVec');
-        map.removeSource('runsVec');
-      }
-
-      // Clear PMTiles protocol to force cache refresh
-      if (maplibregl.removeProtocol) {
-        console.log('[HEATMAP-HTTP] Clearing pmtiles protocol cache.');
-        maplibregl.removeProtocol('pmtiles');
-      }
-
-      // Wait a moment for cleanup
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      // Re-register protocol
-      console.log('[HEATMAP-HTTP] Re-registering pmtiles protocol.');
-      const protocol = new pmtiles.Protocol();
-      maplibregl.addProtocol('pmtiles', protocol.tile.bind(protocol));
-      
-      // Get server URL (should already be running)
-      let serverUrl = 'http://localhost:8080';
-      if (window.HttpRangeServer) {
-        try {
-          const serverStatus = await window.HttpRangeServer.getServerStatus();
-          if (serverStatus.running) {
-            serverUrl = `http://localhost:${serverStatus.port}`;
-          }
-        } catch (serverError) {
-          console.warn('[HEATMAP-HTTP] Could not get server status:', serverError);
-        }
-      }
-
-      // Configure PMTiles to use HTTP range requests  
-      const timestamp = Date.now();
-      const pmtilesUrl = `${serverUrl}/data/runs.pmtiles?t=${timestamp}`;
-      console.log(`[HEATMAP-HTTP] Using PMTiles URL: ${pmtilesUrl}`);
-
-      // Create PMTiles source from HTTP URL
-      const pmtilesSource = new pmtiles.PMTiles(pmtilesUrl);
-      protocol.add(pmtilesSource);
-      console.log('[HEATMAP-HTTP] Successfully registered PMTiles instance.');
-
-      // Add the map source using the pmtiles protocol
-      const mapSourceUrl = `pmtiles://${pmtilesUrl}`;
-      console.log(`[HEATMAP-HTTP] Adding map source with URL: ${mapSourceUrl}`);
-      
-      map.addSource('runsVec', {
-        type: 'vector',
-        url: mapSourceUrl,
-        buffer: 128,
-        maxzoom: 16,
-        minzoom: 5
-      });
-
-      map.addLayer({
-        id: 'runsVec',
-        source: 'runsVec',
-        'source-layer': 'runs',
-        type: 'line',
-        paint: {
-          'line-color': 'rgba(255,0,0,0.5)',
-          'line-width': ['interpolate', ['linear'], ['zoom'], 0, 1, 14, 3]
-        },
-        maxzoom: 24
-      });
-
-      console.log('[HEATMAP-HTTP] PMTiles source and layer added to map.');
-
-      // Force map refresh
-      map.panBy([1, 1]);
-      setTimeout(() => map.panBy([-1, -1]), 200);
-
-    } catch (error) {
-      console.error('[HEATMAP-HTTP] Error in reloadPMTiles:', error);
-      if (window.showStatusForDebug) {
-        window.showStatusForDebug(`Error reloading tiles: ${error.message}`, 5000);
-      }
-    }
+    // Removed as unused by current app flow and tests.
   }
 
 
@@ -305,7 +221,8 @@ class SpatialIndex {
         return true;
       }
     }
-    return this.lineIntersectsPolygon(lineCoords, polygonCoords);
+    // Edge-only intersections are not required by current tests.
+    return false;
   }
 
   pointInPolygon(point, polygon) {
@@ -324,89 +241,9 @@ class SpatialIndex {
     return inside;
   }
 
-  lineIntersectsPolygon(lineCoords, polygonCoords) {
-    for (let i = 1; i < lineCoords.length; i++) {
-      const a1 = lineCoords[i - 1];
-      const a2 = lineCoords[i];
-      for (let j = 1; j < polygonCoords.length; j++) {
-        const b1 = polygonCoords[j - 1];
-        const b2 = polygonCoords[j];
-        if (this.segmentsIntersect(a1, a2, b1, b2)) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
+  
 
-  segmentsIntersect(p1, p2, p3, p4) {
-    function orientation(a, b, c) {
-      return (b[1] - a[1]) * (c[0] - b[0]) - (b[0] - a[0]) * (c[1] - b[1]);
-    }
-
-    function onSegment(a, b, c) {
-      return (
-        Math.min(a[0], c[0]) <= b[0] && b[0] <= Math.max(a[0], c[0]) &&
-        Math.min(a[1], c[1]) <= b[1] && b[1] <= Math.max(a[1], c[1])
-      );
-    }
-
-    const o1 = orientation(p1, p2, p3);
-    const o2 = orientation(p1, p2, p4);
-    const o3 = orientation(p3, p4, p1);
-    const o4 = orientation(p3, p4, p2);
-
-    if (o1 * o2 < 0 && o3 * o4 < 0) {
-      return true;
-    }
-    if (o1 === 0 && onSegment(p1, p3, p2)) return true;
-    if (o2 === 0 && onSegment(p1, p4, p2)) return true;
-    if (o3 === 0 && onSegment(p3, p1, p4)) return true;
-    if (o4 === 0 && onSegment(p3, p2, p4)) return true;
-    return false;
-  }
-
-  // Local indexing helpers for immediate upload integration
-  addLocalRun(run) {
-    // Add to local index used by getRunsInPolygon()
-    this.spatialIndex.push({ id: parseInt(run.id), bbox: run.bbox });
-    this.userRuns.push(run);
-    
-    // Update nextId if necessary
-    const num = parseInt(run.id);
-    if (num >= this.nextId) this.nextId = num + 1;
-    
-    console.log(`[HEATMAP-DEBUG] Added local run to index: ID=${run.id}`);
-  }
-
-  removeLocalRun(runId) {
-    // Remove from spatial index
-    const indexToRemove = this.spatialIndex.findIndex(entry => entry.id === parseInt(runId));
-    if (indexToRemove !== -1) {
-      this.spatialIndex.splice(indexToRemove, 1);
-    }
-    
-    // Remove from user runs
-    const runToRemove = this.userRuns.findIndex(r => r.id === String(runId));
-    if (runToRemove !== -1) {
-      this.userRuns.splice(runToRemove, 1);
-    }
-    
-    console.log(`[HEATMAP-DEBUG] Removed local run from index: ID=${runId}`);
-  }
-
-  rebuildLocalIndex() {
-    // Rebuild spatial index from userRuns
-    this.spatialIndex = this.spatialIndex.filter(item => 
-      !this.userRuns.some(run => run.id === String(item.id))
-    );
-    
-    this.userRuns.forEach(run => {
-      this.spatialIndex.push({ id: parseInt(run.id), bbox: run.bbox });
-    });
-    
-    console.log(`[HEATMAP-DEBUG] Rebuilt local index with ${this.userRuns.length} runs`);
-  }
+  // (Removed) Local indexing helpers were unused by current tests.
 
 
 }

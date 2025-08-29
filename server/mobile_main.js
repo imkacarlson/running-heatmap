@@ -408,43 +408,6 @@ class SpatialIndex {
     console.log(`[HEATMAP-DEBUG] Rebuilt local index with ${this.userRuns.length} runs`);
   }
 
-  async maybeClearLocalCopyAfterReload(run) {
-    try {
-      // Verify the run appears in rendered features near the run's bbox center
-      const center = run.geoms.full.coordinates[Math.floor(run.geoms.full.coordinates.length/2)];
-      const px = window.map.project(center);
-      
-      // Wait a moment for tiles to load after PMTiles reload
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const features = window.map.queryRenderedFeatures(
-        [[px.x-4, px.y-4],[px.x+4, px.y+4]],
-        { layers: ['runsVec'] } // packaged-runs layer id
-      );
-      
-      const found = features.some(f => String(f.properties?.id) === String(run.id));
-      
-      if (found) {
-        // Safe to clear local shadow copy
-        console.log(`[HEATMAP-DEBUG] Run ${run.id} verified in PMTiles, clearing local copy`);
-        
-        // Remove from local storage and clear all local user runs
-        localStorage.removeItem('userRuns');
-        
-        // Remove the uploaded run from local arrays
-        this.removeLocalRun(run.id);
-        
-      } else {
-        console.warn(`[HEATMAP-DEBUG] Run ${run.id} not found in PMTiles rendering, keeping local copy`);
-        // Keep local copy and save to localStorage
-        this.saveUserRuns();
-      }
-    } catch (e) {
-      console.warn('[HEATMAP-DEBUG] PMTiles verification failed; keeping local copy', e);
-      // Keep local copy and save to localStorage
-      this.saveUserRuns();
-    }
-  }
 
 }
 

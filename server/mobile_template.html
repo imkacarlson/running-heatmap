@@ -1234,16 +1234,14 @@
     
     function clearUserUploads() {
       try {
-        // Clear localStorage
-        localStorage.removeItem('userRuns');
-        
         // Clear spatialIndex
         if (window.spatialIndex) {
           window.spatialIndex.userRuns = [];
           window.spatialIndex.spatialIndex = window.spatialIndex.spatialIndex.filter(item => 
             !window.spatialIndex.userRuns.some(run => run.id === item.id)
           );
-          window.spatialIndex.nextId = 1;
+          // Reset nextId to base used for local uploads
+          window.spatialIndex.nextId = 1_000_000;
         }
         
         // Clear any filtering
@@ -1492,11 +1490,8 @@
               const run = { id: String(futureId), geoms, bbox, metadata };
               
               // Add using the new helper method
-              if (window.spatialIndex.addLocalRun) {
-                window.spatialIndex.addLocalRun(run);
-              } else if (window.spatialIndex.userRuns) {
+              if (window.spatialIndex.userRuns) {
                 window.spatialIndex.userRuns.push(run);
-                if (window.spatialIndex.rebuildLocalIndex) window.spatialIndex.rebuildLocalIndex();
               }
             }
             

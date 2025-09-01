@@ -72,3 +72,4 @@ server/.instrumented/
 testing/reports/coverage/
 .coverage
 .coverage.*
+.spec-workflow/session.json

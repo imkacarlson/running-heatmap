@@ -35,7 +35,7 @@ public class MainActivity extends BridgeActivity {
             return;
         }
 
-        final View rootView = getBridge().getWebView().getView();
+        final View rootView = getBridge().getWebView();
         final int initialLeft = rootView.getPaddingLeft();
         final int initialTop = rootView.getPaddingTop();
         final int initialRight = rootView.getPaddingRight();

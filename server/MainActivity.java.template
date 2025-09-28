@@ -1,6 +1,15 @@
 package com.run.heatmap;
 
+import android.graphics.Color;
 import android.os.Bundle;
+import android.view.View;
+
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
+
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
@@ -12,5 +21,43 @@ public class MainActivity extends BridgeActivity {
 
         // 2️⃣  Now let BridgeActivity build the bridge (it will include our plugin)
         super.onCreate(savedInstanceState);
+
+        configureEdgeToEdgeWindowInsets();
+    }
+
+    private void configureEdgeToEdgeWindowInsets() {
+        // Draw behind system bars and handle insets manually so UI controls stay visible
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        getWindow().setStatusBarColor(Color.TRANSPARENT);
+        getWindow().setNavigationBarColor(Color.TRANSPARENT);
+
+        if (getBridge() == null || getBridge().getWebView() == null) {
+            return;
+        }
+
+        final View rootView = getBridge().getWebView().getView();
+        final int initialLeft = rootView.getPaddingLeft();
+        final int initialTop = rootView.getPaddingTop();
+        final int initialRight = rootView.getPaddingRight();
+        final int initialBottom = rootView.getPaddingBottom();
+
+        ViewCompat.setOnApplyWindowInsetsListener(rootView, (view, insets) -> {
+            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+            view.setPadding(
+                initialLeft + systemBars.left,
+                initialTop + systemBars.top,
+                initialRight + systemBars.right,
+                initialBottom + systemBars.bottom
+            );
+            return WindowInsetsCompat.CONSUMED;
+        });
+        ViewCompat.requestApplyInsets(rootView);
+
+        WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(getWindow(), rootView);
+        if (controller != null) {
+            // Dark status bar/navigation bar icons so they do not blend with light map content
+            controller.setAppearanceLightStatusBars(true);
+            controller.setAppearanceLightNavigationBars(true);
+        }
     }
 }

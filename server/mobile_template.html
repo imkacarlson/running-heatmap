@@ -12,7 +12,7 @@
       margin: 0;
       padding: 0;
       width: 100%;
-      height: 100vh;
+      height: 100%;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       overflow: hidden;
     }
@@ -80,8 +80,7 @@
     /* Mobile-optimized map controls */
     .map-controls {
       position: absolute;
-      top: env(safe-area-inset-top, 20px);
-      top: max(60px, env(safe-area-inset-top, 20px));
+      top: calc(env(safe-area-inset-top, 0px) + 20px);
       right: 20px;
       z-index: 1000;
       display: flex;
@@ -122,11 +121,11 @@
     /* Mobile sidebar */
     #side-panel {
       position: absolute;
-      top: env(safe-area-inset-top, 0px);
+      top: 0;
       right: -100vw;
       width: 85vw;
       max-width: 400px;
-      height: calc(100vh - env(safe-area-inset-top, 0px));
+      height: 100%;
       background: white;
       box-shadow: -4px 0 20px rgba(0,0,0,0.15);
       transition: right 0.3s ease;
@@ -294,11 +293,11 @@
     /* Extras panel */
     #extras-panel {
       position: absolute;
-      top: env(safe-area-inset-top, 0px);
+      top: 0;
       left: -100vw;
       width: 85vw;
       max-width: 360px;
-      height: calc(100vh - env(safe-area-inset-top, 0px));
+      height: 100%;
       background: white;
       box-shadow: 2px 0 10px rgba(0,0,0,0.15);
       transition: left 0.3s ease;

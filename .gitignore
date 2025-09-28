@@ -63,6 +63,9 @@ testing/testing/
 
 # Spec workflow approvals (temporary files)
 .spec-workflow/approvals/
+.spec-workflow/templates/
+.spec-workflow/user-templates/
+.spec-workflow/config.example.toml
 
 # Spec logs
 logs/

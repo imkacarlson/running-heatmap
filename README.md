@@ -52,6 +52,13 @@ Place your GPS files in `data/raw/` (this directory is git-ignored):
 
 ### 3. Process your data
 
+**One-stop build script:**
+```bash
+./build.sh
+```
+This automated script handles everything: creates the virtual environment, installs dependencies, processes your data, and builds the mobile app.
+
+**Or run steps manually:**
 ```bash
 cd server
 python3 -m venv .venv

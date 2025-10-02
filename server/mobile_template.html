@@ -232,6 +232,13 @@
       -webkit-overflow-scrolling: touch;
     }
 
+    .panel-content.empty {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 0;
+    }
+
     /* Add bottom padding to scrollable content in extras panel */
     #extras-content.panel-content {
       padding-bottom: calc(15px + var(--safe-area-inset-bottom));
@@ -1098,14 +1105,18 @@
     function displayRunsInPanel(runs) {
       const panelContent = document.getElementById('panel-content');
       const panelSummary = document.getElementById('panel-summary');
-      
+
       panelContent.innerHTML = '';
-      
+
       if (runs.length === 0) {
-        panelContent.innerHTML = '<p style="text-align: center; color: #666; margin: 20px; font-size: 16px;">No runs found in selected area</p>';
+        panelContent.classList.add('empty');
+        panelContent.innerHTML = '<p style="text-align: center; color: #666; margin: 0; font-size: 16px;">No runs found in selected area</p>';
         panelSummary.innerHTML = '';
         return;
       }
+
+      // Remove empty class when there are runs
+      panelContent.classList.remove('empty');
 
       // Sort runs by date
       runs.sort((a, b) => new Date(b.metadata.start_time) - new Date(a.metadata.start_time));

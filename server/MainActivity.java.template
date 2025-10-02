@@ -39,19 +39,10 @@ public class MainActivity extends BridgeActivity {
         }
 
         final View rootView = getBridge().getWebView();
-        final int initialLeft = rootView.getPaddingLeft();
-        final int initialTop = rootView.getPaddingTop();
-        final int initialRight = rootView.getPaddingRight();
-        final int initialBottom = rootView.getPaddingBottom();
 
         ViewCompat.setOnApplyWindowInsetsListener(rootView, (view, insets) -> {
             Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
-            view.setPadding(
-                initialLeft + systemBars.left,
-                initialTop + systemBars.top,
-                initialRight + systemBars.right,
-                initialBottom + systemBars.bottom
-            );
+            // Don't apply padding to WebView - let CSS handle it via injected variables
             pushInsetsToWebContent(systemBars);
             return WindowInsetsCompat.CONSUMED;
         });

@@ -65,25 +65,36 @@ def setup_test_environment(args):
     """Set up the complete testing environment"""
     print("\n🚀 SETTING UP MANUAL TESTING ENVIRONMENT")
     print("=" * 60)
-    
+
+    # Import infrastructure setup functions
+    from infrastructure_setup import (
+        check_and_start_emulator,
+        start_appium_server,
+        PerformanceMetrics
+    )
+
+    # Create metrics object to track setup performance
+    metrics = PerformanceMetrics()
+
     # Check prerequisites
     print("Step 1: Checking prerequisites...")
-    if not run_tests.check_prerequisites(args):
-        return False, None
-    
+    if not run_tests.check_prerequisites(args, None):
+        return False, None, None
+
     # Check and start emulator
     print("\nStep 2: Setting up emulator...")
-    if not run_tests.check_and_start_emulator(args):
-        return False, None
-    
+    emulator_result = check_and_start_emulator(metrics)
+    if not emulator_result:
+        return False, None, None
+
     # Start Appium server
     print("\nStep 3: Starting Appium server...")
-    appium_process = run_tests.start_appium_server(args.verbose)
+    appium_process = start_appium_server(metrics)
     if appium_process is None:
         print("❌ Failed to start Appium server")
-        return False, None
-    
-    return True, appium_process
+        return False, None, None
+
+    return True, appium_process, emulator_result.get('started_emulator', False)
 
 def install_test_app(args):
     """Install the test app with data using pytest infrastructure"""
@@ -223,17 +234,18 @@ def wait_for_user_completion():
 def main():
     """Main manual testing function"""
     args = parse_manual_arguments()
-    
+
     print("🧪 Running Heatmap Manual Testing Script")
     print("This will set up everything for manual testing, then clean up when done")
     print("=" * 60)
-    
+
     appium_process = None
+    started_emulator = False
     success = False
-    
+
     try:
         # Set up the testing environment
-        setup_success, appium_process = setup_test_environment(args)
+        setup_success, appium_process, started_emulator = setup_test_environment(args)
         if not setup_success:
             print("\n❌ Failed to set up testing environment")
             return 1
@@ -269,13 +281,37 @@ def main():
         return 1
         
     finally:
-        # Clean up everything using the same functions as run_tests.py
+        # Clean up everything using the infrastructure functions
         print("\n🧹 CLEANING UP TESTING ENVIRONMENT")
         print("=" * 60)
-        
-        # Use the comprehensive cleanup from run_tests.py
-        run_tests.cleanup_resources(appium_process, args, args.verbose)
-        
+
+        # Import cleanup functions
+        from infrastructure_setup import cleanup_appium_server, shutdown_emulator
+
+        # Stop Appium server
+        if appium_process:
+            cleanup_appium_server(appium_process)
+
+        # Uninstall app if requested (default is to uninstall)
+        if not args.keep_app:
+            print("🗑️  Uninstalling test app...")
+            try:
+                subprocess.run(['adb', 'uninstall', 'com.run.heatmap'],
+                             capture_output=True, text=True)
+                print("✅ Test app uninstalled")
+            except Exception as e:
+                print(f"⚠️  Warning: Could not uninstall app: {e}")
+        else:
+            print("📱 Keeping app installed (--keep-app flag)")
+
+        # Shutdown emulator if we started it and user doesn't want to keep it
+        if started_emulator and not args.keep_emulator and not args.manual_emulator:
+            shutdown_emulator()
+        elif args.keep_emulator:
+            print("📱 Keeping emulator running (--keep-emulator flag)")
+        else:
+            print("📱 Emulator was already running, leaving it running")
+
         print("\n✅ Cleanup complete!")
         print("🎉 Manual testing session finished")
 

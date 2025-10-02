@@ -3,6 +3,7 @@ package com.run.heatmap;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.view.View;
+import android.webkit.WebView;
 
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
@@ -11,6 +12,8 @@ import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 
 import com.getcapacitor.BridgeActivity;
+
+import java.util.Locale;
 
 public class MainActivity extends BridgeActivity {
 
@@ -49,6 +52,7 @@ public class MainActivity extends BridgeActivity {
                 initialRight + systemBars.right,
                 initialBottom + systemBars.bottom
             );
+            pushInsetsToWebContent(systemBars);
             return WindowInsetsCompat.CONSUMED;
         });
         ViewCompat.requestApplyInsets(rootView);
@@ -59,5 +63,24 @@ public class MainActivity extends BridgeActivity {
             controller.setAppearanceLightStatusBars(true);
             controller.setAppearanceLightNavigationBars(true);
         }
+    }
+
+    private void pushInsetsToWebContent(Insets systemBars) {
+        if (getBridge() == null || getBridge().getWebView() == null) {
+            return;
+        }
+
+        final String script = String.format(
+            Locale.US,
+            "window.__androidInsets={top:%d,right:%d,bottom:%d,left:%d};" +
+            "if(window.__applyAndroidInsets){window.__applyAndroidInsets();}",
+            systemBars.top,
+            systemBars.right,
+            systemBars.bottom,
+            systemBars.left
+        );
+
+        final WebView webView = getBridge().getWebView();
+        webView.post(() -> webView.evaluateJavascript(script, null));
     }
 }

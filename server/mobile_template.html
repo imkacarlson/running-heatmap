@@ -8,6 +8,13 @@
   <script src="https://unpkg.com/pmtiles@3.2.0/dist/pmtiles.js"></script>
   <link href="https://unpkg.com/maplibre-gl/dist/maplibre-gl.css" rel="stylesheet" />
   <style>
+    :root {
+      --safe-area-inset-top: env(safe-area-inset-top, 0px);
+      --safe-area-inset-right: env(safe-area-inset-right, 0px);
+      --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-area-inset-left: env(safe-area-inset-left, 0px);
+    }
+
     body, html, #map {
       margin: 0;
       padding: 0;
@@ -80,7 +87,7 @@
     /* Mobile-optimized map controls */
     .map-controls {
       position: absolute;
-      top: calc(env(safe-area-inset-top, 0px) + 20px);
+      top: calc(var(--safe-area-inset-top) + 20px);
       right: 20px;
       z-index: 1000;
       display: flex;
@@ -133,6 +140,9 @@
       overflow: hidden;
       display: flex;
       flex-direction: column;
+      box-sizing: border-box;
+      padding-top: var(--safe-area-inset-top);
+      padding-bottom: var(--safe-area-inset-bottom);
     }
 
     #side-panel.open {
@@ -303,6 +313,9 @@
       transition: left 0.3s ease;
       z-index: 1000;
       overflow-y: auto;
+      box-sizing: border-box;
+      padding-top: var(--safe-area-inset-top);
+      padding-bottom: var(--safe-area-inset-bottom);
     }
 
     #extras-panel.open {
@@ -484,6 +497,26 @@
   <script src="main.js"></script>
   
   <script>
+    // Keep CSS safe-area variables in sync with native Android insets
+    function setSafeAreaCssVariables(insets) {
+      if (!insets) return;
+
+      const root = document.documentElement;
+      root.style.setProperty('--safe-area-inset-top', `${insets.top || 0}px`);
+      root.style.setProperty('--safe-area-inset-right', `${insets.right || 0}px`);
+      root.style.setProperty('--safe-area-inset-bottom', `${insets.bottom || 0}px`);
+      root.style.setProperty('--safe-area-inset-left', `${insets.left || 0}px`);
+    }
+
+    window.__applyAndroidInsets = function() {
+      if (!window.__androidInsets) return;
+      setSafeAreaCssVariables(window.__androidInsets);
+    };
+
+    if (window.__androidInsets) {
+      window.__applyAndroidInsets();
+    }
+
     // Initialize Capacitor plugin interface
     let initPromise = new Promise((resolve) => {
       const initCapacitor = () => {

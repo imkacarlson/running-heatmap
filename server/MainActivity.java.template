@@ -61,17 +61,28 @@ public class MainActivity extends BridgeActivity {
             return;
         }
 
+        float density = getResources().getDisplayMetrics().density;
+        if (density <= 0f) {
+            density = 1f;
+        }
+
+        int insetTop = Math.round(systemBars.top / density);
+        int insetRight = Math.round(systemBars.right / density);
+        int insetBottom = Math.round(systemBars.bottom / density);
+        int insetLeft = Math.round(systemBars.left / density);
+
         final String script = String.format(
             Locale.US,
             "window.__androidInsets={top:%d,right:%d,bottom:%d,left:%d};" +
             "if(window.__applyAndroidInsets){window.__applyAndroidInsets();}",
-            systemBars.top,
-            systemBars.right,
-            systemBars.bottom,
-            systemBars.left
+            insetTop,
+            insetRight,
+            insetBottom,
+            insetLeft
         );
 
         final WebView webView = getBridge().getWebView();
         webView.post(() -> webView.evaluateJavascript(script, null));
     }
 }
+

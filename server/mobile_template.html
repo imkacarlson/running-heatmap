@@ -129,11 +129,11 @@
     /* Mobile sidebar */
     #side-panel {
       position: absolute;
-      top: 0;
+      top: var(--safe-area-inset-top);
       right: -100vw;
       width: 85vw;
       max-width: 400px;
-      height: 100%;
+      height: calc(100% - var(--safe-area-inset-top));
       background: white;
       box-shadow: -4px 0 20px rgba(0,0,0,0.15);
       transition: right 0.3s ease;
@@ -195,7 +195,6 @@
 
     .panel-header {
       padding: 20px;
-      padding-top: calc(20px + var(--safe-area-inset-top));
       background: #f8f9fa;
       border-bottom: 1px solid #dee2e6;
       font-weight: bold;
@@ -316,11 +315,11 @@
     /* Extras panel */
     #extras-panel {
       position: absolute;
-      top: 0;
+      top: var(--safe-area-inset-top);
       left: -100vw;
       width: 85vw;
       max-width: 360px;
-      height: 100%;
+      height: calc(100% - var(--safe-area-inset-top));
       background: white;
       box-shadow: 2px 0 10px rgba(0,0,0,0.15);
       transition: left 0.3s ease;
@@ -372,7 +371,6 @@
 
     .extras-header {
       padding: 18px;
-      padding-top: calc(18px + var(--safe-area-inset-top));
       background: #f8f9fa;
       border-bottom: 1px solid #dee2e6;
       font-weight: bold;
@@ -425,17 +423,16 @@
       .panel-header {
         font-size: 16px;
         padding: 15px;
-        padding-top: calc(15px + var(--safe-area-inset-top));
       }
-      
+
       .run-card {
         padding: 12px;
       }
-      
+
       .run-date {
         font-size: 15px;
       }
-      
+
       .run-stats {
         font-size: 13px;
       }

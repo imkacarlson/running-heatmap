@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Run Heatmap Mobile</title>
   <script src="https://unpkg.com/maplibre-gl/dist/maplibre-gl.js"></script>
   <script src="https://unpkg.com/pmtiles@3.2.0/dist/pmtiles.js"></script>
@@ -87,12 +87,13 @@
     /* Mobile-optimized map controls */
     .map-controls {
       position: absolute;
-      top: calc(var(--safe-area-inset-top) + 20px);
+      top: 20px;
       right: 20px;
       z-index: 1000;
       display: flex;
       flex-direction: column;
       gap: 8px;
+      margin-top: var(--safe-area-inset-top);
     }
 
     .control-btn {
@@ -141,8 +142,6 @@
       display: flex;
       flex-direction: column;
       box-sizing: border-box;
-      padding-top: var(--safe-area-inset-top);
-      padding-bottom: var(--safe-area-inset-bottom);
     }
 
     #side-panel.open {
@@ -196,6 +195,7 @@
 
     .panel-header {
       padding: 20px;
+      padding-top: calc(20px + var(--safe-area-inset-top));
       background: #f8f9fa;
       border-bottom: 1px solid #dee2e6;
       font-weight: bold;
@@ -230,6 +230,11 @@
       overflow-y: auto;
       padding: 15px;
       -webkit-overflow-scrolling: touch;
+    }
+
+    /* Add bottom padding to scrollable content in extras panel */
+    #extras-content.panel-content {
+      padding-bottom: calc(15px + var(--safe-area-inset-bottom));
     }
 
     .run-card {
@@ -273,6 +278,7 @@
 
     .panel-summary {
       padding: 15px 20px;
+      padding-bottom: calc(15px + var(--safe-area-inset-bottom));
       background: #f8f9fa;
       border-top: 1px solid #dee2e6;
       font-size: 16px;
@@ -314,8 +320,6 @@
       z-index: 1000;
       overflow-y: auto;
       box-sizing: border-box;
-      padding-top: var(--safe-area-inset-top);
-      padding-bottom: var(--safe-area-inset-bottom);
     }
 
     #extras-panel.open {
@@ -361,6 +365,7 @@
 
     .extras-header {
       padding: 18px;
+      padding-top: calc(18px + var(--safe-area-inset-top));
       background: #f8f9fa;
       border-bottom: 1px solid #dee2e6;
       font-weight: bold;
@@ -398,6 +403,7 @@
       font-size: 14px;
       display: none;
       z-index: 1000;
+      margin-bottom: var(--safe-area-inset-bottom);
     }
 
     /* Touch-friendly clear button */
@@ -412,6 +418,7 @@
       .panel-header {
         font-size: 16px;
         padding: 15px;
+        padding-top: calc(15px + var(--safe-area-inset-top));
       }
       
       .run-card {

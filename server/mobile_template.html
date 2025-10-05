@@ -579,6 +579,27 @@
     let lastDrawTime = 0;
     let drawThrottleMs = 16; // ~60fps
 
+    const sidePanel = document.getElementById('side-panel');
+    const mapControls = document.querySelector('.map-controls');
+
+    function updateMapControlsOffset() {
+      if (!mapControls || !sidePanel) return;
+      if (sidePanel.classList.contains('open')) {
+        const panelWidth = sidePanel.offsetWidth || 0;
+        mapControls.style.right = `${panelWidth + 20}px`;
+      } else {
+        mapControls.style.right = '20px';
+      }
+    }
+
+    if (window.ResizeObserver && sidePanel) {
+      const panelResizeObserver = new ResizeObserver(() => updateMapControlsOffset());
+      panelResizeObserver.observe(sidePanel);
+    }
+
+    window.addEventListener('resize', updateMapControlsOffset);
+    updateMapControlsOffset();
+
     // Initialize map
     async function initMap() {
       // Wait for Capacitor to be ready
@@ -1050,7 +1071,8 @@
       try {
         const runs = await queryUnifiedRunsInPolygon(coordinates);
         displayRunsInPanel(runs);
-        document.getElementById('side-panel').classList.add('open');
+        sidePanel.classList.add('open');
+        updateMapControlsOffset();
         sidebarOpen = true;
       } catch (error) {
         console.error('Error querying runs:', error);
@@ -1464,7 +1486,8 @@
       currentPolygon = null;
       polygonCoords = [];
       document.getElementById('clear-selection-btn').style.display = 'none';
-      document.getElementById('side-panel').classList.remove('open');
+      sidePanel.classList.remove('open');
+      updateMapControlsOffset();
       sidebarOpen = false;
       selectedRuns.clear();
       updateMapDisplay();
@@ -1652,14 +1675,14 @@
 
       // Mobile panel collapse functionality
       document.getElementById('panel-collapse').addEventListener('click', () => {
-        const panel = document.getElementById('side-panel');
-        panel.classList.add('collapsed');
+        sidePanel.classList.add('collapsed');
+        updateMapControlsOffset();
       });
 
       // Mobile panel expand functionality
       document.getElementById('expand-btn').addEventListener('click', () => {
-        const panel = document.getElementById('side-panel');
-        panel.classList.remove('collapsed');
+        sidePanel.classList.remove('collapsed');
+        updateMapControlsOffset();
       });
 
       // Panel controls

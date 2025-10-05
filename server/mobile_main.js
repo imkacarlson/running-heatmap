@@ -324,10 +324,15 @@ class SpatialIndex {
 
   // Query uploaded runs using the spatial index (legacy support)
   getRunsInPolygon(polygonCoords) {
-    if (!this.loaded) return [];
+    console.log('[LASSO-DEBUG] getRunsInPolygon called, loaded=', this.loaded, 'userRuns.length=', this.userRuns.length);
+    if (!this.loaded) {
+      console.warn('[LASSO-DEBUG] spatialIndex not loaded yet');
+      return [];
+    }
 
     const runs = [];
     const polyBbox = this.getPolygonBbox(polygonCoords);
+    console.log('[LASSO-DEBUG] Polygon bbox:', polyBbox, 'spatialIndex entries:', this.spatialIndex.length);
 
     for (const entry of this.spatialIndex) {
       if (this.bboxIntersects(entry.bbox, polyBbox)) {
@@ -337,35 +342,70 @@ class SpatialIndex {
         }
       }
     }
+    console.log('[LASSO-DEBUG] getRunsInPolygon found', runs.length, 'local runs');
 
     return runs;
   }
 
   async queryPMTilesInPolygon(polygonCoords) {
-    if (!this.loaded) return [];
+    console.log('[LASSO-DEBUG] queryPMTilesInPolygon called, loaded=', this.loaded);
+    if (!this.loaded) {
+      console.warn('[LASSO-DEBUG] spatialIndex not loaded yet');
+      return [];
+    }
 
-    const features = map.queryRenderedFeatures(null, {
+    // Convert polygon to screen coordinates to compute a padded query bbox
+    const polygonPoints = polygonCoords.map(coord => map.project(coord));
+    console.log('[LASSO-DEBUG] Querying with screen polygon, points:', polygonPoints.length);
+
+    let minX = Infinity, minY = Infinity;
+    let maxX = -Infinity, maxY = -Infinity;
+    for (const pt of polygonPoints) {
+      minX = Math.min(minX, pt.x);
+      minY = Math.min(minY, pt.y);
+      maxX = Math.max(maxX, pt.x);
+      maxY = Math.max(maxY, pt.y);
+    }
+
+    const padding = 12; // pixels of slack so we catch thin lines hugging the boundary
+    const queryBox = [
+      [minX - padding, minY - padding],
+      [maxX + padding, maxY + padding]
+    ];
+
+    const features = map.queryRenderedFeatures(queryBox, {
       layers: ['runsVec']
     });
+    console.log('[LASSO-DEBUG] queryRenderedFeatures within bbox returned', features.length, 'features before filtering');
 
-    const runs = [];
+    const runsMap = new Map();
     features.forEach(feature => {
-      const props = feature.properties;
-      const runBbox = feature.bbox || this.getGeometryBbox(feature.geometry);
-      if (this.geometryIntersectsPolygon(feature.geometry, polygonCoords)) {
-        runs.push({
-          id: props.id,
-          metadata: {
-            start_time: props.start_time,
-            distance: props.distance,
-            duration: props.duration,
-            activity_type: props.activity_type,
-            activity_raw: props.activity_raw
-          },
-          bbox: runBbox
-        });
+      if (!this.geometryIntersectsPolygonLenient(feature.geometry, polygonCoords)) {
+        return;
       }
+
+      const props = feature.properties;
+      const runId = props.id;
+
+      if (runsMap.has(runId)) {
+        return;
+      }
+
+      runsMap.set(runId, {
+        id: runId,
+        metadata: {
+          start_time: props.start_time,
+          distance: props.distance,
+          duration: props.duration,
+          activity_type: props.activity_type,
+          activity_raw: props.activity_raw
+        },
+        bbox: feature.bbox || this.getGeometryBbox(feature.geometry)
+      });
     });
+
+    const runs = Array.from(runsMap.values());
+    console.log('[LASSO-DEBUG] After deduplication and lenient filter:', runs.length, 'unique runs');
 
     return runs;
   }
@@ -397,16 +437,29 @@ class SpatialIndex {
   }
 
   getGeometryBbox(geometry) {
-    const coords = geometry.coordinates;
+    const queue = Array.isArray(geometry.coordinates) ? [...geometry.coordinates] : [];
     let minLng = Infinity, minLat = Infinity;
     let maxLng = -Infinity, maxLat = -Infinity;
 
-    coords.forEach(([lng, lat]) => {
+    while (queue.length) {
+      const entry = queue.shift();
+      if (!entry) {
+        continue;
+      }
+      if (Array.isArray(entry[0])) {
+        queue.push(...entry);
+        continue;
+      }
+      const [lng, lat] = entry;
       minLng = Math.min(minLng, lng);
       maxLng = Math.max(maxLng, lng);
       minLat = Math.min(minLat, lat);
       maxLat = Math.max(maxLat, lat);
-    });
+    }
+
+    if (minLng === Infinity) {
+      return [0, 0, 0, 0];
+    }
 
     return [minLng, minLat, maxLng, maxLat];
   }
@@ -419,6 +472,56 @@ class SpatialIndex {
       }
     }
     return this.lineIntersectsPolygon(lineCoords, polygonCoords);
+  }
+
+  geometryIntersectsPolygonLenient(geometry, polygonCoords) {
+    if (!geometry) {
+      return false;
+    }
+    const stack = Array.isArray(geometry.coordinates) ? [geometry.coordinates] : [];
+
+    while (stack.length) {
+      const coords = stack.pop();
+      if (!coords || !coords.length) {
+        continue;
+      }
+      if (Array.isArray(coords[0][0])) {
+        stack.push(...coords);
+        continue;
+      }
+
+      if (this._lineIntersectsPolygonLenient(coords, polygonCoords)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  _lineIntersectsPolygonLenient(lineCoords, polygonCoords) {
+    for (const coord of lineCoords) {
+      if (this.pointInPolygon(coord, polygonCoords)) {
+        return true;
+      }
+    }
+
+    if (this.lineIntersectsPolygon(lineCoords, polygonCoords)) {
+      return true;
+    }
+
+    for (let i = 1; i < lineCoords.length; i++) {
+      const [lng1, lat1] = lineCoords[i - 1];
+      const [lng2, lat2] = lineCoords[i];
+      for (let t = 0.05; t < 1.0; t += 0.05) {
+        const sampleLng = lng1 + (lng2 - lng1) * t;
+        const sampleLat = lat1 + (lat2 - lat1) * t;
+        if (this.pointInPolygon([sampleLng, sampleLat], polygonCoords)) {
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
 
   pointInPolygon(point, polygon) {

@@ -1203,9 +1203,9 @@
         
         // Get PMTiles runs (pre-packaged data) - query with large bbox to get all runs
         try {
-          const worldBbox = [-180, -90, 180, 90]; // World coordinates
+          const maxQueryLat = 85.0; // Clamp to Web Mercator limits to keep projection finite
           const pmtilesRuns = await window.spatialIndex.queryPMTilesInPolygon([
-            [-180, -90], [180, -90], [180, 90], [-180, 90], [-180, -90]
+            [-180, -maxQueryLat], [180, -maxQueryLat], [180, maxQueryLat], [-180, maxQueryLat], [-180, -maxQueryLat]
           ]);
           allRuns.push(...pmtilesRuns);
         } catch (error) {
